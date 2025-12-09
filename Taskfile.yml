@@ -1,0 +1,53 @@
+# https://taskfile.dev
+
+version: '3'
+
+dotenv: [".env"]
+
+silent: true
+
+vars:
+  MIGRATIONS_DIR: ./migrations
+  DATABASE_DSN: postgres://{{.POSTGRES_USER}}:{{.POSTGRES_PASSWORD}}@{{.POSTGRES_HOST}}:{{.POSTGRES_PORT}}/{{.POSTGRES_DB}}?sslmode=disable
+
+tasks:
+  ##########################
+  # Database Migrations
+  ##########################
+  migrate:new:
+    desc: Create a new database migration
+    cmds:
+      - migrate create -ext sql -dir {{.MIGRATIONS_DIR}} -seq {{.NAME}}
+
+  migrate:up:
+    desc: Apply migrations to the database
+    cmds:
+      - migrate -path {{.MIGRATIONS_DIR}} -database {{.DATABASE_DSN}} up {{.STEP}}
+
+  migrate:down:
+    desc: Rollback database migrations
+    cmds:
+      - migrate -path {{.MIGRATIONS_DIR}} -database {{.DATABASE_DSN}} down {{.STEP}}
+
+  migrate:version:
+    desc: Show the current migration version
+    cmds:
+      - migrate -path {{.MIGRATIONS_DIR}} -database {{.DATABASE_DSN}} version
+
+  migrate:force:
+    desc: Force the migration version
+    cmds:
+      - migrate -path {{.MIGRATIONS_DIR}} -database {{.DATABASE_DSN}} force {{.VERSION}}
+
+  ##########################
+  # Docker
+  ##########################
+  docker:up:
+    desc: Start the Docker containers
+    cmds:
+      - docker compose up -d
+  
+  docker:down:
+    desc: Stop the Docker containers
+    cmds:
+      - docker compose down
