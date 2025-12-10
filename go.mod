@@ -2,7 +2,10 @@ module github.com/jonathanhu237/rota
 
 go 1.25.5
 
-require github.com/jackc/pgx/v5 v5.7.6
+require (
+	github.com/caarlos0/env/v11 v11.3.1
+	github.com/jackc/pgx/v5 v5.7.6
+)
 
 require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
