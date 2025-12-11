@@ -3,8 +3,13 @@ package config
 import "github.com/caarlos0/env/v11"
 
 type Config struct {
+	Server    ServerConfig    `envPrefix:"SERVER_"`
 	InitAdmin InitAdminConfig `envPrefix:"INIT_ADMIN_"`
 	Database  DatabaseConfig  `envPrefix:"DATABASE_"`
+}
+
+type ServerConfig struct {
+	Port int `env:"PORT"`
 }
 
 type InitAdminConfig struct {
