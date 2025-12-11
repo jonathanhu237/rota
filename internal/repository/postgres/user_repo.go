@@ -17,13 +17,12 @@ func NewUserRepository(db *pgxpool.Pool) *UserRepository {
 
 func (r *UserRepository) Create(ctx context.Context, u *user.User) error {
 	sql := `
-		INSERT INTO users (id, username, password_hash, name, email, is_admin, is_active)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING created_at, updated_at, version
+		INSERT INTO users (username, password_hash, name, email, is_admin, is_active)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, created_at, updated_at, version
 	`
 
 	args := []any{
-		u.ID,
 		u.Username,
 		u.PasswordHash,
 		u.Name,
@@ -33,6 +32,7 @@ func (r *UserRepository) Create(ctx context.Context, u *user.User) error {
 	}
 
 	dst := []any{
+		&u.ID,
 		&u.CreatedAt,
 		&u.UpdatedAt,
 		&u.Version,
