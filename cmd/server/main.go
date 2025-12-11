@@ -51,10 +51,12 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 
-	handler := handler.New()
+	userService := user.NewService(userRepo)
+	handler := handler.New(logger, userService)
+
 	srv := http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Server.Port),
-		Handler: handler,
+		Handler: handler.Routes(),
 	}
 
 	errCh := make(chan error, 1)
