@@ -9,7 +9,8 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Port int `env:"PORT"`
+	Port            int `env:"PORT"`
+	ShutdownTimeout int `env:"SHUTDOWN_TIMEOUT"`
 }
 
 type InitAdminConfig struct {

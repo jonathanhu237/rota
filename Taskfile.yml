@@ -59,3 +59,4 @@ tasks:
     desc: Run the Rota server
     cmds:
       - go run ./cmd/server
+    ignore_error: true

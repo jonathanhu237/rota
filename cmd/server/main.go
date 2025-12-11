@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/jonathanhu237/rota/internal/config"
 	"github.com/jonathanhu237/rota/internal/domain/user"
@@ -56,8 +57,27 @@ func run(logger *slog.Logger) error {
 		Handler: handler,
 	}
 
-	logger.Info("starting server", "port", cfg.Server.Port)
-	return srv.ListenAndServe()
+	errCh := make(chan error, 1)
+	go func() {
+		logger.Info("starting server", "port", cfg.Server.Port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- err
+		}
+	}()
+
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+		logger.Info("shutting down server")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.Server.ShutdownTimeout)*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			logger.Error("error shutting down server", "error", err)
+		}
+	}
+
+	return nil
 }
 
 func ensureAdmin(ctx context.Context, cfg *config.Config, logger *slog.Logger, userRepo user.Repository) error {
