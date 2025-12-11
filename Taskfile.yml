@@ -51,3 +51,11 @@ tasks:
     desc: Stop the Docker containers
     cmds:
       - docker compose down
+
+  ##########################
+  # Server
+  ##########################
+  server:run:
+    desc: Run the Rota server
+    cmds:
+      - go run ./cmd/server
