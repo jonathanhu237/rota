@@ -77,23 +77,23 @@ func (r *UserRepository) List(ctx context.Context, limit, offset int) ([]user.Us
 
 	users := []user.User{}
 	for rows.Next() {
-		var user user.User
+		var u user.User
 		dst := []any{
-			&user.ID,
-			&user.Username,
-			&user.PasswordHash,
-			&user.Name,
-			&user.Email,
-			&user.IsAdmin,
-			&user.IsActive,
-			&user.Version,
-			&user.CreatedAt,
-			&user.UpdatedAt,
+			&u.ID,
+			&u.Username,
+			&u.PasswordHash,
+			&u.Name,
+			&u.Email,
+			&u.IsAdmin,
+			&u.IsActive,
+			&u.Version,
+			&u.CreatedAt,
+			&u.UpdatedAt,
 		}
 		if err := rows.Scan(dst...); err != nil {
 			return nil, err
 		}
-		users = append(users, user)
+		users = append(users, u)
 	}
 
 	if err := rows.Err(); err != nil {
