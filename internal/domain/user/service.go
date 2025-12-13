@@ -64,3 +64,23 @@ func (s *Service) List(ctx context.Context, page, pageSize int) ([]User, int, er
 func (s *Service) GetByID(ctx context.Context, id string) (*User, error) {
 	return s.repo.GetByID(ctx, id)
 }
+
+func (s *Service) UpdateProfile(ctx context.Context, id string, name, email *string) (*User, error) {
+	u, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if name != nil {
+		u.Name = *name
+	}
+	if email != nil {
+		u.Email = *email
+	}
+
+	if err := s.repo.Update(ctx, u); err != nil {
+		return nil, err
+	}
+
+	return u, nil
+}

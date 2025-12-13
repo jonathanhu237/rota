@@ -23,3 +23,33 @@ func (h *Handler) getMe(w http.ResponseWriter, r *http.Request) {
 
 	h.writeJSON(w, http.StatusOK, map[string]any{"user": u})
 }
+
+func (h *Handler) updateMe(w http.ResponseWriter, r *http.Request) {
+	userID := h.getUserID(r)
+
+	var req struct {
+		Name  *string `json:"name"`
+		Email *string `json:"email"`
+	}
+	if err := h.readJSON(r, &req); err != nil {
+		h.invalidRequestBody(w)
+		return
+	}
+
+	u, err := h.userService.UpdateProfile(r.Context(), userID, req.Name, req.Email)
+	if err != nil {
+		switch {
+		case errors.Is(err, user.ErrUserNotFound):
+			h.unauthorized(w)
+		case errors.Is(err, user.ErrConcurrentUpdate):
+			h.errorResponse(w, http.StatusConflict, err.Error())
+		case errors.Is(err, user.ErrEmailAlreadyExists):
+			h.errorResponse(w, http.StatusConflict, err.Error())
+		default:
+			h.internalServerError(w, err)
+		}
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, map[string]any{"user": u})
+}
