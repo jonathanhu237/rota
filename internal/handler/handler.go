@@ -27,5 +27,5 @@ func (h *Handler) Routes() http.Handler {
 
 	mux.HandleFunc("GET /api/users", h.listUsers)
 
-	return mux
+	return h.recoverer(mux)
 }
