@@ -7,6 +7,9 @@ import (
 	"strconv"
 )
 
+// --------------------------------------------------
+// JSON
+// --------------------------------------------------
 func (h *Handler) writeJSON(w http.ResponseWriter, status int, data any) {
 	if status == http.StatusNoContent {
 		w.WriteHeader(status)
@@ -18,6 +21,10 @@ func (h *Handler) writeJSON(w http.ResponseWriter, status int, data any) {
 	if err := json.NewEncoder(w).Encode(data); err != nil {
 		h.logger.Error(err.Error())
 	}
+}
+
+func (h *Handler) readJSON(r *http.Request, dst any) error {
+	return json.NewDecoder(r.Body).Decode(dst)
 }
 
 func (h *Handler) errorResponse(w http.ResponseWriter, status int, message string) {
@@ -33,6 +40,22 @@ func (h *Handler) internalServerError(w http.ResponseWriter, err error) {
 	h.errorResponse(w, http.StatusInternalServerError, "internal server error")
 }
 
+func (h *Handler) invalidRequestBody(w http.ResponseWriter) {
+	h.errorResponse(w, http.StatusBadRequest, "invalid request body")
+}
+
+func (h *Handler) validationError(w http.ResponseWriter, errors map[string]string) {
+	h.writeJSON(w, http.StatusBadRequest, map[string]any{
+		"error": map[string]any{
+			"message": "validation failed",
+			"details": errors,
+		},
+	})
+}
+
+// --------------------------------------------------
+// Pagination
+// --------------------------------------------------
 type Pagination struct {
 	Page     int
 	PageSize int
