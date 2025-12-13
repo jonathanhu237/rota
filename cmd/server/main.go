@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jonathanhu237/rota/internal/config"
+	"github.com/jonathanhu237/rota/internal/domain/auth"
 	"github.com/jonathanhu237/rota/internal/domain/user"
 	"github.com/jonathanhu237/rota/internal/handler"
 	"github.com/jonathanhu237/rota/internal/repository/postgres"
@@ -51,7 +52,9 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 
-	userService := user.NewService(userRepo)
+	jwt := auth.NewJWT(cfg.JWT.Secret, cfg.JWT.Expiry)
+
+	userService := user.NewService(userRepo, jwt)
 	handler := handler.New(logger, userService)
 
 	srv := http.Server{
