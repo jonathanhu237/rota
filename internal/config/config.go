@@ -6,6 +6,7 @@ type Config struct {
 	Server    ServerConfig    `envPrefix:"SERVER_"`
 	InitAdmin InitAdminConfig `envPrefix:"INIT_ADMIN_"`
 	Database  DatabaseConfig  `envPrefix:"DATABASE_"`
+	JWT       JWTConfig       `envPrefix:"JWT_"`
 }
 
 type ServerConfig struct {
@@ -26,6 +27,11 @@ type DatabaseConfig struct {
 	Host     string `env:"HOST"`
 	Port     int    `env:"PORT"`
 	DB       string `env:"DB"`
+}
+
+type JWTConfig struct {
+	Secret string `env:"SECRET"`
+	Expiry int    `env:"EXPIRY"`
 }
 
 func Load() (*Config, error) {
