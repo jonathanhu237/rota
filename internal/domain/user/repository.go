@@ -6,7 +6,9 @@ import (
 )
 
 var (
-	ErrUserNotFound = errors.New("user not found")
+	ErrUserNotFound      = errors.New("user not found")
+	ErrConcurrentUpdate  = errors.New("concurrent update detected")
+	ErrEmailAlreadyExists = errors.New("email already exists")
 )
 
 type Repository interface {
@@ -16,4 +18,5 @@ type Repository interface {
 	Count(ctx context.Context) (int, error)
 	GetByID(ctx context.Context, id string) (*User, error)
 	GetByUsername(ctx context.Context, username string) (*User, error)
+	Update(ctx context.Context, user *User) error
 }

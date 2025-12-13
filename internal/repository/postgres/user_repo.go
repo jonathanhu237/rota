@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jonathanhu237/rota/internal/domain/user"
 )
@@ -200,4 +202,63 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*u
 	}
 
 	return &u, nil
+}
+
+func (r *UserRepository) userExistsByID(ctx context.Context, id string) (bool, error) {
+	sql := `SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)`
+
+	var exists bool
+	if err := r.db.QueryRow(ctx, sql, id).Scan(&exists); err != nil {
+		return false, err
+	}
+
+	return exists, nil
+}
+
+func (r *UserRepository) Update(ctx context.Context, u *user.User) error {
+	sql := `
+		UPDATE users
+		SET
+			name = $1,
+			email = $2,
+			password_hash = $3,
+			is_admin = $4,
+			is_active = $5,
+			version = version + 1
+		WHERE id = $6 AND version = $7
+		RETURNING version, updated_at
+	`
+
+	args := []any{
+		u.Name,
+		u.Email,
+		u.PasswordHash,
+		u.IsAdmin,
+		u.IsActive,
+		u.ID,
+		u.Version,
+	}
+
+	err := r.db.QueryRow(ctx, sql, args...).Scan(&u.Version, &u.UpdatedAt)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		switch {
+		case errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation && pgErr.ConstraintName == "users_email_key":
+			return user.ErrEmailAlreadyExists
+		case errors.Is(err, pgx.ErrNoRows):
+			// check if user not found or version conflict
+			exists, err := r.userExistsByID(ctx, u.ID)
+			if err != nil {
+				return err
+			}
+			if exists {
+				return user.ErrConcurrentUpdate
+			}
+			return user.ErrUserNotFound
+		default:
+			return err
+		}
+	}
+
+	return nil
 }
