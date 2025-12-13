@@ -55,7 +55,7 @@ func run(logger *slog.Logger) error {
 	jwt := auth.NewJWT(cfg.JWT.Secret, cfg.JWT.Expiry)
 
 	userService := user.NewService(userRepo, jwt)
-	handler := handler.New(logger, userService)
+	handler := handler.New(logger, jwt, userService)
 
 	srv := http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Server.Port),

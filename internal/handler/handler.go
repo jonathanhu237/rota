@@ -4,17 +4,20 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/jonathanhu237/rota/internal/domain/auth"
 	"github.com/jonathanhu237/rota/internal/domain/user"
 )
 
 type Handler struct {
 	logger      *slog.Logger
+	jwt         *auth.JWT
 	userService *user.Service
 }
 
-func New(logger *slog.Logger, userService *user.Service) *Handler {
+func New(logger *slog.Logger, jwt *auth.JWT, userService *user.Service) *Handler {
 	return &Handler{
 		logger:      logger,
+		jwt:         jwt,
 		userService: userService,
 	}
 }

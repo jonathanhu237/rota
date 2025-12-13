@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"runtime/debug"
 	"time"
@@ -45,5 +46,27 @@ func (h *Handler) requestLogger(next http.Handler) http.Handler {
 			"status", rw.status,
 			"duration", time.Since(start),
 		)
+	})
+}
+
+func (h *Handler) requireAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie("__rota_token")
+		if err != nil {
+			h.unauthorized(w)
+			return
+		}
+
+		claims, err := h.jwt.Parse(cookie.Value)
+		if err != nil {
+			h.unauthorized(w)
+			return
+		}
+
+		ctx := r.Context()
+		ctx = context.WithValue(ctx, contextKeyUserID, claims.UserID)
+		ctx = context.WithValue(ctx, contextKeyIsAdmin, claims.IsAdmin)
+
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
