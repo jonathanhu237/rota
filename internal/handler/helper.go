@@ -53,6 +53,10 @@ func (h *Handler) validationError(w http.ResponseWriter, errors map[string]strin
 	})
 }
 
+func (h *Handler) unauthorized(w http.ResponseWriter) {
+	h.errorResponse(w, http.StatusUnauthorized, "unauthorized")
+}
+
 // --------------------------------------------------
 // Pagination
 // --------------------------------------------------
