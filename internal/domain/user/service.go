@@ -60,3 +60,7 @@ func (s *Service) List(ctx context.Context, page, pageSize int) ([]User, int, er
 
 	return users, total, nil
 }
+
+func (s *Service) GetByID(ctx context.Context, id string) (*User, error) {
+	return s.repo.GetByID(ctx, id)
+}

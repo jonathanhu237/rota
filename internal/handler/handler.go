@@ -28,6 +28,8 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("POST /api/auth/login", h.login)
 	mux.HandleFunc("POST /api/auth/logout", h.logout)
 
+	mux.Handle("GET /api/me", h.requireAuth(http.HandlerFunc(h.getMe)))
+
 	mux.HandleFunc("GET /api/users", h.listUsers)
 
 	return h.recoverer(h.requestLogger(mux))
