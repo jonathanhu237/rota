@@ -2,7 +2,9 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jonathanhu237/rota/internal/domain/user"
 )
@@ -114,4 +116,46 @@ func (r *UserRepository) Count(ctx context.Context) (int, error) {
 	}
 
 	return count, nil
+}
+
+func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*user.User, error) {
+	sql := `
+		SELECT
+			id,
+			username,
+			password_hash,
+			name,
+			email,
+			is_admin,
+			is_active,
+			version,
+			created_at,
+			updated_at
+		FROM users
+		WHERE username = $1
+	`
+
+	var u user.User
+	dst := []any{
+		&u.ID,
+		&u.Username,
+		&u.PasswordHash,
+		&u.Name,
+		&u.Email,
+		&u.IsAdmin,
+		&u.IsActive,
+		&u.Version,
+		&u.CreatedAt,
+		&u.UpdatedAt,
+	}
+	if err := r.db.QueryRow(ctx, sql, username).Scan(dst...); err != nil {
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			return nil, user.ErrUserNotFound
+		default:
+			return nil, err
+		}
+	}
+
+	return &u, nil
 }
