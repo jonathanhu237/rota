@@ -14,5 +14,6 @@ type Repository interface {
 	HasAdmin(ctx context.Context) (bool, error)
 	List(ctx context.Context, limit, offset int) ([]User, error)
 	Count(ctx context.Context) (int, error)
+	GetByID(ctx context.Context, id string) (*User, error)
 	GetByUsername(ctx context.Context, username string) (*User, error)
 }
