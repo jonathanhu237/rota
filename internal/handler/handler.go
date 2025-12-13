@@ -21,6 +21,7 @@ func New(logger *slog.Logger, userService *user.Service) *Handler {
 
 func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/auth/login", h.login)
 	mux.HandleFunc("GET /api/users", h.listUsers)
 	return mux
 }
