@@ -21,5 +21,5 @@ func (h *Handler) getMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, u)
+	h.writeJSON(w, http.StatusOK, map[string]any{"user": u})
 }
