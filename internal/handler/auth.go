@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/jonathanhu237/rota/internal/domain/user"
 	"github.com/jonathanhu237/rota/internal/validator"
@@ -46,6 +47,19 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		Path:     "/",
 		Expires:  expiresAt,
+	})
+
+	h.writeJSON(w, http.StatusNoContent, nil)
+}
+
+func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "__rota_token",
+		Value:    "",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Path:     "/",
+		Expires:  time.Now().Add(-1 * time.Hour),
 	})
 
 	h.writeJSON(w, http.StatusNoContent, nil)
