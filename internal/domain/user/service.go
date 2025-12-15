@@ -11,6 +11,7 @@ import (
 
 var (
 	ErrInvalidCredentials = errors.New("invalid username or password")
+	ErrIncorrectPassword  = errors.New("incorrect password")
 )
 
 type Service struct {
@@ -83,4 +84,24 @@ func (s *Service) UpdateProfile(ctx context.Context, id string, name, email *str
 	}
 
 	return u, nil
+}
+
+func (s *Service) ChangePassword(ctx context.Context, id, currentPassword, newPassword string) error {
+	u, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(currentPassword)); err != nil {
+		return ErrIncorrectPassword
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	u.PasswordHash = string(hash)
+
+	return s.repo.Update(ctx, u)
 }

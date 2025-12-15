@@ -30,6 +30,7 @@ func (h *Handler) Routes() http.Handler {
 
 	mux.Handle("GET /api/me", h.requireAuth(http.HandlerFunc(h.getMe)))
 	mux.Handle("PATCH /api/me", h.requireAuth(http.HandlerFunc(h.updateMe)))
+	mux.Handle("PUT /api/me/password", h.requireAuth(http.HandlerFunc(h.updatePassword)))
 
 	mux.HandleFunc("GET /api/users", h.listUsers)
 

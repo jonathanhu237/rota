@@ -7,6 +7,7 @@ const (
 	ErrCodeValidationFailed  = "VALIDATION_FAILED"
 	ErrCodeUnauthorized      = "UNAUTHORIZED"
 	ErrCodeInvalidCredential = "INVALID_CREDENTIAL"
+	ErrCodeIncorrectPassword = "INCORRECT_PASSWORD"
 	ErrCodeConcurrentUpdate  = "CONCURRENT_UPDATE"
 	ErrCodeEmailExists       = "EMAIL_ALREADY_EXISTS"
 )
