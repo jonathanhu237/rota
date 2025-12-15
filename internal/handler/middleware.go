@@ -15,7 +15,7 @@ func (h *Handler) recoverer(next http.Handler) http.Handler {
 					"error", err,
 					"stack", string(debug.Stack()),
 				)
-				h.errorResponse(w, http.StatusInternalServerError, "internal server error")
+				h.errorResponse(w, http.StatusInternalServerError, ErrCodeInternalServer, "internal server error")
 			}
 		}()
 		next.ServeHTTP(w, r)

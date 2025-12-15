@@ -5,7 +5,7 @@ import "net/http"
 func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 	pagination, err := h.parsePagination(r)
 	if err != nil {
-		h.errorResponse(w, http.StatusBadRequest, err.Error())
+		h.errorResponse(w, http.StatusBadRequest, ErrCodeInvalidPagination, err.Error())
 		return
 	}
 

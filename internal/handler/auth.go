@@ -33,7 +33,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, user.ErrInvalidCredentials):
-			h.errorResponse(w, http.StatusUnauthorized, err.Error())
+			h.errorResponse(w, http.StatusUnauthorized, ErrCodeInvalidCredential, err.Error())
 		default:
 			h.internalServerError(w, err)
 		}

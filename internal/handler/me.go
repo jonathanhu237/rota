@@ -42,9 +42,9 @@ func (h *Handler) updateMe(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, user.ErrUserNotFound):
 			h.unauthorized(w)
 		case errors.Is(err, user.ErrConcurrentUpdate):
-			h.errorResponse(w, http.StatusConflict, err.Error())
+			h.errorResponse(w, http.StatusConflict, ErrCodeConcurrentUpdate, err.Error())
 		case errors.Is(err, user.ErrEmailAlreadyExists):
-			h.errorResponse(w, http.StatusConflict, err.Error())
+			h.errorResponse(w, http.StatusConflict, ErrCodeEmailExists, err.Error())
 		default:
 			h.internalServerError(w, err)
 		}

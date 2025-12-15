@@ -27,9 +27,10 @@ func (h *Handler) readJSON(r *http.Request, dst any) error {
 	return json.NewDecoder(r.Body).Decode(dst)
 }
 
-func (h *Handler) errorResponse(w http.ResponseWriter, status int, message string) {
+func (h *Handler) errorResponse(w http.ResponseWriter, status int, code, message string) {
 	h.writeJSON(w, status, map[string]any{
 		"error": map[string]any{
+			"code":    code,
 			"message": message,
 		},
 	})
@@ -37,16 +38,17 @@ func (h *Handler) errorResponse(w http.ResponseWriter, status int, message strin
 
 func (h *Handler) internalServerError(w http.ResponseWriter, err error) {
 	h.logger.Error(err.Error())
-	h.errorResponse(w, http.StatusInternalServerError, "internal server error")
+	h.errorResponse(w, http.StatusInternalServerError, ErrCodeInternalServer, "internal server error")
 }
 
 func (h *Handler) invalidRequestBody(w http.ResponseWriter) {
-	h.errorResponse(w, http.StatusBadRequest, "invalid request body")
+	h.errorResponse(w, http.StatusBadRequest, ErrCodeInvalidRequest, "invalid request body")
 }
 
 func (h *Handler) validationError(w http.ResponseWriter, errors map[string]string) {
 	h.writeJSON(w, http.StatusBadRequest, map[string]any{
 		"error": map[string]any{
+			"code":    ErrCodeValidationFailed,
 			"message": "validation failed",
 			"details": errors,
 		},
@@ -54,7 +56,7 @@ func (h *Handler) validationError(w http.ResponseWriter, errors map[string]strin
 }
 
 func (h *Handler) unauthorized(w http.ResponseWriter) {
-	h.errorResponse(w, http.StatusUnauthorized, "unauthorized")
+	h.errorResponse(w, http.StatusUnauthorized, ErrCodeUnauthorized, "unauthorized")
 }
 
 // --------------------------------------------------
