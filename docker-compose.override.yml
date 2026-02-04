@@ -1,5 +1,0 @@
-services:
-  postgres:
-    restart: no
-    ports:
-      - "${DATABASE_PORT}:5432"
