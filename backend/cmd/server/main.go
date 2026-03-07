@@ -1,13 +1,21 @@
 package main
 
 import (
+	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/jonathanhu237/rota/backend/internal/config"
 	"github.com/jonathanhu237/rota/backend/internal/handler"
+	"github.com/jonathanhu237/rota/backend/internal/repository"
+	"github.com/jonathanhu237/rota/backend/internal/service"
+	"github.com/jonathanhu237/rota/backend/internal/token"
+	_ "github.com/lib/pq"
 )
 
 func main() {
@@ -18,12 +26,50 @@ func main() {
 		os.Exit(1)
 	}
 
+	db, err := sql.Open("postgres", cfg.DatabaseDSN())
+	if err != nil {
+		slog.Error("Failed to initialize database connection", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := db.PingContext(ctx); err != nil {
+		slog.Error("Failed to connect database", "error", err)
+		os.Exit(1)
+	}
+
+	userRepo := repository.NewUserRepository(db)
+	if err := service.EnsureBootstrapAdmin(ctx, service.BootstrapAdminInput{
+		Username: cfg.BootstrapAdminUsername,
+		Password: cfg.BootstrapAdminPassword,
+		Name:     cfg.BootstrapAdminName,
+	}, userRepo); err != nil {
+		switch {
+		case errors.Is(err, service.ErrConfigInvalid):
+			slog.Error("Invalid bootstrap admin configuration", "error", err)
+		default:
+			slog.Error("Failed to bootstrap admin user", "error", err)
+		}
+		os.Exit(1)
+	}
+
+	accessManager := token.NewAccessTokenManager(
+		cfg.JWTSecret,
+		time.Duration(cfg.JWTExpiresMinutes)*time.Minute,
+	)
+	authService := service.NewAuthService(userRepo, accessManager)
+
 	// Initialize handlers
 	healthHandler := handler.NewHealthHandler()
+	authHandler := handler.NewAuthHandler(authService)
 
 	// Register routes
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler.HealthCheck)
+	mux.HandleFunc("POST /auth/login", authHandler.Login)
 
 	// Start server
 	addr := fmt.Sprintf(":%d", cfg.ServerPort)
