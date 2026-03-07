@@ -6,10 +6,6 @@ import (
 	"github.com/jonathanhu237/rota/backend/internal/model"
 )
 
-type dataResponse struct {
-	Data any `json:"data"`
-}
-
 type errorResponse struct {
 	Error errorDetail `json:"error"`
 }
@@ -38,7 +34,7 @@ func newUserResponse(user *model.User) userResponse {
 }
 
 func writeData(w http.ResponseWriter, status int, data any) {
-	writeJSON(w, status, dataResponse{Data: data})
+	writeJSON(w, status, data)
 }
 
 func writeError(w http.ResponseWriter, status int, code, message string) {
