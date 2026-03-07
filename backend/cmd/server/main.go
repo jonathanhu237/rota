@@ -70,6 +70,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler.HealthCheck)
 	mux.HandleFunc("POST /auth/login", authHandler.Login)
+	mux.HandleFunc("POST /auth/logout", authHandler.Logout)
 
 	// Start server
 	addr := fmt.Sprintf(":%d", cfg.ServerPort)

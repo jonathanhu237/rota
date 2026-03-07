@@ -56,22 +56,33 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeAccessTokenCookie(w, r, result.AccessToken, result.ExpiresIn)
+	expiresAt := time.Now().Add(time.Duration(result.ExpiresIn) * time.Second)
+	http.SetCookie(w, &http.Cookie{
+		Name:     accessTokenCookieName,
+		Value:    result.AccessToken,
+		Path:     "/",
+		Expires:  expiresAt,
+		MaxAge:   int(result.ExpiresIn),
+		HttpOnly: true,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+	})
+
 	writeData(w, http.StatusOK, loginResponse{
 		User: newUserResponse(result.User),
 	})
 }
 
-func writeAccessTokenCookie(w http.ResponseWriter, r *http.Request, accessToken string, expiresIn int64) {
-	expiresAt := time.Now().Add(time.Duration(expiresIn) * time.Second)
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     accessTokenCookieName,
-		Value:    accessToken,
+		Value:    "",
 		Path:     "/",
-		Expires:  expiresAt,
-		MaxAge:   int(expiresIn),
+		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
 		HttpOnly: true,
 		Secure:   r.TLS != nil,
 		SameSite: http.SameSiteLaxMode,
 	})
+	w.WriteHeader(http.StatusNoContent)
 }
