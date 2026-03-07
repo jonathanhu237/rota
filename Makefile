@@ -1,10 +1,5 @@
 include .env
 
-POSTGRES_USER ?= rota
-POSTGRES_PORT ?= 5432
-POSTGRES_DB ?= rota
-POSTGRES_HOST ?= localhost
-
 GOOSE_DRIVER = postgres
 GOOSE_DBSTRING = postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
 GOOSE_MIGRATION_DIR = ./backend/migrations
