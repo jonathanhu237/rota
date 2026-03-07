@@ -14,7 +14,7 @@ export BOOTSTRAP_ADMIN_NAME
 
 GOOSE_DRIVER = postgres
 GOOSE_DBSTRING = postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
-GOOSE_MIGRATION_DIR = ./backend/migrations
+GOOSE_MIGRATION_DIR = ./migrations
 
 .PHONY: run-backend migrate-up migrate-down migrate-status
 
