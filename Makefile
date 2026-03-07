@@ -1,10 +1,25 @@
 include .env
 
+export SERVER_PORT
+export POSTGRES_HOST
+export POSTGRES_PORT
+export POSTGRES_USER
+export POSTGRES_PASSWORD
+export POSTGRES_DB
+export JWT_SECRET
+export JWT_EXPIRES_MINUTES
+export BOOTSTRAP_ADMIN_USERNAME
+export BOOTSTRAP_ADMIN_PASSWORD
+export BOOTSTRAP_ADMIN_NAME
+
 GOOSE_DRIVER = postgres
 GOOSE_DBSTRING = postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
 GOOSE_MIGRATION_DIR = ./backend/migrations
 
-.PHONY: migrate-up migrate-down migrate-status
+.PHONY: run-backend migrate-up migrate-down migrate-status
+
+run-backend:
+	@cd backend && go run ./cmd/server
 
 migrate-up:
 	@GOOSE_DRIVER=$(GOOSE_DRIVER) GOOSE_DBSTRING=$(GOOSE_DBSTRING) GOOSE_MIGRATION_DIR=$(GOOSE_MIGRATION_DIR) goose up
