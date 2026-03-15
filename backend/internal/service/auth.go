@@ -12,15 +12,18 @@ import (
 
 var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrUnauthorized       = errors.New("unauthorized")
 	ErrUserDisabled       = errors.New("user disabled")
 )
 
 type authUserRepository interface {
+	GetByID(ctx context.Context, id int64) (*model.User, error)
 	GetByUsername(ctx context.Context, username string) (*model.User, error)
 }
 
 type tokenManager interface {
 	IssueAccessToken(identity token.Identity) (string, int64, error)
+	ParseAccessToken(accessToken string) (*token.Identity, error)
 }
 
 type AuthService struct {
@@ -72,4 +75,25 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (*Lo
 		ExpiresIn:   expiresIn,
 		User:        user,
 	}, nil
+}
+
+func (s *AuthService) Authenticate(ctx context.Context, accessToken string) (*model.User, error) {
+	identity, err := s.tokenManager.ParseAccessToken(accessToken)
+	if err != nil {
+		return nil, ErrUnauthorized
+	}
+
+	user, err := s.userRepo.GetByID(ctx, identity.UserID)
+	if errors.Is(err, repository.ErrUserNotFound) {
+		return nil, ErrUnauthorized
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if user.Status == model.UserStatusDisabled {
+		return nil, ErrUnauthorized
+	}
+
+	return user, nil
 }

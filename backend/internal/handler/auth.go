@@ -6,17 +6,21 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/service"
 )
 
 const accessTokenCookieName = "access_token"
 
-type loginService interface {
+type currentUserContextKey struct{}
+
+type authService interface {
 	Login(ctx context.Context, username, password string) (*service.LoginResult, error)
+	Authenticate(ctx context.Context, accessToken string) (*model.User, error)
 }
 
 type AuthHandler struct {
-	authService loginService
+	authService authService
 }
 
 type loginRequest struct {
@@ -24,11 +28,11 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-type loginResponse struct {
+type authUserResponse struct {
 	User userResponse `json:"user"`
 }
 
-func NewAuthHandler(authService loginService) *AuthHandler {
+func NewAuthHandler(authService authService) *AuthHandler {
 	return &AuthHandler{authService: authService}
 }
 
@@ -68,12 +72,58 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	})
 
-	writeData(w, http.StatusOK, loginResponse{
+	writeData(w, http.StatusOK, authUserResponse{
 		User: newUserResponse(result.User),
 	})
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	clearAccessTokenCookie(w, r)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUserFromRequest(r)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+		return
+	}
+
+	writeData(w, http.StatusOK, authUserResponse{
+		User: newUserResponse(user),
+	})
+}
+
+func (h *AuthHandler) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie(accessTokenCookieName)
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized")
+			return
+		}
+
+		user, err := h.authService.Authenticate(r.Context(), cookie.Value)
+		if err != nil {
+			switch {
+			case errors.Is(err, service.ErrUnauthorized):
+				clearAccessTokenCookie(w, r)
+				writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized")
+			default:
+				writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+			}
+			return
+		}
+
+		next(w, r.WithContext(context.WithValue(r.Context(), currentUserContextKey{}, user)))
+	}
+}
+
+func currentUserFromRequest(r *http.Request) (*model.User, bool) {
+	user, ok := r.Context().Value(currentUserContextKey{}).(*model.User)
+	return user, ok
+}
+
+func clearAccessTokenCookie(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     accessTokenCookieName,
 		Value:    "",
@@ -84,5 +134,4 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		Secure:   r.TLS != nil,
 		SameSite: http.SameSiteLaxMode,
 	})
-	w.WriteHeader(http.StatusNoContent)
 }

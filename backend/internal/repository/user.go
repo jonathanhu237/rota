@@ -26,6 +26,32 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 	return &UserRepository{db: db}
 }
 
+func (r *UserRepository) GetByID(ctx context.Context, id int64) (*model.User, error) {
+	const query = `
+		SELECT id, username, password_hash, name, is_admin, status, version
+		FROM users
+		WHERE id = $1;
+	`
+
+	user := &model.User{}
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&user.ID,
+		&user.Username,
+		&user.PasswordHash,
+		&user.Name,
+		&user.IsAdmin,
+		&user.Status,
+		&user.Version,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrUserNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
 func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*model.User, error) {
 	const query = `
 		SELECT id, username, password_hash, name, is_admin, status, version

@@ -71,6 +71,7 @@ func main() {
 	mux.HandleFunc("GET /health", healthHandler.HealthCheck)
 	mux.HandleFunc("POST /auth/login", authHandler.Login)
 	mux.HandleFunc("POST /auth/logout", authHandler.Logout)
+	mux.HandleFunc("GET /auth/me", authHandler.RequireAuth(authHandler.Me))
 
 	// Start server
 	addr := fmt.Sprintf(":%d", cfg.ServerPort)
