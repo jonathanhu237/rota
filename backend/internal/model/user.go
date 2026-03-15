@@ -13,7 +13,7 @@ var ErrPasswordTooShort = errors.New("password must have at least 8 characters")
 
 type User struct {
 	ID           int64
-	Username     string
+	Email        string
 	PasswordHash string
 	Name         string
 	IsAdmin      bool

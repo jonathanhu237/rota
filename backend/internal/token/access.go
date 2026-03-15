@@ -9,9 +9,8 @@ import (
 )
 
 type Identity struct {
-	UserID   int64
-	Username string
-	IsAdmin  bool
+	UserID  int64
+	IsAdmin bool
 }
 
 type AccessTokenManager struct {
@@ -20,8 +19,7 @@ type AccessTokenManager struct {
 }
 
 type accessTokenClaims struct {
-	Username string `json:"username"`
-	IsAdmin  bool   `json:"is_admin"`
+	IsAdmin bool `json:"is_admin"`
 	jwt.RegisteredClaims
 }
 
@@ -36,8 +34,7 @@ func (m *AccessTokenManager) IssueAccessToken(identity Identity) (string, int64,
 	now := time.Now()
 	expiresAt := now.Add(m.accessTokenDuration)
 	claims := accessTokenClaims{
-		Username: identity.Username,
-		IsAdmin:  identity.IsAdmin,
+		IsAdmin: identity.IsAdmin,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   strconv.FormatInt(identity.UserID, 10),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -76,8 +73,7 @@ func (m *AccessTokenManager) ParseAccessToken(accessToken string) (*Identity, er
 	}
 
 	return &Identity{
-		UserID:   userID,
-		Username: claims.Username,
-		IsAdmin:  claims.IsAdmin,
+		UserID:  userID,
+		IsAdmin: claims.IsAdmin,
 	}, nil
 }

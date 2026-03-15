@@ -16,20 +16,20 @@ type errorDetail struct {
 }
 
 type userResponse struct {
-	ID       int64            `json:"id"`
-	Username string           `json:"username"`
-	Name     string           `json:"name"`
-	IsAdmin  bool             `json:"is_admin"`
-	Status   model.UserStatus `json:"status"`
+	ID      int64            `json:"id"`
+	Email   string           `json:"email"`
+	Name    string           `json:"name"`
+	IsAdmin bool             `json:"is_admin"`
+	Status  model.UserStatus `json:"status"`
 }
 
 func newUserResponse(user *model.User) userResponse {
 	return userResponse{
-		ID:       user.ID,
-		Username: user.Username,
-		Name:     user.Name,
-		IsAdmin:  user.IsAdmin,
-		Status:   user.Status,
+		ID:      user.ID,
+		Email:   user.Email,
+		Name:    user.Name,
+		IsAdmin: user.IsAdmin,
+		Status:  user.Status,
 	}
 }
 

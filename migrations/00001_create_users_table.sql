@@ -1,12 +1,14 @@
 -- +goose Up
 -- +goose StatementBegin
 CREATE TABLE users (
-    id       BIGSERIAL PRIMARY KEY,
-    username TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    name     TEXT NOT NULL,
-    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
-    version  INTEGER NOT NULL DEFAULT 1
+    id            BIGSERIAL PRIMARY KEY,
+    email         TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    is_admin      BOOLEAN NOT NULL DEFAULT FALSE,
+    status        TEXT NOT NULL DEFAULT 'active',
+    version       INTEGER NOT NULL DEFAULT 1,
+    CONSTRAINT users_status_check CHECK (status IN ('active', 'disabled'))
 );
 -- +goose StatementEnd
 

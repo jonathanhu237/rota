@@ -18,7 +18,7 @@ var (
 
 type authUserRepository interface {
 	GetByID(ctx context.Context, id int64) (*model.User, error)
-	GetByUsername(ctx context.Context, username string) (*model.User, error)
+	GetByEmail(ctx context.Context, email string) (*model.User, error)
 }
 
 type tokenManager interface {
@@ -44,8 +44,8 @@ func NewAuthService(userRepo authUserRepository, tokenManager tokenManager) *Aut
 	}
 }
 
-func (s *AuthService) Login(ctx context.Context, username, password string) (*LoginResult, error) {
-	user, err := s.userRepo.GetByUsername(ctx, username)
+func (s *AuthService) Login(ctx context.Context, email, password string) (*LoginResult, error) {
+	user, err := s.userRepo.GetByEmail(ctx, email)
 	if errors.Is(err, repository.ErrUserNotFound) {
 		return nil, ErrInvalidCredentials
 	}
@@ -62,9 +62,8 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (*Lo
 	}
 
 	accessToken, expiresIn, err := s.tokenManager.IssueAccessToken(token.Identity{
-		UserID:   user.ID,
-		Username: user.Username,
-		IsAdmin:  user.IsAdmin,
+		UserID:  user.ID,
+		IsAdmin: user.IsAdmin,
 	})
 	if err != nil {
 		return nil, err

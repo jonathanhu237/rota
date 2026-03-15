@@ -18,7 +18,7 @@ type bootstrapUserRepository interface {
 }
 
 type BootstrapAdminInput struct {
-	Username string
+	Email    string
 	Password string
 	Name     string
 }
@@ -32,10 +32,10 @@ func EnsureBootstrapAdmin(ctx context.Context, input BootstrapAdminInput, userRe
 		return nil
 	}
 
-	username := input.Username
+	email := input.Email
 	password := input.Password
 	name := input.Name
-	if username == "" || password == "" || name == "" {
+	if email == "" || password == "" || name == "" {
 		return fmt.Errorf("%w: bootstrap admin credentials are required", ErrConfigInvalid)
 	}
 	if err := model.ValidatePassword(password); err != nil {
@@ -48,7 +48,7 @@ func EnsureBootstrapAdmin(ctx context.Context, input BootstrapAdminInput, userRe
 	}
 
 	_, err = userRepo.Create(ctx, repository.CreateUserParams{
-		Username:     username,
+		Email:        email,
 		PasswordHash: string(passwordHash),
 		Name:         name,
 		IsAdmin:      true,

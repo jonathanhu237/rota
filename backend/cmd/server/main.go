@@ -43,7 +43,7 @@ func main() {
 
 	userRepo := repository.NewUserRepository(db)
 	if err := service.EnsureBootstrapAdmin(ctx, service.BootstrapAdminInput{
-		Username: cfg.BootstrapAdminUsername,
+		Email:    cfg.BootstrapAdminEmail,
 		Password: cfg.BootstrapAdminPassword,
 		Name:     cfg.BootstrapAdminName,
 	}, userRepo); err != nil {

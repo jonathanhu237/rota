@@ -16,7 +16,7 @@ type Config struct {
 	PostgresDB             string `env:"POSTGRES_DB,required"`
 	JWTSecret              string `env:"JWT_SECRET,required"`
 	JWTExpiresMinutes      int    `env:"JWT_EXPIRES_MINUTES,required"`
-	BootstrapAdminUsername string `env:"BOOTSTRAP_ADMIN_USERNAME"`
+	BootstrapAdminEmail    string `env:"BOOTSTRAP_ADMIN_EMAIL"`
 	BootstrapAdminPassword string `env:"BOOTSTRAP_ADMIN_PASSWORD"`
 	BootstrapAdminName     string `env:"BOOTSTRAP_ADMIN_NAME"`
 }

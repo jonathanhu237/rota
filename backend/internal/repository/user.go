@@ -11,7 +11,7 @@ import (
 var ErrUserNotFound = errors.New("user not found")
 
 type CreateUserParams struct {
-	Username     string
+	Email        string
 	PasswordHash string
 	Name         string
 	IsAdmin      bool
@@ -28,7 +28,7 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 
 func (r *UserRepository) GetByID(ctx context.Context, id int64) (*model.User, error) {
 	const query = `
-		SELECT id, username, password_hash, name, is_admin, status, version
+		SELECT id, email, password_hash, name, is_admin, status, version
 		FROM users
 		WHERE id = $1;
 	`
@@ -36,7 +36,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*model.User, er
 	user := &model.User{}
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&user.ID,
-		&user.Username,
+		&user.Email,
 		&user.PasswordHash,
 		&user.Name,
 		&user.IsAdmin,
@@ -52,17 +52,17 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*model.User, er
 	return user, nil
 }
 
-func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*model.User, error) {
+func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*model.User, error) {
 	const query = `
-		SELECT id, username, password_hash, name, is_admin, status, version
+		SELECT id, email, password_hash, name, is_admin, status, version
 		FROM users
-		WHERE username = $1;
+		WHERE email = $1;
 	`
 
 	user := &model.User{}
-	err := r.db.QueryRowContext(ctx, query, username).Scan(
+	err := r.db.QueryRowContext(ctx, query, email).Scan(
 		&user.ID,
-		&user.Username,
+		&user.Email,
 		&user.PasswordHash,
 		&user.Name,
 		&user.IsAdmin,
@@ -80,7 +80,7 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*m
 
 func (r *UserRepository) List(ctx context.Context) ([]*model.User, error) {
 	const query = `
-		SELECT id, username, password_hash, name, is_admin, status, version
+		SELECT id, email, password_hash, name, is_admin, status, version
 		FROM users
 		ORDER BY id ASC;
 	`
@@ -96,7 +96,7 @@ func (r *UserRepository) List(ctx context.Context) ([]*model.User, error) {
 		user := &model.User{}
 		if err := rows.Scan(
 			&user.ID,
-			&user.Username,
+			&user.Email,
 			&user.PasswordHash,
 			&user.Name,
 			&user.IsAdmin,
@@ -130,23 +130,23 @@ func (r *UserRepository) CountAdmins(ctx context.Context) (int, error) {
 
 func (r *UserRepository) Create(ctx context.Context, params CreateUserParams) (*model.User, error) {
 	const query = `
-		INSERT INTO users (username, password_hash, name, is_admin, status)
+		INSERT INTO users (email, password_hash, name, is_admin, status)
 		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, username, password_hash, name, is_admin, status, version;
+		RETURNING id, email, password_hash, name, is_admin, status, version;
 	`
 
 	user := &model.User{}
 	err := r.db.QueryRowContext(
 		ctx,
 		query,
-		params.Username,
+		params.Email,
 		params.PasswordHash,
 		params.Name,
 		params.IsAdmin,
 		params.Status,
 	).Scan(
 		&user.ID,
-		&user.Username,
+		&user.Email,
 		&user.PasswordHash,
 		&user.Name,
 		&user.IsAdmin,

@@ -15,7 +15,7 @@ const accessTokenCookieName = "access_token"
 type currentUserContextKey struct{}
 
 type authService interface {
-	Login(ctx context.Context, username, password string) (*service.LoginResult, error)
+	Login(ctx context.Context, email, password string) (*service.LoginResult, error)
 	Authenticate(ctx context.Context, accessToken string) (*model.User, error)
 }
 
@@ -24,7 +24,7 @@ type AuthHandler struct {
 }
 
 type loginRequest struct {
-	Username string `json:"username"`
+	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
@@ -42,16 +42,16 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
 		return
 	}
-	if req.Username == "" || req.Password == "" {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Username and password are required")
+	if req.Email == "" || req.Password == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Email and password are required")
 		return
 	}
 
-	result, err := h.authService.Login(r.Context(), req.Username, req.Password)
+	result, err := h.authService.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidCredentials):
-			writeError(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "Invalid username or password")
+			writeError(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "Invalid email or password")
 		case errors.Is(err, service.ErrUserDisabled):
 			writeError(w, http.StatusForbidden, "USER_DISABLED", "User is disabled")
 		default:
