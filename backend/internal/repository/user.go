@@ -78,6 +78,42 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*m
 	return user, nil
 }
 
+func (r *UserRepository) List(ctx context.Context) ([]*model.User, error) {
+	const query = `
+		SELECT id, username, password_hash, name, is_admin, status, version
+		FROM users
+		ORDER BY id ASC;
+	`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := make([]*model.User, 0)
+	for rows.Next() {
+		user := &model.User{}
+		if err := rows.Scan(
+			&user.ID,
+			&user.Username,
+			&user.PasswordHash,
+			&user.Name,
+			&user.IsAdmin,
+			&user.Status,
+			&user.Version,
+		); err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
+
 func (r *UserRepository) CountAdmins(ctx context.Context) (int, error) {
 	const query = `
 		SELECT COUNT(*)

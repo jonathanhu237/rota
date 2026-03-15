@@ -118,6 +118,22 @@ func (h *AuthHandler) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func (h *AuthHandler) RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return h.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
+		user, ok := currentUserFromRequest(r)
+		if !ok {
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+			return
+		}
+		if !user.IsAdmin {
+			writeError(w, http.StatusForbidden, "FORBIDDEN", "Forbidden")
+			return
+		}
+
+		next(w, r)
+	})
+}
+
 func currentUserFromRequest(r *http.Request) (*model.User, bool) {
 	user, ok := r.Context().Value(currentUserContextKey{}).(*model.User)
 	return user, ok

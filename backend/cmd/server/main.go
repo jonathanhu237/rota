@@ -65,6 +65,7 @@ func main() {
 	// Initialize handlers
 	healthHandler := handler.NewHealthHandler()
 	authHandler := handler.NewAuthHandler(authService)
+	userHandler := handler.NewUserHandler(userRepo)
 
 	// Register routes
 	mux := http.NewServeMux()
@@ -72,6 +73,7 @@ func main() {
 	mux.HandleFunc("POST /auth/login", authHandler.Login)
 	mux.HandleFunc("POST /auth/logout", authHandler.Logout)
 	mux.HandleFunc("GET /auth/me", authHandler.RequireAuth(authHandler.Me))
+	mux.HandleFunc("GET /users", authHandler.RequireAdmin(userHandler.List))
 
 	// Start server
 	addr := fmt.Sprintf(":%d", cfg.ServerPort)
