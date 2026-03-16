@@ -10,13 +10,14 @@ import (
 	"github.com/jonathanhu237/rota/backend/internal/service"
 )
 
-const accessTokenCookieName = "access_token"
+const sessionCookieName = "session_id"
 
 type currentUserContextKey struct{}
 
 type authService interface {
 	Login(ctx context.Context, email, password string) (*service.LoginResult, error)
-	Authenticate(ctx context.Context, accessToken string) (*model.User, error)
+	Authenticate(ctx context.Context, sessionID string) (*service.AuthenticateResult, error)
+	Logout(ctx context.Context, sessionID string) error
 }
 
 type AuthHandler struct {
@@ -60,17 +61,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expiresAt := time.Now().Add(time.Duration(result.ExpiresIn) * time.Second)
-	http.SetCookie(w, &http.Cookie{
-		Name:     accessTokenCookieName,
-		Value:    result.AccessToken,
-		Path:     "/",
-		Expires:  expiresAt,
-		MaxAge:   int(result.ExpiresIn),
-		HttpOnly: true,
-		Secure:   r.TLS != nil,
-		SameSite: http.SameSiteLaxMode,
-	})
+	setSessionCookie(w, r, result.SessionID, result.ExpiresIn)
 
 	writeData(w, http.StatusOK, authUserResponse{
 		User: newUserResponse(result.User),
@@ -78,7 +69,15 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	clearAccessTokenCookie(w, r)
+	cookie, err := r.Cookie(sessionCookieName)
+	if err == nil && cookie.Value != "" {
+		if err := h.authService.Logout(r.Context(), cookie.Value); err != nil {
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+			return
+		}
+	}
+
+	clearSessionCookie(w, r)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -96,17 +95,17 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie(accessTokenCookieName)
+		cookie, err := r.Cookie(sessionCookieName)
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized")
 			return
 		}
 
-		user, err := h.authService.Authenticate(r.Context(), cookie.Value)
+		result, err := h.authService.Authenticate(r.Context(), cookie.Value)
 		if err != nil {
 			switch {
 			case errors.Is(err, service.ErrUnauthorized):
-				clearAccessTokenCookie(w, r)
+				clearSessionCookie(w, r)
 				writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized")
 			default:
 				writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
@@ -114,7 +113,10 @@ func (h *AuthHandler) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		next(w, r.WithContext(context.WithValue(r.Context(), currentUserContextKey{}, user)))
+		// Refresh the cookie so the browser expiry stays in sync with the Redis TTL.
+		setSessionCookie(w, r, cookie.Value, result.ExpiresIn)
+
+		next(w, r.WithContext(context.WithValue(r.Context(), currentUserContextKey{}, result.User)))
 	}
 }
 
@@ -139,9 +141,22 @@ func currentUserFromRequest(r *http.Request) (*model.User, bool) {
 	return user, ok
 }
 
-func clearAccessTokenCookie(w http.ResponseWriter, r *http.Request) {
+func setSessionCookie(w http.ResponseWriter, r *http.Request, sessionID string, expiresIn int64) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     accessTokenCookieName,
+		Name:     sessionCookieName,
+		Value:    sessionID,
+		Path:     "/",
+		Expires:  time.Now().Add(time.Duration(expiresIn) * time.Second),
+		MaxAge:   int(expiresIn),
+		HttpOnly: true,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
 		Value:    "",
 		Path:     "/",
 		Expires:  time.Unix(0, 0),

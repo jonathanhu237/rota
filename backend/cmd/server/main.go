@@ -14,8 +14,9 @@ import (
 	"github.com/jonathanhu237/rota/backend/internal/handler"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 	"github.com/jonathanhu237/rota/backend/internal/service"
-	"github.com/jonathanhu237/rota/backend/internal/token"
+	"github.com/jonathanhu237/rota/backend/internal/session"
 	_ "github.com/lib/pq"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -56,11 +57,24 @@ func main() {
 		os.Exit(1)
 	}
 
-	accessManager := token.NewAccessTokenManager(
-		cfg.JWTSecret,
-		time.Duration(cfg.JWTExpiresMinutes)*time.Minute,
+	// Initialize Redis
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     fmt.Sprintf("%s:%d", cfg.RedisHost, cfg.RedisPort),
+		Password: cfg.RedisPassword,
+		DB:       cfg.RedisDB,
+	})
+	defer redisClient.Close()
+
+	if err := redisClient.Ping(ctx).Err(); err != nil {
+		slog.Error("Failed to connect Redis", "error", err)
+		os.Exit(1)
+	}
+
+	sessionStore := session.NewStore(
+		redisClient,
+		time.Duration(cfg.SessionExpiresHours)*time.Hour,
 	)
-	authService := service.NewAuthService(userRepo, accessManager)
+	authService := service.NewAuthService(userRepo, sessionStore)
 
 	// Initialize handlers
 	healthHandler := handler.NewHealthHandler()

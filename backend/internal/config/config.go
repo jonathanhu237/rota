@@ -14,8 +14,11 @@ type Config struct {
 	PostgresUser           string `env:"POSTGRES_USER,required"`
 	PostgresPassword       string `env:"POSTGRES_PASSWORD,required"`
 	PostgresDB             string `env:"POSTGRES_DB,required"`
-	JWTSecret              string `env:"JWT_SECRET,required"`
-	JWTExpiresMinutes      int    `env:"JWT_EXPIRES_MINUTES,required"`
+	RedisHost              string `env:"REDIS_HOST,required"`
+	RedisPort              int    `env:"REDIS_PORT,required"`
+	RedisPassword          string `env:"REDIS_PASSWORD,required"`
+	RedisDB                int    `env:"REDIS_DB,required"`
+	SessionExpiresHours    int    `env:"SESSION_EXPIRES_HOURS,required"`
 	BootstrapAdminEmail    string `env:"BOOTSTRAP_ADMIN_EMAIL"`
 	BootstrapAdminPassword string `env:"BOOTSTRAP_ADMIN_PASSWORD"`
 	BootstrapAdminName     string `env:"BOOTSTRAP_ADMIN_NAME"`

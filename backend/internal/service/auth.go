@@ -6,7 +6,7 @@ import (
 
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
-	"github.com/jonathanhu237/rota/backend/internal/token"
+	"github.com/jonathanhu237/rota/backend/internal/session"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -21,26 +21,28 @@ type authUserRepository interface {
 	GetByEmail(ctx context.Context, email string) (*model.User, error)
 }
 
-type tokenManager interface {
-	IssueAccessToken(identity token.Identity) (string, int64, error)
-	ParseAccessToken(accessToken string) (*token.Identity, error)
+type sessionStore interface {
+	Create(ctx context.Context, userID int64) (string, int64, error)
+	Get(ctx context.Context, sessionID string) (int64, error)
+	Refresh(ctx context.Context, sessionID string) (int64, error)
+	Delete(ctx context.Context, sessionID string) error
 }
 
 type AuthService struct {
 	userRepo     authUserRepository
-	tokenManager tokenManager
+	sessionStore sessionStore
 }
 
 type LoginResult struct {
-	AccessToken string
-	ExpiresIn   int64
-	User        *model.User
+	SessionID string
+	ExpiresIn int64
+	User      *model.User
 }
 
-func NewAuthService(userRepo authUserRepository, tokenManager tokenManager) *AuthService {
+func NewAuthService(userRepo authUserRepository, sessionStore sessionStore) *AuthService {
 	return &AuthService{
 		userRepo:     userRepo,
-		tokenManager: tokenManager,
+		sessionStore: sessionStore,
 	}
 }
 
@@ -61,28 +63,42 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (*Login
 		return nil, ErrInvalidCredentials
 	}
 
-	accessToken, expiresIn, err := s.tokenManager.IssueAccessToken(token.Identity{
-		UserID:  user.ID,
-		IsAdmin: user.IsAdmin,
-	})
+	sessionID, expiresIn, err := s.sessionStore.Create(ctx, user.ID)
 	if err != nil {
 		return nil, err
 	}
 
 	return &LoginResult{
-		AccessToken: accessToken,
-		ExpiresIn:   expiresIn,
-		User:        user,
+		SessionID: sessionID,
+		ExpiresIn: expiresIn,
+		User:      user,
 	}, nil
 }
 
-func (s *AuthService) Authenticate(ctx context.Context, accessToken string) (*model.User, error) {
-	identity, err := s.tokenManager.ParseAccessToken(accessToken)
-	if err != nil {
+// AuthenticateResult holds the authenticated user and the refreshed session TTL.
+type AuthenticateResult struct {
+	User      *model.User
+	ExpiresIn int64
+}
+
+func (s *AuthService) Authenticate(ctx context.Context, sessionID string) (*AuthenticateResult, error) {
+	userID, err := s.sessionStore.Get(ctx, sessionID)
+	if errors.Is(err, session.ErrSessionNotFound) {
 		return nil, ErrUnauthorized
 	}
+	if err != nil {
+		return nil, err
+	}
 
-	user, err := s.userRepo.GetByID(ctx, identity.UserID)
+	expiresIn, err := s.sessionStore.Refresh(ctx, sessionID)
+	if errors.Is(err, session.ErrSessionNotFound) {
+		return nil, ErrUnauthorized
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	user, err := s.userRepo.GetByID(ctx, userID)
 	if errors.Is(err, repository.ErrUserNotFound) {
 		return nil, ErrUnauthorized
 	}
@@ -94,5 +110,12 @@ func (s *AuthService) Authenticate(ctx context.Context, accessToken string) (*mo
 		return nil, ErrUnauthorized
 	}
 
-	return user, nil
+	return &AuthenticateResult{
+		User:      user,
+		ExpiresIn: expiresIn,
+	}, nil
+}
+
+func (s *AuthService) Logout(ctx context.Context, sessionID string) error {
+	return s.sessionStore.Delete(ctx, sessionID)
 }
