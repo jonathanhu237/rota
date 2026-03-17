@@ -1,9 +1,11 @@
+import { useEffect, useEffectEvent } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 import { AxiosError } from "axios"
 import { useForm } from "react-hook-form"
-import { z } from "zod"
+import { useTranslation } from "react-i18next"
+import { z } from "zod/v3"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -17,19 +19,46 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import api from "@/lib/axios"
 
-const loginSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
-  password: z.string().min(1, "Password is required"),
-})
+type LoginForm = {
+  email: string
+  password: string
+}
 
-type LoginForm = z.infer<typeof loginSchema>
+type ErrorCode =
+  | "INVALID_CREDENTIALS"
+  | "INVALID_REQUEST"
+  | "INTERNAL_ERROR"
+  | "UNAUTHORIZED"
+  | "USER_DISABLED"
+
+type ApiErrorResponse = {
+  error?: {
+    code?: ErrorCode
+    message?: string
+  }
+}
 
 export function LoginPage() {
+  const { t, i18n } = useTranslation()
   const navigate = useNavigate()
+
+  const toggleLanguage = () => {
+    void i18n.changeLanguage(i18n.resolvedLanguage === "zh" ? "en" : "zh")
+  }
+
+  const loginSchema = z.object({
+    email: z
+      .string()
+      .trim()
+      .min(1, t("login.emailRequired"))
+      .email(t("login.emailInvalid")),
+    password: z.string().min(1, t("login.passwordRequired")),
+  })
 
   const {
     register,
     handleSubmit,
+    trigger,
     formState: { errors },
   } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -46,28 +75,54 @@ export function LoginPage() {
     loginMutation.mutate(data)
   }
 
+  const revalidateVisibleErrors = useEffectEvent(() => {
+    const errorFields = Object.keys(errors) as (keyof LoginForm)[]
+    if (errorFields.length > 0) {
+      void trigger(errorFields)
+    }
+  })
+
+  useEffect(() => {
+    revalidateVisibleErrors()
+  }, [i18n.language])
+
   const errorMessage = loginMutation.error
-    ? ((loginMutation.error as AxiosError<{ error: { message: string } }>)
-        .response?.data?.error?.message ?? "An unexpected error occurred")
+    ? (() => {
+        const responseError = (
+          loginMutation.error as AxiosError<ApiErrorResponse>
+        ).response?.data?.error
+
+        if (responseError?.code) {
+          return t(`login.errors.${responseError.code}`, {
+            defaultValue:
+              responseError.message ?? t("login.errors.INTERNAL_ERROR"),
+          })
+        }
+
+        return responseError?.message ?? t("login.unexpectedError")
+      })()
     : null
 
   return (
     <div className="flex min-h-screen items-center justify-center">
+      <div className="fixed top-4 right-4">
+        <Button variant="outline" size="sm" onClick={toggleLanguage}>
+          {i18n.resolvedLanguage === "zh" ? "English" : "中文"}
+        </Button>
+      </div>
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Login</CardTitle>
-          <CardDescription>
-            Enter your credentials to access Rota.
-          </CardDescription>
+          <CardTitle>{t("login.title")}</CardTitle>
+          <CardDescription>{t("login.description")}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t("login.email")}</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="you@example.com"
+                placeholder={t("login.emailPlaceholder")}
                 {...register("email")}
               />
               {errors.email && (
@@ -77,7 +132,7 @@ export function LoginPage() {
               )}
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t("login.password")}</Label>
               <Input
                 id="password"
                 type="password"
@@ -93,7 +148,9 @@ export function LoginPage() {
               <p className="text-sm text-destructive">{errorMessage}</p>
             )}
             <Button type="submit" disabled={loginMutation.isPending}>
-              {loginMutation.isPending ? "Logging in..." : "Login"}
+              {loginMutation.isPending
+                ? t("login.submitting")
+                : t("login.submit")}
             </Button>
           </form>
         </CardContent>
