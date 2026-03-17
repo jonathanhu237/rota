@@ -1,11 +1,18 @@
+import { QueryClient } from "@tanstack/react-query"
+import { createRouter, RouterProvider } from "@tanstack/react-router"
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
-import { createRouter, RouterProvider } from "@tanstack/react-router"
-import { routeTree } from "./routeTree.gen"
+
 import "@/i18n"
 import "./index.css"
+import { routeTree } from "./routeTree.gen"
 
-const router = createRouter({ routeTree })
+const queryClient = new QueryClient()
+
+const router = createRouter({
+  routeTree,
+  context: { queryClient },
+})
 
 declare module "@tanstack/react-router" {
   interface Register {

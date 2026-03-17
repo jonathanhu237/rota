@@ -18,5 +18,15 @@
       "UNAUTHORIZED": "未授权",
       "USER_DISABLED": "用户已被禁用"
     }
+  },
+  "sidebar": {
+    "appDescription": "排班系统",
+    "navigation": "导航",
+    "dashboard": "仪表盘",
+    "logout": "退出登录"
+  },
+  "dashboard": {
+    "welcome": "欢迎，{{name}}",
+    "description": "这是您的排班系统概览。"
   }
 }

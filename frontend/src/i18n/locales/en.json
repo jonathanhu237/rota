@@ -18,5 +18,15 @@
       "UNAUTHORIZED": "Unauthorized",
       "USER_DISABLED": "User is disabled"
     }
+  },
+  "sidebar": {
+    "appDescription": "Scheduling System",
+    "navigation": "Navigation",
+    "dashboard": "Dashboard",
+    "logout": "Logout"
+  },
+  "dashboard": {
+    "welcome": "Welcome, {{name}}",
+    "description": "Here is an overview of your scheduling system."
   }
 }
