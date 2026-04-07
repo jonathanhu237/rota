@@ -109,6 +109,17 @@ The system allows employees to submit their available time slots, and administra
 
 ---
 
+## Testing
+
+- Every new feature or bug fix **must** include tests.
+- Backend: use Go's standard `testing` package. Place test files alongside the code they test (e.g., `user_test.go` next to `user.go`).
+- Frontend: use Vitest for unit tests.
+- Tests should cover the main success path and key error cases. Do not skip tests just because the feature "seems simple."
+- The `SUMMARY.md` from Codex must report which tests were added and whether they pass.
+- Claude's `REVIEW.md` must flag missing or insufficient test coverage as an issue.
+
+---
+
 ## Code Conventions
 
 - Write all code comments in **English**.
