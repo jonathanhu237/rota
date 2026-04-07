@@ -1,4 +1,16 @@
 {
+  "common": {
+    "cancel": "取消",
+    "active": "启用",
+    "admin": "管理员",
+    "disabled": "禁用",
+    "employee": "员工",
+    "refreshing": "刷新中...",
+    "languages": {
+      "en": "英文",
+      "zh": "中文"
+    }
+  },
   "login": {
     "title": "登录",
     "description": "输入您的凭据以访问 Rota。",
@@ -23,10 +35,94 @@
     "appDescription": "排班系统",
     "navigation": "导航",
     "dashboard": "仪表盘",
-    "logout": "退出登录"
+    "users": "用户",
+    "logout": "退出登录",
+    "openNavigation": "打开导航"
   },
   "dashboard": {
     "welcome": "欢迎，{{name}}",
     "description": "这是您的排班系统概览。"
+  },
+  "users": {
+    "title": "用户管理",
+    "description": "创建、更新并管理员工账号访问权限。",
+    "createUser": "创建用户",
+    "name": "姓名",
+    "email": "邮箱",
+    "password": "密码",
+    "confirmPassword": "确认密码",
+    "isAdmin": "管理员",
+    "empty": "暂无用户。",
+    "pageSummary": "显示第 {{start}}-{{end}} 条，共 {{total}} 条用户",
+    "table": {
+      "name": "姓名",
+      "email": "邮箱",
+      "role": "角色",
+      "status": "状态",
+      "actions": "操作"
+    },
+    "actions": {
+      "edit": "编辑",
+      "resetPassword": "重置密码",
+      "disable": "禁用",
+      "enable": "启用"
+    },
+    "pagination": {
+      "previous": "上一页",
+      "next": "下一页",
+      "page": "第 {{page}} / {{totalPages}} 页"
+    },
+    "form": {
+      "createTitle": "创建用户",
+      "createDescription": "为员工或管理员新增一个账号。",
+      "editTitle": "编辑用户",
+      "editDescription": "更新所选用户的资料和角色。",
+      "submitCreate": "创建用户",
+      "submitEdit": "保存更改",
+      "submittingCreate": "创建中...",
+      "submittingEdit": "保存中..."
+    },
+    "passwordDialog": {
+      "title": "重置密码",
+      "description": "为 {{name}} 设置一个新密码。",
+      "submit": "重置密码",
+      "submitting": "重置中..."
+    },
+    "statusDialog": {
+      "disableTitle": "禁用用户",
+      "disableDescription": "禁用 {{name}} 并使其当前会话失效。",
+      "enableTitle": "启用用户",
+      "enableDescription": "启用 {{name}}，使其可以重新登录。",
+      "confirmDisable": "确认禁用",
+      "confirmEnable": "确认启用",
+      "submitting": "保存中..."
+    },
+    "validation": {
+      "nameRequired": "请输入姓名",
+      "emailRequired": "请输入邮箱",
+      "emailInvalid": "请输入有效的邮箱地址",
+      "passwordRequired": "请输入密码",
+      "passwordMin": "密码至少需要 8 个字符",
+      "confirmPasswordRequired": "请确认密码",
+      "passwordMismatch": "两次输入的密码不一致"
+    },
+    "success": {
+      "created": "用户创建成功。",
+      "updated": "用户更新成功。",
+      "passwordReset": "密码重置成功。",
+      "disabled": "用户已禁用。",
+      "enabled": "用户已启用。"
+    },
+    "errors": {
+      "EMAIL_ALREADY_EXISTS": "邮箱已存在",
+      "FORBIDDEN": "无权限访问",
+      "INVALID_REQUEST": "请求无效",
+      "INTERNAL_ERROR": "服务器内部错误",
+      "PASSWORD_TOO_SHORT": "密码至少需要 8 个字符",
+      "UNAUTHORIZED": "未授权",
+      "USER_DISABLED": "用户已被禁用",
+      "USER_NOT_FOUND": "用户不存在",
+      "VERSION_CONFLICT": "该用户已被其他请求更新，请刷新后重试。"
+    }
   }
 }

@@ -75,11 +75,12 @@ func main() {
 		time.Duration(cfg.SessionExpiresHours)*time.Hour,
 	)
 	authService := service.NewAuthService(userRepo, sessionStore)
+	userService := service.NewUserService(userRepo, sessionStore)
 
 	// Initialize handlers
 	healthHandler := handler.NewHealthHandler()
 	authHandler := handler.NewAuthHandler(authService)
-	userHandler := handler.NewUserHandler(userRepo)
+	userHandler := handler.NewUserHandler(userService)
 
 	// Register routes
 	mux := http.NewServeMux()
@@ -88,6 +89,11 @@ func main() {
 	mux.HandleFunc("POST /auth/logout", authHandler.Logout)
 	mux.HandleFunc("GET /auth/me", authHandler.RequireAuth(authHandler.Me))
 	mux.HandleFunc("GET /users", authHandler.RequireAdmin(userHandler.List))
+	mux.HandleFunc("POST /users", authHandler.RequireAdmin(userHandler.Create))
+	mux.HandleFunc("GET /users/{id}", authHandler.RequireAdmin(userHandler.GetByID))
+	mux.HandleFunc("PUT /users/{id}", authHandler.RequireAdmin(userHandler.Update))
+	mux.HandleFunc("PATCH /users/{id}/password", authHandler.RequireAdmin(userHandler.UpdatePassword))
+	mux.HandleFunc("PATCH /users/{id}/status", authHandler.RequireAdmin(userHandler.UpdateStatus))
 
 	// Start server
 	addr := fmt.Sprintf(":%d", cfg.ServerPort)

@@ -5,6 +5,7 @@ import {
   Globe,
   Home,
   LogOut,
+  Users,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
@@ -60,6 +61,14 @@ export function AppSidebar() {
       icon: Home,
     },
   ]
+
+  if (user?.is_admin) {
+    navItems.push({
+      title: t("sidebar.users"),
+      url: "/users",
+      icon: Users,
+    })
+  }
 
   // Get the initials from the user's name
   const initials =
@@ -160,7 +169,9 @@ export function AppSidebar() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={toggleLanguage}>
                   <Globe />
-                  {i18n.resolvedLanguage === "zh" ? "English" : "中文"}
+                  {i18n.resolvedLanguage === "zh"
+                    ? t("common.languages.en")
+                    : t("common.languages.zh")}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem

@@ -1,4 +1,16 @@
 {
+  "common": {
+    "cancel": "Cancel",
+    "active": "Active",
+    "admin": "Admin",
+    "disabled": "Disabled",
+    "employee": "Employee",
+    "refreshing": "Refreshing...",
+    "languages": {
+      "en": "English",
+      "zh": "Chinese"
+    }
+  },
   "login": {
     "title": "Login",
     "description": "Enter your credentials to access Rota.",
@@ -23,10 +35,94 @@
     "appDescription": "Scheduling System",
     "navigation": "Navigation",
     "dashboard": "Dashboard",
-    "logout": "Logout"
+    "users": "Users",
+    "logout": "Logout",
+    "openNavigation": "Open navigation"
   },
   "dashboard": {
     "welcome": "Welcome, {{name}}",
     "description": "Here is an overview of your scheduling system."
+  },
+  "users": {
+    "title": "User Management",
+    "description": "Create, update, and manage employee access.",
+    "createUser": "Create User",
+    "name": "Name",
+    "email": "Email",
+    "password": "Password",
+    "confirmPassword": "Confirm Password",
+    "isAdmin": "Administrator",
+    "empty": "No users found.",
+    "pageSummary": "Showing {{start}}-{{end}} of {{total}} users",
+    "table": {
+      "name": "Name",
+      "email": "Email",
+      "role": "Role",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "actions": {
+      "edit": "Edit",
+      "resetPassword": "Reset Password",
+      "disable": "Disable",
+      "enable": "Enable"
+    },
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {{page}} of {{totalPages}}"
+    },
+    "form": {
+      "createTitle": "Create user",
+      "createDescription": "Add a new employee or administrator account.",
+      "editTitle": "Edit user",
+      "editDescription": "Update the selected user's profile and role.",
+      "submitCreate": "Create User",
+      "submitEdit": "Save Changes",
+      "submittingCreate": "Creating...",
+      "submittingEdit": "Saving..."
+    },
+    "passwordDialog": {
+      "title": "Reset password",
+      "description": "Set a new password for {{name}}.",
+      "submit": "Reset Password",
+      "submitting": "Resetting..."
+    },
+    "statusDialog": {
+      "disableTitle": "Disable user",
+      "disableDescription": "Disable {{name}} and invalidate their active sessions.",
+      "enableTitle": "Enable user",
+      "enableDescription": "Enable {{name}} so they can sign in again.",
+      "confirmDisable": "Disable User",
+      "confirmEnable": "Enable User",
+      "submitting": "Saving..."
+    },
+    "validation": {
+      "nameRequired": "Name is required",
+      "emailRequired": "Email is required",
+      "emailInvalid": "Please enter a valid email address",
+      "passwordRequired": "Password is required",
+      "passwordMin": "Password must be at least 8 characters",
+      "confirmPasswordRequired": "Please confirm the password",
+      "passwordMismatch": "Passwords do not match"
+    },
+    "success": {
+      "created": "User created successfully.",
+      "updated": "User updated successfully.",
+      "passwordReset": "Password reset successfully.",
+      "disabled": "User disabled successfully.",
+      "enabled": "User enabled successfully."
+    },
+    "errors": {
+      "EMAIL_ALREADY_EXISTS": "Email already exists",
+      "FORBIDDEN": "Forbidden",
+      "INVALID_REQUEST": "Invalid request",
+      "INTERNAL_ERROR": "Internal server error",
+      "PASSWORD_TOO_SHORT": "Password must be at least 8 characters",
+      "UNAUTHORIZED": "Unauthorized",
+      "USER_DISABLED": "User is disabled",
+      "USER_NOT_FOUND": "User not found",
+      "VERSION_CONFLICT": "This user was updated elsewhere. Refresh and try again."
+    }
   }
 }

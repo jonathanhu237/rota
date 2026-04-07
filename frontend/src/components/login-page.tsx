@@ -2,7 +2,6 @@ import { useEffect, useEffectEvent } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
-import { AxiosError } from "axios"
 import { useForm } from "react-hook-form"
 import { useTranslation } from "react-i18next"
 import { z } from "zod/v3"
@@ -18,24 +17,11 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import api from "@/lib/axios"
+import { getTranslatedApiError } from "@/lib/api-error"
 
 type LoginForm = {
   email: string
   password: string
-}
-
-type ErrorCode =
-  | "INVALID_CREDENTIALS"
-  | "INVALID_REQUEST"
-  | "INTERNAL_ERROR"
-  | "UNAUTHORIZED"
-  | "USER_DISABLED"
-
-type ApiErrorResponse = {
-  error?: {
-    code?: ErrorCode
-    message?: string
-  }
 }
 
 export function LoginPage() {
@@ -87,27 +73,21 @@ export function LoginPage() {
   }, [i18n.language])
 
   const errorMessage = loginMutation.error
-    ? (() => {
-        const responseError = (
-          loginMutation.error as AxiosError<ApiErrorResponse>
-        ).response?.data?.error
-
-        if (responseError?.code) {
-          return t(`login.errors.${responseError.code}`, {
-            defaultValue:
-              responseError.message ?? t("login.errors.INTERNAL_ERROR"),
-          })
-        }
-
-        return responseError?.message ?? t("login.unexpectedError")
-      })()
+    ? getTranslatedApiError(
+        t,
+        loginMutation.error,
+        "login.errors",
+        "login.unexpectedError",
+      )
     : null
 
   return (
     <div className="flex min-h-screen items-center justify-center">
       <div className="fixed top-4 right-4">
         <Button variant="outline" size="sm" onClick={toggleLanguage}>
-          {i18n.resolvedLanguage === "zh" ? "English" : "中文"}
+          {i18n.resolvedLanguage === "zh"
+            ? t("common.languages.en")
+            : t("common.languages.zh")}
         </Button>
       </div>
       <Card className="w-full max-w-sm">

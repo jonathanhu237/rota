@@ -71,8 +71,54 @@ func (s *Store) Delete(ctx context.Context, sessionID string) error {
 	return s.client.Del(ctx, s.key(sessionID)).Err()
 }
 
+func (s *Store) DeleteUserSessions(ctx context.Context, userID int64) error {
+	targetUserID := strconv.FormatInt(userID, 10)
+	var cursor uint64
+
+	for {
+		keys, nextCursor, err := s.client.Scan(ctx, cursor, s.keyPattern(), 100).Result()
+		if err != nil {
+			return err
+		}
+
+		if len(keys) > 0 {
+			values, err := s.client.MGet(ctx, keys...).Result()
+			if err != nil {
+				return err
+			}
+
+			sessionKeys := make([]string, 0, len(keys))
+			for i, value := range values {
+				parsedValue, ok := value.(string)
+				if ok && parsedValue == targetUserID {
+					sessionKeys = append(sessionKeys, keys[i])
+				}
+			}
+
+			if len(sessionKeys) > 0 {
+				if err := s.client.Del(ctx, sessionKeys...).Err(); err != nil {
+					return err
+				}
+			}
+		}
+
+		cursor = nextCursor
+		if cursor == 0 {
+			return nil
+		}
+	}
+}
+
 func (s *Store) key(sessionID string) string {
-	return "session:" + sessionID
+	return s.keyPrefix() + sessionID
+}
+
+func (s *Store) keyPrefix() string {
+	return "session:"
+}
+
+func (s *Store) keyPattern() string {
+	return s.keyPrefix() + "*"
 }
 
 func generateSessionID() (string, error) {

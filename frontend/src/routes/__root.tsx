@@ -2,6 +2,7 @@ import type { QueryClient } from "@tanstack/react-query"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { createRootRouteWithContext, Outlet } from "@tanstack/react-router"
 
+import { ToastProvider } from "@/components/ui/toast"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
 type RouterContext = {
@@ -17,9 +18,11 @@ function RouteComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Outlet />
-      </TooltipProvider>
+      <ToastProvider>
+        <TooltipProvider>
+          <Outlet />
+        </TooltipProvider>
+      </ToastProvider>
     </QueryClientProvider>
   )
 }

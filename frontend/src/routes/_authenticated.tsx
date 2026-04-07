@@ -7,6 +7,7 @@ import {
   Outlet,
   useNavigate,
 } from "@tanstack/react-router"
+import { useTranslation } from "react-i18next"
 
 import { AppSidebar } from "@/components/app-sidebar"
 import {
@@ -31,6 +32,7 @@ export const Route = createFileRoute("/_authenticated")({
 })
 
 function AuthenticatedLayout() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { error } = useQuery(currentUserQueryOptions)
@@ -47,7 +49,7 @@ function AuthenticatedLayout() {
       <AppSidebar />
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-14 items-center border-b bg-background px-4 md:hidden">
-          <SidebarTrigger aria-label="Open navigation" />
+          <SidebarTrigger aria-label={t("sidebar.openNavigation")} />
           <div className="ml-3 text-sm font-semibold">Rota</div>
         </header>
         <main className="flex-1 p-6">
