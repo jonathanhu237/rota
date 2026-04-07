@@ -151,6 +151,10 @@ func (s *UserService) CreateUser(ctx context.Context, input CreateUserInput) (*m
 }
 
 func (s *UserService) GetUserByID(ctx context.Context, id int64) (*model.User, error) {
+	if id <= 0 {
+		return nil, ErrInvalidInput
+	}
+
 	user, err := s.userRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, mapRepositoryError(err)
