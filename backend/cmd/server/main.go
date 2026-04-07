@@ -43,6 +43,7 @@ func main() {
 	}
 
 	userRepo := repository.NewUserRepository(db)
+	positionRepo := repository.NewPositionRepository(db)
 	if err := service.EnsureBootstrapAdmin(ctx, service.BootstrapAdminInput{
 		Email:    cfg.BootstrapAdminEmail,
 		Password: cfg.BootstrapAdminPassword,
@@ -76,11 +77,13 @@ func main() {
 	)
 	authService := service.NewAuthService(userRepo, sessionStore)
 	userService := service.NewUserService(userRepo, sessionStore)
+	positionService := service.NewPositionService(positionRepo)
 
 	// Initialize handlers
 	healthHandler := handler.NewHealthHandler()
 	authHandler := handler.NewAuthHandler(authService)
 	userHandler := handler.NewUserHandler(userService)
+	positionHandler := handler.NewPositionHandler(positionService)
 
 	// Register routes
 	mux := http.NewServeMux()
@@ -94,6 +97,11 @@ func main() {
 	mux.HandleFunc("PUT /users/{id}", authHandler.RequireAdmin(userHandler.Update))
 	mux.HandleFunc("PATCH /users/{id}/password", authHandler.RequireAdmin(userHandler.UpdatePassword))
 	mux.HandleFunc("PATCH /users/{id}/status", authHandler.RequireAdmin(userHandler.UpdateStatus))
+	mux.HandleFunc("GET /positions", authHandler.RequireAdmin(positionHandler.List))
+	mux.HandleFunc("POST /positions", authHandler.RequireAdmin(positionHandler.Create))
+	mux.HandleFunc("GET /positions/{id}", authHandler.RequireAdmin(positionHandler.GetByID))
+	mux.HandleFunc("PUT /positions/{id}", authHandler.RequireAdmin(positionHandler.Update))
+	mux.HandleFunc("DELETE /positions/{id}", authHandler.RequireAdmin(positionHandler.Delete))
 
 	// Start server
 	addr := fmt.Sprintf(":%d", cfg.ServerPort)

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/jonathanhu237/rota/backend/internal/model"
 )
@@ -31,6 +32,14 @@ type paginationResponse struct {
 	TotalPages int `json:"total_pages"`
 }
 
+type positionResponse struct {
+	ID          int64     `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 func newUserResponse(user *model.User) userResponse {
 	return userResponse{
 		ID:      user.ID,
@@ -39,6 +48,16 @@ func newUserResponse(user *model.User) userResponse {
 		IsAdmin: user.IsAdmin,
 		Status:  user.Status,
 		Version: user.Version,
+	}
+}
+
+func newPositionResponse(position *model.Position) positionResponse {
+	return positionResponse{
+		ID:          position.ID,
+		Name:        position.Name,
+		Description: position.Description,
+		CreatedAt:   position.CreatedAt,
+		UpdatedAt:   position.UpdatedAt,
 	}
 }
 

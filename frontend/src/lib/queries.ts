@@ -2,7 +2,7 @@ import { keepPreviousData, queryOptions } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 
 import api from "./axios"
-import type { Pagination, User, UserStatus } from "./types"
+import type { Pagination, Position, User, UserStatus } from "./types"
 
 export type UsersResponse = {
   users: User[]
@@ -11,6 +11,15 @@ export type UsersResponse = {
 
 export type UserResponse = {
   user: User
+}
+
+export type PositionsResponse = {
+  positions: Position[]
+  pagination: Pagination
+}
+
+export type PositionResponse = {
+  position: Position
 }
 
 export type CreateUserInput = {
@@ -35,6 +44,16 @@ export type UpdateUserPasswordInput = {
 export type UpdateUserStatusInput = {
   status: UserStatus
   version: number
+}
+
+export type CreatePositionInput = {
+  name: string
+  description: string
+}
+
+export type UpdatePositionInput = {
+  name: string
+  description: string
 }
 
 export const currentUserQueryOptions = queryOptions({
@@ -77,6 +96,31 @@ export const userQueryOptions = (userID: number) =>
     enabled: userID > 0,
   })
 
+export const positionsQueryOptions = (page: number, pageSize: number) =>
+  queryOptions({
+    queryKey: ["positions", "list", page, pageSize],
+    queryFn: async () => {
+      const res = await api.get<PositionsResponse>("/positions", {
+        params: {
+          page,
+          page_size: pageSize,
+        },
+      })
+      return res.data
+    },
+    placeholderData: keepPreviousData,
+  })
+
+export const positionQueryOptions = (positionID: number) =>
+  queryOptions({
+    queryKey: ["positions", "detail", positionID],
+    queryFn: async () => {
+      const res = await api.get<PositionResponse>(`/positions/${positionID}`)
+      return res.data.position
+    },
+    enabled: positionID > 0,
+  })
+
 export async function createUser(input: CreateUserInput) {
   const res = await api.post<UserResponse>("/users", input)
   return res.data.user
@@ -101,4 +145,21 @@ export async function updateUserStatus(
 ) {
   const res = await api.patch<UserResponse>(`/users/${userID}/status`, input)
   return res.data.user
+}
+
+export async function createPosition(input: CreatePositionInput) {
+  const res = await api.post<PositionResponse>("/positions", input)
+  return res.data.position
+}
+
+export async function updatePosition(
+  positionID: number,
+  input: UpdatePositionInput,
+) {
+  const res = await api.put<PositionResponse>(`/positions/${positionID}`, input)
+  return res.data.position
+}
+
+export async function deletePosition(positionID: number) {
+  await api.delete(`/positions/${positionID}`)
 }

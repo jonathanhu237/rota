@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router"
 import {
+  Briefcase,
   ChevronsUpDown,
   Globe,
   Home,
@@ -67,6 +68,11 @@ export function AppSidebar() {
       title: t("sidebar.users"),
       url: "/users",
       icon: Users,
+    })
+    navItems.push({
+      title: t("sidebar.positions"),
+      url: "/positions",
+      icon: Briefcase,
     })
   }
 

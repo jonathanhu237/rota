@@ -36,6 +36,7 @@
     "navigation": "Navigation",
     "dashboard": "Dashboard",
     "users": "Users",
+    "positions": "Positions",
     "logout": "Logout",
     "openNavigation": "Open navigation"
   },
@@ -123,6 +124,61 @@
       "USER_DISABLED": "User is disabled",
       "USER_NOT_FOUND": "User not found",
       "VERSION_CONFLICT": "This user was updated elsewhere. Refresh and try again."
+    }
+  },
+  "positions": {
+    "title": "Position Management",
+    "description": "Create and maintain the roles your department needs to staff.",
+    "createPosition": "Create Position",
+    "name": "Name",
+    "descriptionLabel": "Description",
+    "empty": "No positions found.",
+    "noDescription": "No description",
+    "pageSummary": "Showing {{start}}-{{end}} of {{total}} positions",
+    "table": {
+      "name": "Name",
+      "description": "Description",
+      "actions": "Actions"
+    },
+    "actions": {
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {{page}} of {{totalPages}}"
+    },
+    "form": {
+      "createTitle": "Create position",
+      "createDescription": "Add a role that can be staffed in future schedules.",
+      "editTitle": "Edit position",
+      "editDescription": "Update the selected position's details.",
+      "submitCreate": "Create Position",
+      "submitEdit": "Save Changes",
+      "submittingCreate": "Creating...",
+      "submittingEdit": "Saving..."
+    },
+    "deleteDialog": {
+      "title": "Delete position",
+      "description": "Delete {{name}}? This action cannot be undone.",
+      "confirm": "Delete Position",
+      "submitting": "Deleting..."
+    },
+    "validation": {
+      "nameRequired": "Name is required"
+    },
+    "success": {
+      "created": "Position created successfully.",
+      "updated": "Position updated successfully.",
+      "deleted": "Position deleted successfully."
+    },
+    "errors": {
+      "FORBIDDEN": "Forbidden",
+      "INVALID_REQUEST": "Invalid request",
+      "INTERNAL_ERROR": "Internal server error",
+      "POSITION_NOT_FOUND": "Position not found",
+      "UNAUTHORIZED": "Unauthorized"
     }
   }
 }

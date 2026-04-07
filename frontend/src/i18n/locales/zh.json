@@ -36,6 +36,7 @@
     "navigation": "导航",
     "dashboard": "仪表盘",
     "users": "用户",
+    "positions": "岗位",
     "logout": "退出登录",
     "openNavigation": "打开导航"
   },
@@ -123,6 +124,61 @@
       "USER_DISABLED": "用户已被禁用",
       "USER_NOT_FOUND": "用户不存在",
       "VERSION_CONFLICT": "该用户已被其他请求更新，请刷新后重试。"
+    }
+  },
+  "positions": {
+    "title": "岗位管理",
+    "description": "创建并维护部门需要排班的岗位。",
+    "createPosition": "创建岗位",
+    "name": "名称",
+    "descriptionLabel": "描述",
+    "empty": "暂无岗位。",
+    "noDescription": "暂无描述",
+    "pageSummary": "显示第 {{start}}-{{end}} 条，共 {{total}} 条岗位",
+    "table": {
+      "name": "名称",
+      "description": "描述",
+      "actions": "操作"
+    },
+    "actions": {
+      "edit": "编辑",
+      "delete": "删除"
+    },
+    "pagination": {
+      "previous": "上一页",
+      "next": "下一页",
+      "page": "第 {{page}} / {{totalPages}} 页"
+    },
+    "form": {
+      "createTitle": "创建岗位",
+      "createDescription": "新增一个可用于后续排班的岗位。",
+      "editTitle": "编辑岗位",
+      "editDescription": "更新所选岗位的详细信息。",
+      "submitCreate": "创建岗位",
+      "submitEdit": "保存更改",
+      "submittingCreate": "创建中...",
+      "submittingEdit": "保存中..."
+    },
+    "deleteDialog": {
+      "title": "删除岗位",
+      "description": "确认删除 {{name}}？此操作无法撤销。",
+      "confirm": "确认删除",
+      "submitting": "删除中..."
+    },
+    "validation": {
+      "nameRequired": "请输入岗位名称"
+    },
+    "success": {
+      "created": "岗位创建成功。",
+      "updated": "岗位更新成功。",
+      "deleted": "岗位删除成功。"
+    },
+    "errors": {
+      "FORBIDDEN": "无权限访问",
+      "INVALID_REQUEST": "请求无效",
+      "INTERNAL_ERROR": "服务器内部错误",
+      "POSITION_NOT_FOUND": "岗位不存在",
+      "UNAUTHORIZED": "未授权"
     }
   }
 }
