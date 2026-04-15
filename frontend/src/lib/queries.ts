@@ -22,6 +22,10 @@ export type PositionResponse = {
   position: Position
 }
 
+export type UserPositionsResponse = {
+  positions: Position[]
+}
+
 export type CreateUserInput = {
   email: string
   name: string
@@ -54,6 +58,10 @@ export type CreatePositionInput = {
 export type UpdatePositionInput = {
   name: string
   description: string
+}
+
+export type ReplaceUserPositionsInput = {
+  position_ids: number[]
 }
 
 export const currentUserQueryOptions = queryOptions({
@@ -111,6 +119,20 @@ export const positionsQueryOptions = (page: number, pageSize: number) =>
     placeholderData: keepPreviousData,
   })
 
+export const allPositionsQueryOptions = () =>
+  queryOptions({
+    queryKey: ["positions", "all"],
+    queryFn: async () => {
+      const res = await api.get<PositionsResponse>("/positions", {
+        params: {
+          page: 1,
+          page_size: 100,
+        },
+      })
+      return res.data.positions
+    },
+  })
+
 export const positionQueryOptions = (positionID: number) =>
   queryOptions({
     queryKey: ["positions", "detail", positionID],
@@ -119,6 +141,16 @@ export const positionQueryOptions = (positionID: number) =>
       return res.data.position
     },
     enabled: positionID > 0,
+  })
+
+export const userPositionsQueryOptions = (userID: number) =>
+  queryOptions({
+    queryKey: ["users", "positions", userID],
+    queryFn: async () => {
+      const res = await api.get<UserPositionsResponse>(`/users/${userID}/positions`)
+      return res.data.positions
+    },
+    enabled: userID > 0,
   })
 
 export async function createUser(input: CreateUserInput) {
@@ -145,6 +177,18 @@ export async function updateUserStatus(
 ) {
   const res = await api.patch<UserResponse>(`/users/${userID}/status`, input)
   return res.data.user
+}
+
+export async function replaceUserPositions(
+  userID: number,
+  positionIDs: number[],
+) {
+  await api.put<undefined, unknown, ReplaceUserPositionsInput>(
+    `/users/${userID}/positions`,
+    {
+      position_ids: positionIDs,
+    },
+  )
 }
 
 export async function createPosition(input: CreatePositionInput) {

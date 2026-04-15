@@ -114,12 +114,26 @@
       "disabled": "User disabled successfully.",
       "enabled": "User enabled successfully."
     },
+    "qualifications": {
+      "title": "Qualifications",
+      "description": "Select which positions this user is qualified to work.",
+      "empty": "No positions available yet.",
+      "loadError": "Failed to load qualifications.",
+      "save": "Save Qualifications",
+      "saving": "Saving...",
+      "selectedCount_one": "{{count}} position selected",
+      "selectedCount_other": "{{count}} positions selected",
+      "success": {
+        "saved": "Qualifications updated successfully."
+      }
+    },
     "errors": {
       "EMAIL_ALREADY_EXISTS": "Email already exists",
       "FORBIDDEN": "Forbidden",
       "INVALID_REQUEST": "Invalid request",
       "INTERNAL_ERROR": "Internal server error",
       "PASSWORD_TOO_SHORT": "Password must be at least 8 characters",
+      "POSITION_NOT_FOUND": "Position not found",
       "UNAUTHORIZED": "Unauthorized",
       "USER_DISABLED": "User is disabled",
       "USER_NOT_FOUND": "User not found",

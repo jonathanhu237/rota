@@ -114,12 +114,25 @@
       "disabled": "用户已禁用。",
       "enabled": "用户已启用。"
     },
+    "qualifications": {
+      "title": "任职资格",
+      "description": "选择该用户有资格承担的岗位。",
+      "empty": "当前还没有岗位。",
+      "loadError": "加载任职资格失败。",
+      "save": "保存资格",
+      "saving": "保存中...",
+      "selectedCount_other": "已选择 {{count}} 个岗位",
+      "success": {
+        "saved": "任职资格更新成功。"
+      }
+    },
     "errors": {
       "EMAIL_ALREADY_EXISTS": "邮箱已存在",
       "FORBIDDEN": "无权限访问",
       "INVALID_REQUEST": "请求无效",
       "INTERNAL_ERROR": "服务器内部错误",
       "PASSWORD_TOO_SHORT": "密码至少需要 8 个字符",
+      "POSITION_NOT_FOUND": "岗位不存在",
       "UNAUTHORIZED": "未授权",
       "USER_DISABLED": "用户已被禁用",
       "USER_NOT_FOUND": "用户不存在",

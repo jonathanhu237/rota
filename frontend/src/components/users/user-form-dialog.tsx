@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { User } from "@/lib/types"
+import { UserQualifications } from "./user-qualifications"
 
 export type UserFormValues = {
   email: string
@@ -150,6 +151,7 @@ export function UserFormDialog({
             <Checkbox {...register("is_admin")} />
             <span>{t("users.isAdmin")}</span>
           </label>
+          {mode === "edit" && user && <UserQualifications open={open} user={user} />}
           <DialogFooter>
             <Button
               type="button"
