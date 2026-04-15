@@ -168,6 +168,8 @@ func (h *PositionHandler) writePositionServiceError(w http.ResponseWriter, err e
 	switch {
 	case errors.Is(err, service.ErrInvalidInput):
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request")
+	case errors.Is(err, service.ErrPositionInUse):
+		writeError(w, http.StatusConflict, "POSITION_IN_USE", "Position is in use")
 	case errors.Is(err, service.ErrPositionNotFound):
 		writeError(w, http.StatusNotFound, "POSITION_NOT_FOUND", "Position not found")
 	default:

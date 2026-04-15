@@ -37,6 +37,7 @@
     "dashboard": "仪表盘",
     "users": "用户",
     "positions": "岗位",
+    "templates": "模板",
     "logout": "退出登录",
     "openNavigation": "打开导航"
   },
@@ -190,7 +191,136 @@
       "FORBIDDEN": "无权限访问",
       "INVALID_REQUEST": "请求无效",
       "INTERNAL_ERROR": "服务器内部错误",
+      "POSITION_IN_USE": "该岗位已被模板班次使用",
       "POSITION_NOT_FOUND": "岗位不存在",
+      "UNAUTHORIZED": "未授权"
+    }
+  },
+  "templates": {
+    "title": "模板管理",
+    "description": "创建并维护可复用的每周班次模板。",
+    "createTemplate": "创建模板",
+    "name": "名称",
+    "descriptionLabel": "描述",
+    "empty": "暂无模板。",
+    "locked": "已锁定",
+    "unlocked": "未锁定",
+    "pageSummary": "显示第 {{start}}-{{end}} 条，共 {{total}} 条模板",
+    "table": {
+      "name": "名称",
+      "shiftCount": "班次数量",
+      "locked": "状态",
+      "updatedAt": "更新时间"
+    },
+    "pagination": {
+      "previous": "上一页",
+      "next": "下一页",
+      "page": "第 {{page}} / {{totalPages}} 页"
+    },
+    "form": {
+      "createTitle": "创建模板",
+      "createDescription": "新增一个可复用的每周模板。",
+      "submitCreate": "创建模板",
+      "submittingCreate": "创建中...",
+      "submitEdit": "保存更改",
+      "submittingEdit": "保存中..."
+    },
+    "detail": {
+      "description": "更新模板信息并管理其每周班次。",
+      "loadErrorTitle": "加载模板失败",
+      "loadErrorDescription": "当前无法加载该模板。"
+    },
+    "actions": {
+      "clone": "克隆",
+      "delete": "删除",
+      "addShift": "新增班次",
+      "editShift": "编辑班次",
+      "deleteShift": "删除班次"
+    },
+    "cloneDialog": {
+      "title": "克隆模板",
+      "description": "确认基于 {{name}} 创建一个未锁定副本？",
+      "confirm": "确认克隆",
+      "submitting": "克隆中..."
+    },
+    "deleteDialog": {
+      "title": "删除模板",
+      "description": "确认删除 {{name}}？此操作无法撤销。",
+      "confirm": "确认删除",
+      "submitting": "删除中..."
+    },
+    "deleteShiftDialog": {
+      "title": "删除班次",
+      "description": "确认删除 {{summary}}？此操作无法撤销。",
+      "summary": "{{weekday}} · {{positionName}} · {{startTime}}-{{endTime}} · 需要 {{headcount}} 人",
+      "confirm": "确认删除班次",
+      "submitting": "删除中..."
+    },
+    "shiftsTitle": "每周班次",
+    "shiftsDescription": "按星期管理该模板的所有班次。",
+    "positionsLoadError": "加载岗位列表失败，无法编辑班次。",
+    "noPositions": "请先创建岗位，再为模板添加班次。",
+    "noShiftsForWeekday": "这一天还没有任何班次。",
+    "unknownPosition": "未知岗位",
+    "lockedBanner": "该模板已锁定，无法编辑或删除。如需修改，请先克隆。",
+    "shift": {
+      "weekday": "星期",
+      "startTime": "开始时间",
+      "endTime": "结束时间",
+      "position": "岗位",
+      "requiredHeadcount": "所需人数",
+      "summary": "{{startTime}}-{{endTime}} · 需要 {{headcount}} 人"
+    },
+    "shiftDialog": {
+      "createTitle": "新增班次",
+      "createDescription": "为该模板新增一个每周班次。",
+      "editTitle": "编辑班次",
+      "editDescription": "更新所选的每周班次。",
+      "submitCreate": "创建班次",
+      "submitEdit": "保存班次",
+      "submittingCreate": "创建中...",
+      "submittingEdit": "保存中...",
+      "selectPosition": "请选择岗位"
+    },
+    "weekday": {
+      "mon": "星期一",
+      "tue": "星期二",
+      "wed": "星期三",
+      "thu": "星期四",
+      "fri": "星期五",
+      "sat": "星期六",
+      "sun": "星期日"
+    },
+    "validation": {
+      "nameRequired": "请输入模板名称",
+      "nameTooLong": "模板名称不能超过 100 个字符",
+      "descriptionTooLong": "模板描述不能超过 500 个字符",
+      "weekdayRequired": "请选择星期",
+      "invalidWeekday": "星期必须在星期一到星期日之间",
+      "invalidShiftTime": "结束时间必须晚于开始时间",
+      "positionRequired": "请选择岗位",
+      "invalidHeadcount": "所需人数至少为 1"
+    },
+    "success": {
+      "created": "模板创建成功。",
+      "updated": "模板更新成功。",
+      "deleted": "模板删除成功。",
+      "cloned": "模板克隆成功。",
+      "shiftCreated": "班次创建成功。",
+      "shiftUpdated": "班次更新成功。",
+      "shiftDeleted": "班次删除成功。"
+    },
+    "errors": {
+      "FORBIDDEN": "无权限访问",
+      "INVALID_HEADCOUNT": "所需人数必须为正数",
+      "INVALID_REQUEST": "请求无效",
+      "INVALID_SHIFT_TIME": "结束时间必须晚于开始时间",
+      "INVALID_WEEKDAY": "星期必须在星期一到星期日之间",
+      "INTERNAL_ERROR": "服务器内部错误",
+      "POSITION_NOT_FOUND": "岗位不存在",
+      "TEMPLATE_LOCKED": "模板已锁定",
+      "TEMPLATE_NOT_FOUND": "模板不存在",
+      "TEMPLATE_SHIFT_NOT_FOUND": "模板班次不存在",
       "UNAUTHORIZED": "未授权"
     }
   }

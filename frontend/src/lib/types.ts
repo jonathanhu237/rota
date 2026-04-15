@@ -23,3 +23,29 @@ export type Position = {
   created_at: string
   updated_at: string
 }
+
+export type TemplateShift = {
+  id: number
+  template_id: number
+  weekday: number
+  start_time: string
+  end_time: string
+  position_id: number
+  required_headcount: number
+  created_at: string
+  updated_at: string
+}
+
+export type Template = {
+  id: number
+  name: string
+  description: string
+  is_locked: boolean
+  shift_count: number
+  created_at: string
+  updated_at: string
+}
+
+export type TemplateDetail = Template & {
+  shifts: TemplateShift[]
+}

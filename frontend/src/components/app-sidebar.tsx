@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router"
 import {
   Briefcase,
+  CalendarDays,
   ChevronsUpDown,
   Globe,
   Home,
@@ -74,6 +75,11 @@ export function AppSidebar() {
       url: "/positions",
       icon: Briefcase,
     })
+    navItems.push({
+      title: t("sidebar.templates"),
+      url: "/templates",
+      icon: CalendarDays,
+    })
   }
 
   // Get the initials from the user's name
@@ -113,7 +119,10 @@ export function AppSidebar() {
                 <SidebarMenuItem key={item.url}>
                   <SidebarMenuButton
                     render={<Link to={item.url} />}
-                    isActive={routerState.location.pathname === item.url}
+                    isActive={
+                      routerState.location.pathname === item.url ||
+                      routerState.location.pathname.startsWith(`${item.url}/`)
+                    }
                   >
                     <item.icon />
                     <span>{item.title}</span>

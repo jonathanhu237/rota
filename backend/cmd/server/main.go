@@ -44,6 +44,7 @@ func main() {
 
 	userRepo := repository.NewUserRepository(db)
 	positionRepo := repository.NewPositionRepository(db)
+	templateRepo := repository.NewTemplateRepository(db)
 	userPositionRepo := repository.NewUserPositionRepository(db)
 	if err := service.EnsureBootstrapAdmin(ctx, service.BootstrapAdminInput{
 		Email:    cfg.BootstrapAdminEmail,
@@ -79,6 +80,7 @@ func main() {
 	authService := service.NewAuthService(userRepo, sessionStore)
 	userService := service.NewUserService(userRepo, sessionStore)
 	positionService := service.NewPositionService(positionRepo)
+	templateService := service.NewTemplateService(templateRepo, positionRepo)
 	userPositionService := service.NewUserPositionService(userPositionRepo)
 
 	// Initialize handlers
@@ -86,6 +88,7 @@ func main() {
 	authHandler := handler.NewAuthHandler(authService)
 	userHandler := handler.NewUserHandler(userService)
 	positionHandler := handler.NewPositionHandler(positionService)
+	templateHandler := handler.NewTemplateHandler(templateService)
 	userPositionHandler := handler.NewUserPositionHandler(userPositionService)
 
 	// Register routes
@@ -107,6 +110,15 @@ func main() {
 	mux.HandleFunc("GET /positions/{id}", authHandler.RequireAdmin(positionHandler.GetByID))
 	mux.HandleFunc("PUT /positions/{id}", authHandler.RequireAdmin(positionHandler.Update))
 	mux.HandleFunc("DELETE /positions/{id}", authHandler.RequireAdmin(positionHandler.Delete))
+	mux.HandleFunc("GET /templates", authHandler.RequireAdmin(templateHandler.List))
+	mux.HandleFunc("POST /templates", authHandler.RequireAdmin(templateHandler.Create))
+	mux.HandleFunc("GET /templates/{id}", authHandler.RequireAdmin(templateHandler.GetByID))
+	mux.HandleFunc("PUT /templates/{id}", authHandler.RequireAdmin(templateHandler.Update))
+	mux.HandleFunc("DELETE /templates/{id}", authHandler.RequireAdmin(templateHandler.Delete))
+	mux.HandleFunc("POST /templates/{id}/clone", authHandler.RequireAdmin(templateHandler.Clone))
+	mux.HandleFunc("POST /templates/{id}/shifts", authHandler.RequireAdmin(templateHandler.CreateShift))
+	mux.HandleFunc("PATCH /templates/{id}/shifts/{shift_id}", authHandler.RequireAdmin(templateHandler.UpdateShift))
+	mux.HandleFunc("DELETE /templates/{id}/shifts/{shift_id}", authHandler.RequireAdmin(templateHandler.DeleteShift))
 
 	// Start server
 	addr := fmt.Sprintf(":%d", cfg.ServerPort)

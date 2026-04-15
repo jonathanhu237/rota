@@ -9,7 +9,10 @@ import (
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 )
 
-var ErrPositionNotFound = errors.New("position not found")
+var (
+	ErrPositionInUse    = errors.New("position in use")
+	ErrPositionNotFound = errors.New("position not found")
+)
 
 type positionRepository interface {
 	ListPaginated(ctx context.Context, params repository.ListPositionsParams) ([]*model.Position, int, error)
@@ -157,6 +160,8 @@ func normalizePositionInput(name, description string) (string, string, error) {
 
 func mapPositionRepositoryError(err error) error {
 	switch {
+	case errors.Is(err, repository.ErrPositionInUse):
+		return ErrPositionInUse
 	case errors.Is(err, repository.ErrPositionNotFound):
 		return ErrPositionNotFound
 	default:

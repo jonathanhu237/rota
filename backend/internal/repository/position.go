@@ -6,9 +6,13 @@ import (
 	"errors"
 
 	"github.com/jonathanhu237/rota/backend/internal/model"
+	"github.com/lib/pq"
 )
 
-var ErrPositionNotFound = errors.New("position not found")
+var (
+	ErrPositionInUse    = errors.New("position in use")
+	ErrPositionNotFound = errors.New("position not found")
+)
 
 type ListPositionsParams struct {
 	Offset int
@@ -179,6 +183,9 @@ func (r *PositionRepository) Delete(ctx context.Context, id int64) error {
 
 	result, err := r.db.ExecContext(ctx, query, id)
 	if err != nil {
+		if isForeignKeyViolation(err) {
+			return ErrPositionInUse
+		}
 		return err
 	}
 
@@ -191,4 +198,9 @@ func (r *PositionRepository) Delete(ctx context.Context, id int64) error {
 	}
 
 	return nil
+}
+
+func isForeignKeyViolation(err error) bool {
+	var pqErr *pq.Error
+	return errors.As(err, &pqErr) && pqErr.Code == "23503"
 }

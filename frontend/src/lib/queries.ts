@@ -2,7 +2,15 @@ import { keepPreviousData, queryOptions } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 
 import api from "./axios"
-import type { Pagination, Position, User, UserStatus } from "./types"
+import type {
+  Pagination,
+  Position,
+  Template,
+  TemplateDetail,
+  TemplateShift,
+  User,
+  UserStatus,
+} from "./types"
 
 export type UsersResponse = {
   users: User[]
@@ -24,6 +32,19 @@ export type PositionResponse = {
 
 export type UserPositionsResponse = {
   positions: Position[]
+}
+
+export type TemplatesResponse = {
+  templates: Template[]
+  pagination: Pagination
+}
+
+export type TemplateResponse = {
+  template: TemplateDetail
+}
+
+export type TemplateShiftResponse = {
+  shift: TemplateShift
 }
 
 export type CreateUserInput = {
@@ -63,6 +84,26 @@ export type UpdatePositionInput = {
 export type ReplaceUserPositionsInput = {
   position_ids: number[]
 }
+
+export type CreateTemplateInput = {
+  name: string
+  description: string
+}
+
+export type UpdateTemplateInput = {
+  name: string
+  description: string
+}
+
+export type CreateTemplateShiftInput = {
+  weekday: number
+  start_time: string
+  end_time: string
+  position_id: number
+  required_headcount: number
+}
+
+export type UpdateTemplateShiftInput = CreateTemplateShiftInput
 
 export const currentUserQueryOptions = queryOptions({
   queryKey: ["auth", "me"],
@@ -143,6 +184,31 @@ export const positionQueryOptions = (positionID: number) =>
     enabled: positionID > 0,
   })
 
+export const templatesQueryOptions = (page: number, pageSize: number) =>
+  queryOptions({
+    queryKey: ["templates", "list", page, pageSize],
+    queryFn: async () => {
+      const res = await api.get<TemplatesResponse>("/templates", {
+        params: {
+          page,
+          page_size: pageSize,
+        },
+      })
+      return res.data
+    },
+    placeholderData: keepPreviousData,
+  })
+
+export const templateQueryOptions = (templateID: number) =>
+  queryOptions({
+    queryKey: ["templates", "detail", templateID],
+    queryFn: async () => {
+      const res = await api.get<TemplateResponse>(`/templates/${templateID}`)
+      return res.data.template
+    },
+    enabled: templateID > 0,
+  })
+
 export const userPositionsQueryOptions = (userID: number) =>
   queryOptions({
     queryKey: ["users", "positions", userID],
@@ -206,4 +272,53 @@ export async function updatePosition(
 
 export async function deletePosition(positionID: number) {
   await api.delete(`/positions/${positionID}`)
+}
+
+export async function createTemplate(input: CreateTemplateInput) {
+  const res = await api.post<TemplateResponse>("/templates", input)
+  return res.data.template
+}
+
+export async function updateTemplate(
+  templateID: number,
+  input: UpdateTemplateInput,
+) {
+  const res = await api.put<TemplateResponse>(`/templates/${templateID}`, input)
+  return res.data.template
+}
+
+export async function deleteTemplate(templateID: number) {
+  await api.delete(`/templates/${templateID}`)
+}
+
+export async function cloneTemplate(templateID: number) {
+  const res = await api.post<TemplateResponse>(`/templates/${templateID}/clone`)
+  return res.data.template
+}
+
+export async function createTemplateShift(
+  templateID: number,
+  input: CreateTemplateShiftInput,
+) {
+  const res = await api.post<TemplateShiftResponse>(
+    `/templates/${templateID}/shifts`,
+    input,
+  )
+  return res.data.shift
+}
+
+export async function updateTemplateShift(
+  templateID: number,
+  shiftID: number,
+  input: UpdateTemplateShiftInput,
+) {
+  const res = await api.patch<TemplateShiftResponse>(
+    `/templates/${templateID}/shifts/${shiftID}`,
+    input,
+  )
+  return res.data.shift
+}
+
+export async function deleteTemplateShift(templateID: number, shiftID: number) {
+  await api.delete(`/templates/${templateID}/shifts/${shiftID}`)
 }

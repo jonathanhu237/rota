@@ -299,6 +299,21 @@ func TestPositionServiceDeletePosition(t *testing.T) {
 		}
 	})
 
+	t.Run("position in use", func(t *testing.T) {
+		t.Parallel()
+
+		service := NewPositionService(&positionRepositoryMock{
+			deleteFunc: func(ctx context.Context, id int64) error {
+				return repository.ErrPositionInUse
+			},
+		})
+
+		err := service.DeletePosition(context.Background(), 4)
+		if !errors.Is(err, ErrPositionInUse) {
+			t.Fatalf("expected ErrPositionInUse, got %v", err)
+		}
+	})
+
 	t.Run("invalid ID", func(t *testing.T) {
 		t.Parallel()
 

@@ -37,6 +37,7 @@
     "dashboard": "Dashboard",
     "users": "Users",
     "positions": "Positions",
+    "templates": "Templates",
     "logout": "Logout",
     "openNavigation": "Open navigation"
   },
@@ -191,7 +192,136 @@
       "FORBIDDEN": "Forbidden",
       "INVALID_REQUEST": "Invalid request",
       "INTERNAL_ERROR": "Internal server error",
+      "POSITION_IN_USE": "Position is used by a template shift",
       "POSITION_NOT_FOUND": "Position not found",
+      "UNAUTHORIZED": "Unauthorized"
+    }
+  },
+  "templates": {
+    "title": "Template Management",
+    "description": "Create and maintain reusable weekly shift blueprints.",
+    "createTemplate": "Create Template",
+    "name": "Name",
+    "descriptionLabel": "Description",
+    "empty": "No templates found.",
+    "locked": "Locked",
+    "unlocked": "Unlocked",
+    "pageSummary": "Showing {{start}}-{{end}} of {{total}} templates",
+    "table": {
+      "name": "Name",
+      "shiftCount": "Shift Count",
+      "locked": "Status",
+      "updatedAt": "Updated"
+    },
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {{page}} of {{totalPages}}"
+    },
+    "form": {
+      "createTitle": "Create template",
+      "createDescription": "Add a new reusable weekly template.",
+      "submitCreate": "Create Template",
+      "submittingCreate": "Creating...",
+      "submitEdit": "Save Changes",
+      "submittingEdit": "Saving..."
+    },
+    "detail": {
+      "description": "Update the template details and manage its weekly shifts.",
+      "loadErrorTitle": "Failed to load template",
+      "loadErrorDescription": "The template could not be loaded right now."
+    },
+    "actions": {
+      "clone": "Clone",
+      "delete": "Delete",
+      "addShift": "Add Shift",
+      "editShift": "Edit Shift",
+      "deleteShift": "Delete Shift"
+    },
+    "cloneDialog": {
+      "title": "Clone template",
+      "description": "Create an unlocked copy of {{name}}?",
+      "confirm": "Clone Template",
+      "submitting": "Cloning..."
+    },
+    "deleteDialog": {
+      "title": "Delete template",
+      "description": "Delete {{name}}? This action cannot be undone.",
+      "confirm": "Delete Template",
+      "submitting": "Deleting..."
+    },
+    "deleteShiftDialog": {
+      "title": "Delete shift",
+      "description": "Delete {{summary}}? This action cannot be undone.",
+      "summary": "{{weekday}} · {{positionName}} · {{startTime}}-{{endTime}} · {{headcount}} staff needed",
+      "confirm": "Delete Shift",
+      "submitting": "Deleting..."
+    },
+    "shiftsTitle": "Weekly Shifts",
+    "shiftsDescription": "Manage the template's shifts grouped by weekday.",
+    "positionsLoadError": "Failed to load positions for the shift editor.",
+    "noPositions": "Create positions before adding template shifts.",
+    "noShiftsForWeekday": "No shifts scheduled for this weekday yet.",
+    "unknownPosition": "Unknown position",
+    "lockedBanner": "This template is locked and cannot be edited or deleted. Clone it to make changes.",
+    "shift": {
+      "weekday": "Weekday",
+      "startTime": "Start Time",
+      "endTime": "End Time",
+      "position": "Position",
+      "requiredHeadcount": "Required Headcount",
+      "summary": "{{startTime}}-{{endTime}} · {{headcount}} staff needed"
+    },
+    "shiftDialog": {
+      "createTitle": "Add shift",
+      "createDescription": "Add a weekly shift to this template.",
+      "editTitle": "Edit shift",
+      "editDescription": "Update the selected weekly shift.",
+      "submitCreate": "Create Shift",
+      "submitEdit": "Save Shift",
+      "submittingCreate": "Creating...",
+      "submittingEdit": "Saving...",
+      "selectPosition": "Select a position"
+    },
+    "weekday": {
+      "mon": "Monday",
+      "tue": "Tuesday",
+      "wed": "Wednesday",
+      "thu": "Thursday",
+      "fri": "Friday",
+      "sat": "Saturday",
+      "sun": "Sunday"
+    },
+    "validation": {
+      "nameRequired": "Name is required",
+      "nameTooLong": "Name must be 100 characters or fewer",
+      "descriptionTooLong": "Description must be 500 characters or fewer",
+      "weekdayRequired": "Weekday is required",
+      "invalidWeekday": "Weekday must be between Monday and Sunday",
+      "invalidShiftTime": "End time must be after start time",
+      "positionRequired": "Position is required",
+      "invalidHeadcount": "Required headcount must be at least 1"
+    },
+    "success": {
+      "created": "Template created successfully.",
+      "updated": "Template updated successfully.",
+      "deleted": "Template deleted successfully.",
+      "cloned": "Template cloned successfully.",
+      "shiftCreated": "Shift created successfully.",
+      "shiftUpdated": "Shift updated successfully.",
+      "shiftDeleted": "Shift deleted successfully."
+    },
+    "errors": {
+      "FORBIDDEN": "Forbidden",
+      "INVALID_HEADCOUNT": "Required headcount must be positive",
+      "INVALID_REQUEST": "Invalid request",
+      "INVALID_SHIFT_TIME": "End time must be after start time",
+      "INVALID_WEEKDAY": "Weekday must be between Monday and Sunday",
+      "INTERNAL_ERROR": "Internal server error",
+      "POSITION_NOT_FOUND": "Position not found",
+      "TEMPLATE_LOCKED": "Template is locked",
+      "TEMPLATE_NOT_FOUND": "Template not found",
+      "TEMPLATE_SHIFT_NOT_FOUND": "Template shift not found",
       "UNAUTHORIZED": "Unauthorized"
     }
   }
