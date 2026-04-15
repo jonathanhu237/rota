@@ -14,8 +14,8 @@ type ToastVariant = "default" | "destructive"
 
 type Toast = {
   id: number
-  title?: string
-  description: string
+  title?: ReactNode
+  description: ReactNode
   variant: ToastVariant
 }
 

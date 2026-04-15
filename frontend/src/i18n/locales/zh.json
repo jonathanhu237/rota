@@ -5,6 +5,7 @@
     "admin": "管理员",
     "disabled": "禁用",
     "employee": "员工",
+    "notAvailable": "暂无",
     "refreshing": "刷新中...",
     "languages": {
       "en": "英文",
@@ -35,9 +36,11 @@
     "appDescription": "排班系统",
     "navigation": "导航",
     "dashboard": "仪表盘",
+    "availability": "可用性",
     "users": "用户",
     "positions": "岗位",
     "templates": "模板",
+    "publications": "发布",
     "logout": "退出登录",
     "openNavigation": "打开导航"
   },
@@ -320,6 +323,135 @@
       "POSITION_NOT_FOUND": "岗位不存在",
       "TEMPLATE_LOCKED": "模板已锁定",
       "TEMPLATE_NOT_FOUND": "模板不存在",
+      "TEMPLATE_SHIFT_NOT_FOUND": "模板班次不存在",
+      "UNAUTHORIZED": "未授权"
+    }
+  },
+  "publications": {
+    "title": "发布管理",
+    "description": "基于模板创建可提交可用性的时间窗口，并跟踪其状态。",
+    "createPublication": "创建发布",
+    "name": "名称",
+    "submissionStartAt": "开始收集时间",
+    "submissionEndAt": "结束收集时间",
+    "plannedActiveFrom": "计划生效时间",
+    "empty": "暂无发布。",
+    "pageSummary": "显示第 {{start}}-{{end}} 条，共 {{total}} 条发布",
+    "table": {
+      "name": "名称",
+      "template": "模板",
+      "state": "状态",
+      "submissionWindow": "提交窗口",
+      "plannedActiveFrom": "计划生效时间",
+      "createdAt": "创建时间"
+    },
+    "pagination": {
+      "previous": "上一页",
+      "next": "下一页",
+      "page": "第 {{page}} / {{totalPages}} 页"
+    },
+    "state": {
+      "draft": "草稿",
+      "collecting": "收集中",
+      "assigning": "待分配",
+      "active": "已生效",
+      "ended": "已结束"
+    },
+    "form": {
+      "createTitle": "创建发布",
+      "createDescription": "选择一个模板，并设置提交窗口。",
+      "template": "模板",
+      "selectTemplate": "请选择模板",
+      "noTemplates": "请先创建模板，再发布班次。",
+      "submitCreate": "创建发布",
+      "submittingCreate": "创建中..."
+    },
+    "detail": {
+      "description": "查看发布元数据及其当前生效状态。",
+      "loadErrorTitle": "加载发布失败",
+      "loadErrorDescription": "当前无法加载该发布。",
+      "template": "模板",
+      "state": "状态",
+      "submissionStartAt": "开始收集时间",
+      "submissionEndAt": "结束收集时间",
+      "plannedActiveFrom": "计划生效时间",
+      "activatedAt": "生效时间",
+      "endedAt": "结束时间",
+      "createdAt": "创建时间",
+      "updatedAt": "更新时间",
+      "stateDescription": {
+        "draft": "将在 {{time}} 开放提交。",
+        "collecting": "可提交时间截止到 {{time}}。",
+        "assigning": "提交已关闭，排班分配将在 PR 4 实现。",
+        "active": "该发布已于 {{time}} 生效。",
+        "ended": "该发布已于 {{time}} 结束。"
+      }
+    },
+    "actions": {
+      "delete": "删除发布",
+      "viewExisting": "查看当前发布"
+    },
+    "deleteDialog": {
+      "title": "删除发布",
+      "description": "确认删除 {{name}}？此操作无法撤销。",
+      "confirm": "确认删除发布",
+      "submitting": "删除中..."
+    },
+    "validation": {
+      "templateRequired": "请选择模板",
+      "nameRequired": "请输入名称",
+      "nameTooLong": "名称不能超过 100 个字符",
+      "submissionStartRequired": "请选择开始收集时间",
+      "submissionEndRequired": "请选择结束收集时间",
+      "plannedActiveFromRequired": "请选择计划生效时间",
+      "invalidWindow": "开始收集时间必须早于结束收集时间，且结束收集时间必须早于或等于计划生效时间"
+    },
+    "success": {
+      "created": "发布创建成功。",
+      "deleted": "发布删除成功。"
+    },
+    "errors": {
+      "FORBIDDEN": "无权限访问",
+      "INVALID_PUBLICATION_WINDOW": "发布时间窗口顺序不正确",
+      "INVALID_REQUEST": "请求无效",
+      "INTERNAL_ERROR": "服务器内部错误",
+      "PUBLICATION_ALREADY_EXISTS": "当前已经存在一个未结束的发布。",
+      "PUBLICATION_NOT_COLLECTING": "当前发布不在可提交可用性的阶段。",
+      "PUBLICATION_NOT_DELETABLE": "只有草稿状态的发布可以删除。",
+      "PUBLICATION_NOT_FOUND": "发布不存在",
+      "TEMPLATE_NOT_FOUND": "模板不存在",
+      "TEMPLATE_SHIFT_NOT_FOUND": "模板班次不存在",
+      "NOT_QUALIFIED": "您没有该班次的任职资格。",
+      "UNAUTHORIZED": "未授权"
+    }
+  },
+  "availability": {
+    "title": "可用性",
+    "description": "查看当前发布并勾选您可以值班的班次。",
+    "empty": "当前没有可用的发布。",
+    "currentPublication": "发布",
+    "template": "模板",
+    "gridTitle": "我的班次可用性",
+    "gridDescription": "请勾选在本次收集窗口中您可以值班的所有班次。",
+    "noShiftsForWeekday": "这一天没有可选班次。",
+    "noQualifiedShifts": "您在这个发布中没有符合资格的班次。",
+    "stateMessage": {
+      "draft": "将在 {{time}} 开放提交。",
+      "collecting": "提交截止到 {{time}}，请在此之前更新您的可用性。",
+      "assigning": "提交已关闭，管理员正在分配班次。",
+      "active": "每周排班视图将在 PR 4 提供，当前不能再修改可用性。"
+    },
+    "shift": {
+      "timeRange": "{{startTime}}-{{endTime}}",
+      "summary": "岗位 #{{positionId}} · 需要 {{headcount}} 人"
+    },
+    "errors": {
+      "FORBIDDEN": "无权限访问",
+      "INVALID_REQUEST": "请求无效",
+      "INTERNAL_ERROR": "服务器内部错误",
+      "NOT_QUALIFIED": "您没有该班次的任职资格。",
+      "PUBLICATION_NOT_COLLECTING": "只有在提交开放期间才能修改可用性。",
+      "PUBLICATION_NOT_FOUND": "发布不存在",
       "TEMPLATE_SHIFT_NOT_FOUND": "模板班次不存在",
       "UNAUTHORIZED": "未授权"
     }

@@ -45,6 +45,7 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	positionRepo := repository.NewPositionRepository(db)
 	templateRepo := repository.NewTemplateRepository(db)
+	publicationRepo := repository.NewPublicationRepository(db)
 	userPositionRepo := repository.NewUserPositionRepository(db)
 	if err := service.EnsureBootstrapAdmin(ctx, service.BootstrapAdminInput{
 		Email:    cfg.BootstrapAdminEmail,
@@ -81,6 +82,7 @@ func main() {
 	userService := service.NewUserService(userRepo, sessionStore)
 	positionService := service.NewPositionService(positionRepo)
 	templateService := service.NewTemplateService(templateRepo, positionRepo)
+	publicationService := service.NewPublicationService(publicationRepo, nil)
 	userPositionService := service.NewUserPositionService(userPositionRepo)
 
 	// Initialize handlers
@@ -89,6 +91,7 @@ func main() {
 	userHandler := handler.NewUserHandler(userService)
 	positionHandler := handler.NewPositionHandler(positionService)
 	templateHandler := handler.NewTemplateHandler(templateService)
+	publicationHandler := handler.NewPublicationHandler(publicationService)
 	userPositionHandler := handler.NewUserPositionHandler(userPositionService)
 
 	// Register routes
@@ -119,6 +122,15 @@ func main() {
 	mux.HandleFunc("POST /templates/{id}/shifts", authHandler.RequireAdmin(templateHandler.CreateShift))
 	mux.HandleFunc("PATCH /templates/{id}/shifts/{shift_id}", authHandler.RequireAdmin(templateHandler.UpdateShift))
 	mux.HandleFunc("DELETE /templates/{id}/shifts/{shift_id}", authHandler.RequireAdmin(templateHandler.DeleteShift))
+	mux.HandleFunc("GET /publications", authHandler.RequireAdmin(publicationHandler.List))
+	mux.HandleFunc("POST /publications", authHandler.RequireAdmin(publicationHandler.Create))
+	mux.HandleFunc("GET /publications/{id}", authHandler.RequireAdmin(publicationHandler.GetByID))
+	mux.HandleFunc("DELETE /publications/{id}", authHandler.RequireAdmin(publicationHandler.Delete))
+	mux.HandleFunc("GET /publications/current", authHandler.RequireAuth(publicationHandler.GetCurrent))
+	mux.HandleFunc("GET /publications/{id}/submissions/me", authHandler.RequireAuth(publicationHandler.ListMySubmissionShiftIDs))
+	mux.HandleFunc("POST /publications/{id}/submissions", authHandler.RequireAuth(publicationHandler.CreateSubmission))
+	mux.HandleFunc("DELETE /publications/{id}/submissions/{shift_id}", authHandler.RequireAuth(publicationHandler.DeleteSubmission))
+	mux.HandleFunc("GET /publications/{id}/shifts/me", authHandler.RequireAuth(publicationHandler.ListMyQualifiedShifts))
 
 	// Start server
 	addr := fmt.Sprintf(":%d", cfg.ServerPort)

@@ -12,10 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedAvailabilityRouteImport } from './routes/_authenticated/availability'
 import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
 import { Route as AuthenticatedTemplatesIndexRouteImport } from './routes/_authenticated/templates/index'
+import { Route as AuthenticatedPublicationsIndexRouteImport } from './routes/_authenticated/publications/index'
 import { Route as AuthenticatedPositionsIndexRouteImport } from './routes/_authenticated/positions/index'
 import { Route as AuthenticatedTemplatesTemplateIdRouteImport } from './routes/_authenticated/templates/$templateId'
+import { Route as AuthenticatedPublicationsPublicationIdRouteImport } from './routes/_authenticated/publications/$publicationId'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -31,6 +34,12 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedAvailabilityRoute =
+  AuthenticatedAvailabilityRouteImport.update({
+    id: '/availability',
+    path: '/availability',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedUsersIndexRoute = AuthenticatedUsersIndexRouteImport.update({
   id: '/users/',
   path: '/users/',
@@ -40,6 +49,12 @@ const AuthenticatedTemplatesIndexRoute =
   AuthenticatedTemplatesIndexRouteImport.update({
     id: '/templates/',
     path: '/templates/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedPublicationsIndexRoute =
+  AuthenticatedPublicationsIndexRouteImport.update({
+    id: '/publications/',
+    path: '/publications/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedPositionsIndexRoute =
@@ -54,20 +69,32 @@ const AuthenticatedTemplatesTemplateIdRoute =
     path: '/templates/$templateId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedPublicationsPublicationIdRoute =
+  AuthenticatedPublicationsPublicationIdRouteImport.update({
+    id: '/publications/$publicationId',
+    path: '/publications/$publicationId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/login': typeof LoginRoute
+  '/availability': typeof AuthenticatedAvailabilityRoute
+  '/publications/$publicationId': typeof AuthenticatedPublicationsPublicationIdRoute
   '/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRoute
   '/positions/': typeof AuthenticatedPositionsIndexRoute
+  '/publications/': typeof AuthenticatedPublicationsIndexRoute
   '/templates/': typeof AuthenticatedTemplatesIndexRoute
   '/users/': typeof AuthenticatedUsersIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/availability': typeof AuthenticatedAvailabilityRoute
   '/': typeof AuthenticatedIndexRoute
+  '/publications/$publicationId': typeof AuthenticatedPublicationsPublicationIdRoute
   '/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRoute
   '/positions': typeof AuthenticatedPositionsIndexRoute
+  '/publications': typeof AuthenticatedPublicationsIndexRoute
   '/templates': typeof AuthenticatedTemplatesIndexRoute
   '/users': typeof AuthenticatedUsersIndexRoute
 }
@@ -75,9 +102,12 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/login': typeof LoginRoute
+  '/_authenticated/availability': typeof AuthenticatedAvailabilityRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/publications/$publicationId': typeof AuthenticatedPublicationsPublicationIdRoute
   '/_authenticated/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRoute
   '/_authenticated/positions/': typeof AuthenticatedPositionsIndexRoute
+  '/_authenticated/publications/': typeof AuthenticatedPublicationsIndexRoute
   '/_authenticated/templates/': typeof AuthenticatedTemplatesIndexRoute
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
 }
@@ -86,25 +116,34 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/availability'
+    | '/publications/$publicationId'
     | '/templates/$templateId'
     | '/positions/'
+    | '/publications/'
     | '/templates/'
     | '/users/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/availability'
     | '/'
+    | '/publications/$publicationId'
     | '/templates/$templateId'
     | '/positions'
+    | '/publications'
     | '/templates'
     | '/users'
   id:
     | '__root__'
     | '/_authenticated'
     | '/login'
+    | '/_authenticated/availability'
     | '/_authenticated/'
+    | '/_authenticated/publications/$publicationId'
     | '/_authenticated/templates/$templateId'
     | '/_authenticated/positions/'
+    | '/_authenticated/publications/'
     | '/_authenticated/templates/'
     | '/_authenticated/users/'
   fileRoutesById: FileRoutesById
@@ -137,6 +176,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/availability': {
+      id: '/_authenticated/availability'
+      path: '/availability'
+      fullPath: '/availability'
+      preLoaderRoute: typeof AuthenticatedAvailabilityRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/users/': {
       id: '/_authenticated/users/'
       path: '/users'
@@ -149,6 +195,13 @@ declare module '@tanstack/react-router' {
       path: '/templates'
       fullPath: '/templates/'
       preLoaderRoute: typeof AuthenticatedTemplatesIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/publications/': {
+      id: '/_authenticated/publications/'
+      path: '/publications'
+      fullPath: '/publications/'
+      preLoaderRoute: typeof AuthenticatedPublicationsIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/positions/': {
@@ -165,21 +218,35 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTemplatesTemplateIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/publications/$publicationId': {
+      id: '/_authenticated/publications/$publicationId'
+      path: '/publications/$publicationId'
+      fullPath: '/publications/$publicationId'
+      preLoaderRoute: typeof AuthenticatedPublicationsPublicationIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
   }
 }
 
 interface AuthenticatedRouteChildren {
+  AuthenticatedAvailabilityRoute: typeof AuthenticatedAvailabilityRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedPublicationsPublicationIdRoute: typeof AuthenticatedPublicationsPublicationIdRoute
   AuthenticatedTemplatesTemplateIdRoute: typeof AuthenticatedTemplatesTemplateIdRoute
   AuthenticatedPositionsIndexRoute: typeof AuthenticatedPositionsIndexRoute
+  AuthenticatedPublicationsIndexRoute: typeof AuthenticatedPublicationsIndexRoute
   AuthenticatedTemplatesIndexRoute: typeof AuthenticatedTemplatesIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedAvailabilityRoute: AuthenticatedAvailabilityRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedPublicationsPublicationIdRoute:
+    AuthenticatedPublicationsPublicationIdRoute,
   AuthenticatedTemplatesTemplateIdRoute: AuthenticatedTemplatesTemplateIdRoute,
   AuthenticatedPositionsIndexRoute: AuthenticatedPositionsIndexRoute,
+  AuthenticatedPublicationsIndexRoute: AuthenticatedPublicationsIndexRoute,
   AuthenticatedTemplatesIndexRoute: AuthenticatedTemplatesIndexRoute,
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
 }

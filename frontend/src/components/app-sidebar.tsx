@@ -2,8 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router"
 import {
   Briefcase,
+  CalendarCheck,
   CalendarDays,
   ChevronsUpDown,
+  FileText,
   Globe,
   Home,
   LogOut,
@@ -62,6 +64,11 @@ export function AppSidebar() {
       url: "/",
       icon: Home,
     },
+    {
+      title: t("sidebar.availability"),
+      url: "/availability",
+      icon: CalendarCheck,
+    },
   ]
 
   if (user?.is_admin) {
@@ -79,6 +86,11 @@ export function AppSidebar() {
       title: t("sidebar.templates"),
       url: "/templates",
       icon: CalendarDays,
+    })
+    navItems.push({
+      title: t("sidebar.publications"),
+      url: "/publications",
+      icon: FileText,
     })
   }
 

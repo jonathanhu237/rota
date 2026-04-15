@@ -49,3 +49,25 @@ export type Template = {
 export type TemplateDetail = Template & {
   shifts: TemplateShift[]
 }
+
+export type PublicationState =
+  | "DRAFT"
+  | "COLLECTING"
+  | "ASSIGNING"
+  | "ACTIVE"
+  | "ENDED"
+
+export type Publication = {
+  id: number
+  template_id: number
+  template_name: string
+  name: string
+  state: PublicationState
+  submission_start_at: string
+  submission_end_at: string
+  planned_active_from: string
+  activated_at: string | null
+  ended_at: string | null
+  created_at: string
+  updated_at: string
+}

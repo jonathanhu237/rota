@@ -5,6 +5,7 @@ import api from "./axios"
 import type {
   Pagination,
   Position,
+  Publication,
   Template,
   TemplateDetail,
   TemplateShift,
@@ -45,6 +46,23 @@ export type TemplateResponse = {
 
 export type TemplateShiftResponse = {
   shift: TemplateShift
+}
+
+export type PublicationsResponse = {
+  publications: Publication[]
+  pagination: Pagination
+}
+
+export type PublicationResponse = {
+  publication: Publication | null
+}
+
+export type PublicationShiftsResponse = {
+  shifts: TemplateShift[]
+}
+
+export type MyPublicationSubmissionsResponse = {
+  shift_ids: number[]
 }
 
 export type CreateUserInput = {
@@ -104,6 +122,14 @@ export type CreateTemplateShiftInput = {
 }
 
 export type UpdateTemplateShiftInput = CreateTemplateShiftInput
+
+export type CreatePublicationInput = {
+  template_id: number
+  name: string
+  submission_start_at: string
+  submission_end_at: string
+  planned_active_from: string
+}
 
 export const currentUserQueryOptions = queryOptions({
   queryKey: ["auth", "me"],
@@ -209,6 +235,20 @@ export const templateQueryOptions = (templateID: number) =>
     enabled: templateID > 0,
   })
 
+export const allTemplatesQueryOptions = () =>
+  queryOptions({
+    queryKey: ["templates", "all"],
+    queryFn: async () => {
+      const res = await api.get<TemplatesResponse>("/templates", {
+        params: {
+          page: 1,
+          page_size: 100,
+        },
+      })
+      return res.data.templates
+    },
+  })
+
 export const userPositionsQueryOptions = (userID: number) =>
   queryOptions({
     queryKey: ["users", "positions", userID],
@@ -217,6 +257,63 @@ export const userPositionsQueryOptions = (userID: number) =>
       return res.data.positions
     },
     enabled: userID > 0,
+  })
+
+export const publicationsQueryOptions = (page: number, pageSize: number) =>
+  queryOptions({
+    queryKey: ["publications", "list", page, pageSize],
+    queryFn: async () => {
+      const res = await api.get<PublicationsResponse>("/publications", {
+        params: {
+          page,
+          page_size: pageSize,
+        },
+      })
+      return res.data
+    },
+    placeholderData: keepPreviousData,
+  })
+
+export const publicationQueryOptions = (publicationID: number) =>
+  queryOptions({
+    queryKey: ["publications", "detail", publicationID],
+    queryFn: async () => {
+      const res = await api.get<PublicationResponse>(`/publications/${publicationID}`)
+      return res.data.publication
+    },
+    enabled: publicationID > 0,
+  })
+
+export const currentPublicationQueryOptions = queryOptions({
+  queryKey: ["publications", "current"],
+  queryFn: async () => {
+    const res = await api.get<PublicationResponse>("/publications/current")
+    return res.data.publication
+  },
+})
+
+export const publicationShiftsQueryOptions = (publicationID: number) =>
+  queryOptions({
+    queryKey: ["publications", "current", "shifts", publicationID],
+    queryFn: async () => {
+      const res = await api.get<PublicationShiftsResponse>(
+        `/publications/${publicationID}/shifts/me`,
+      )
+      return res.data.shifts
+    },
+    enabled: publicationID > 0,
+  })
+
+export const myPublicationSubmissionsQueryOptions = (publicationID: number) =>
+  queryOptions({
+    queryKey: ["publications", "current", "submissions", publicationID],
+    queryFn: async () => {
+      const res = await api.get<MyPublicationSubmissionsResponse>(
+        `/publications/${publicationID}/submissions/me`,
+      )
+      return res.data.shift_ids
+    },
+    enabled: publicationID > 0,
   })
 
 export async function createUser(input: CreateUserInput) {
@@ -321,4 +418,29 @@ export async function updateTemplateShift(
 
 export async function deleteTemplateShift(templateID: number, shiftID: number) {
   await api.delete(`/templates/${templateID}/shifts/${shiftID}`)
+}
+
+export async function createPublication(input: CreatePublicationInput) {
+  const res = await api.post<PublicationResponse>("/publications", input)
+  return res.data.publication
+}
+
+export async function deletePublication(publicationID: number) {
+  await api.delete(`/publications/${publicationID}`)
+}
+
+export async function createAvailabilitySubmission(
+  publicationID: number,
+  shiftID: number,
+) {
+  await api.post(`/publications/${publicationID}/submissions`, {
+    template_shift_id: shiftID,
+  })
+}
+
+export async function deleteAvailabilitySubmission(
+  publicationID: number,
+  shiftID: number,
+) {
+  await api.delete(`/publications/${publicationID}/submissions/${shiftID}`)
 }

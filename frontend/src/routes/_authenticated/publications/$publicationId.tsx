@@ -1,0 +1,243 @@
+import { useEffect, useState, type ReactNode } from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Link, createFileRoute, redirect, useNavigate } from "@tanstack/react-router"
+import { Trash2 } from "lucide-react"
+import { useTranslation } from "react-i18next"
+
+import { DeletePublicationDialog } from "@/components/publications/delete-publication-dialog"
+import { PublicationStateBadge } from "@/components/publications/publication-state-badge"
+import { Button } from "@/components/ui/button"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import { useToast } from "@/components/ui/toast"
+import { getTranslatedApiError } from "@/lib/api-error"
+import {
+  currentUserQueryOptions,
+  deletePublication,
+  publicationQueryOptions,
+} from "@/lib/queries"
+
+export const Route = createFileRoute("/_authenticated/publications/$publicationId")({
+  beforeLoad: async ({ context }) => {
+    const user = await context.queryClient.ensureQueryData(currentUserQueryOptions)
+    if (!user.is_admin) {
+      throw redirect({ to: "/" })
+    }
+  },
+  component: PublicationDetailPage,
+})
+
+function PublicationDetailPage() {
+  const { publicationId } = Route.useParams()
+  const numericPublicationID = Number(publicationId)
+
+  const { t, i18n } = useTranslation()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+
+  const { data: currentUser } = useQuery(currentUserQueryOptions)
+  const publicationQuery = useQuery(publicationQueryOptions(numericPublicationID))
+  const publication = publicationQuery.data
+
+  useEffect(() => {
+    if (currentUser && !currentUser.is_admin) {
+      navigate({ to: "/", replace: true })
+    }
+  }, [currentUser, navigate])
+
+  const formatter = new Intl.DateTimeFormat(i18n.resolvedLanguage, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  })
+
+  const formatTimestamp = (value: string | null) =>
+    value ? formatter.format(new Date(value)) : t("common.notAvailable")
+
+  const deletePublicationMutation = useMutation({
+    mutationFn: () => deletePublication(numericPublicationID),
+    onSuccess: async () => {
+      setIsDeleteDialogOpen(false)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["publications", "list"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["publications", "detail", numericPublicationID],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["publications", "current"] }),
+      ])
+      toast({
+        variant: "default",
+        description: t("publications.success.deleted"),
+      })
+      navigate({ to: "/publications" })
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        description: getTranslatedApiError(
+          t,
+          error,
+          "publications.errors",
+          "publications.errors.INTERNAL_ERROR",
+        ),
+      })
+    },
+  })
+
+  const getStateDescription = () => {
+    if (!publication) {
+      return ""
+    }
+
+    switch (publication.state) {
+      case "DRAFT":
+        return t("publications.detail.stateDescription.draft", {
+          time: formatTimestamp(publication.submission_start_at),
+        })
+      case "COLLECTING":
+        return t("publications.detail.stateDescription.collecting", {
+          time: formatTimestamp(publication.submission_end_at),
+        })
+      case "ASSIGNING":
+        return t("publications.detail.stateDescription.assigning")
+      case "ACTIVE":
+        return t("publications.detail.stateDescription.active", {
+          time: formatTimestamp(publication.activated_at),
+        })
+      case "ENDED":
+        return t("publications.detail.stateDescription.ended", {
+          time: formatTimestamp(publication.ended_at),
+        })
+    }
+  }
+
+  if (publicationQuery.isLoading) {
+    return (
+      <div className="grid gap-4">
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    )
+  }
+
+  if (publicationQuery.isError || !publication) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("publications.detail.loadErrorTitle")}</CardTitle>
+          <CardDescription>
+            {t("publications.detail.loadErrorDescription")}
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    )
+  }
+
+  return (
+    <>
+      <div className="grid gap-6">
+        <Card>
+          <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-1">
+              <CardTitle>{publication.name}</CardTitle>
+              <CardDescription>{t("publications.detail.description")}</CardDescription>
+            </div>
+            {publication.state === "DRAFT" && (
+              <Button
+                variant="destructive"
+                onClick={() => setIsDeleteDialogOpen(true)}
+              >
+                <Trash2 />
+                {t("publications.actions.delete")}
+              </Button>
+            )}
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <PublicationStateBadge state={publication.state} />
+              <span className="text-sm text-muted-foreground">
+                {getStateDescription()}
+              </span>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <MetadataItem
+                label={t("publications.detail.template")}
+                value={
+                  <Link
+                    className="font-medium text-foreground underline underline-offset-4"
+                    params={{ templateId: String(publication.template_id) }}
+                    to="/templates/$templateId"
+                  >
+                    {publication.template_name}
+                  </Link>
+                }
+              />
+              <MetadataItem
+                label={t("publications.detail.state")}
+                value={t(`publications.state.${publication.state.toLowerCase()}`)}
+              />
+              <MetadataItem
+                label={t("publications.detail.submissionStartAt")}
+                value={formatTimestamp(publication.submission_start_at)}
+              />
+              <MetadataItem
+                label={t("publications.detail.submissionEndAt")}
+                value={formatTimestamp(publication.submission_end_at)}
+              />
+              <MetadataItem
+                label={t("publications.detail.plannedActiveFrom")}
+                value={formatTimestamp(publication.planned_active_from)}
+              />
+              <MetadataItem
+                label={t("publications.detail.activatedAt")}
+                value={formatTimestamp(publication.activated_at)}
+              />
+              <MetadataItem
+                label={t("publications.detail.endedAt")}
+                value={formatTimestamp(publication.ended_at)}
+              />
+              <MetadataItem
+                label={t("publications.detail.createdAt")}
+                value={formatTimestamp(publication.created_at)}
+              />
+              <MetadataItem
+                label={t("publications.detail.updatedAt")}
+                value={formatTimestamp(publication.updated_at)}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+      <DeletePublicationDialog
+        open={isDeleteDialogOpen}
+        publication={publication}
+        isPending={deletePublicationMutation.isPending}
+        onConfirm={() => deletePublicationMutation.mutate()}
+        onOpenChange={setIsDeleteDialogOpen}
+      />
+    </>
+  )
+}
+
+function MetadataItem({
+  label,
+  value,
+}: {
+  label: string
+  value: ReactNode
+}) {
+  return (
+    <div className="grid gap-1 rounded-lg border p-3">
+      <div className="text-sm text-muted-foreground">{label}</div>
+      <div>{value}</div>
+    </div>
+  )
+}

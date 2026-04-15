@@ -5,6 +5,7 @@
     "admin": "Admin",
     "disabled": "Disabled",
     "employee": "Employee",
+    "notAvailable": "Not available",
     "refreshing": "Refreshing...",
     "languages": {
       "en": "English",
@@ -35,9 +36,11 @@
     "appDescription": "Scheduling System",
     "navigation": "Navigation",
     "dashboard": "Dashboard",
+    "availability": "Availability",
     "users": "Users",
     "positions": "Positions",
     "templates": "Templates",
+    "publications": "Publications",
     "logout": "Logout",
     "openNavigation": "Open navigation"
   },
@@ -321,6 +324,135 @@
       "POSITION_NOT_FOUND": "Position not found",
       "TEMPLATE_LOCKED": "Template is locked",
       "TEMPLATE_NOT_FOUND": "Template not found",
+      "TEMPLATE_SHIFT_NOT_FOUND": "Template shift not found",
+      "UNAUTHORIZED": "Unauthorized"
+    }
+  },
+  "publications": {
+    "title": "Publication Management",
+    "description": "Create submission windows from templates and track their lifecycle.",
+    "createPublication": "Create Publication",
+    "name": "Name",
+    "submissionStartAt": "Submission Start",
+    "submissionEndAt": "Submission End",
+    "plannedActiveFrom": "Planned Active From",
+    "empty": "No publications found.",
+    "pageSummary": "Showing {{start}}-{{end}} of {{total}} publications",
+    "table": {
+      "name": "Name",
+      "template": "Template",
+      "state": "State",
+      "submissionWindow": "Submission Window",
+      "plannedActiveFrom": "Planned Active From",
+      "createdAt": "Created"
+    },
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {{page}} of {{totalPages}}"
+    },
+    "state": {
+      "draft": "Draft",
+      "collecting": "Collecting",
+      "assigning": "Assigning",
+      "active": "Active",
+      "ended": "Ended"
+    },
+    "form": {
+      "createTitle": "Create publication",
+      "createDescription": "Choose a template and set the submission window.",
+      "template": "Template",
+      "selectTemplate": "Select a template",
+      "noTemplates": "Create a template before publishing shifts.",
+      "submitCreate": "Create Publication",
+      "submittingCreate": "Creating..."
+    },
+    "detail": {
+      "description": "Review the publication metadata and current effective state.",
+      "loadErrorTitle": "Failed to load publication",
+      "loadErrorDescription": "The publication could not be loaded right now.",
+      "template": "Template",
+      "state": "State",
+      "submissionStartAt": "Submission start",
+      "submissionEndAt": "Submission end",
+      "plannedActiveFrom": "Planned active from",
+      "activatedAt": "Activated at",
+      "endedAt": "Ended at",
+      "createdAt": "Created at",
+      "updatedAt": "Updated at",
+      "stateDescription": {
+        "draft": "Submissions open at {{time}}.",
+        "collecting": "Submissions remain open until {{time}}.",
+        "assigning": "Submissions are closed and assignment is not implemented yet.",
+        "active": "This publication became active at {{time}}.",
+        "ended": "This publication ended at {{time}}."
+      }
+    },
+    "actions": {
+      "delete": "Delete Publication",
+      "viewExisting": "View it"
+    },
+    "deleteDialog": {
+      "title": "Delete publication",
+      "description": "Delete {{name}}? This action cannot be undone.",
+      "confirm": "Delete Publication",
+      "submitting": "Deleting..."
+    },
+    "validation": {
+      "templateRequired": "Template is required",
+      "nameRequired": "Name is required",
+      "nameTooLong": "Name must be 100 characters or fewer",
+      "submissionStartRequired": "Submission start is required",
+      "submissionEndRequired": "Submission end is required",
+      "plannedActiveFromRequired": "Planned active from is required",
+      "invalidWindow": "Submission start must be before submission end, and submission end must be on or before the planned active time"
+    },
+    "success": {
+      "created": "Publication created successfully.",
+      "deleted": "Publication deleted successfully."
+    },
+    "errors": {
+      "FORBIDDEN": "Forbidden",
+      "INVALID_PUBLICATION_WINDOW": "The publication timestamps are not in chronological order",
+      "INVALID_REQUEST": "Invalid request",
+      "INTERNAL_ERROR": "Internal server error",
+      "PUBLICATION_ALREADY_EXISTS": "A non-ended publication already exists.",
+      "PUBLICATION_NOT_COLLECTING": "This publication is not collecting availability right now.",
+      "PUBLICATION_NOT_DELETABLE": "Only draft publications can be deleted.",
+      "PUBLICATION_NOT_FOUND": "Publication not found",
+      "TEMPLATE_NOT_FOUND": "Template not found",
+      "TEMPLATE_SHIFT_NOT_FOUND": "Template shift not found",
+      "NOT_QUALIFIED": "You are not qualified for this shift.",
+      "UNAUTHORIZED": "Unauthorized"
+    }
+  },
+  "availability": {
+    "title": "Availability",
+    "description": "See the current publication and mark the shifts you can work.",
+    "empty": "There is no current publication right now.",
+    "currentPublication": "Publication",
+    "template": "Template",
+    "gridTitle": "Your Shift Availability",
+    "gridDescription": "Check every shift you are available to work during this collection window.",
+    "noShiftsForWeekday": "No shifts are available for this weekday.",
+    "noQualifiedShifts": "You do not have any qualified shifts in this publication.",
+    "stateMessage": {
+      "draft": "Submissions open at {{time}}.",
+      "collecting": "Submissions close at {{time}}. Update your availability before then.",
+      "assigning": "Submissions are closed. The admin is assigning shifts now.",
+      "active": "Weekly roster views arrive in PR 4. Availability changes are closed."
+    },
+    "shift": {
+      "timeRange": "{{startTime}}-{{endTime}}",
+      "summary": "Position #{{positionId}} · {{headcount}} staff needed"
+    },
+    "errors": {
+      "FORBIDDEN": "Forbidden",
+      "INVALID_REQUEST": "Invalid request",
+      "INTERNAL_ERROR": "Internal server error",
+      "NOT_QUALIFIED": "You are not qualified for this shift.",
+      "PUBLICATION_NOT_COLLECTING": "Availability can only be changed while submissions are open.",
+      "PUBLICATION_NOT_FOUND": "Publication not found",
       "TEMPLATE_SHIFT_NOT_FOUND": "Template shift not found",
       "UNAUTHORIZED": "Unauthorized"
     }
