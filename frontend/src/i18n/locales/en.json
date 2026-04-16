@@ -36,6 +36,7 @@
     "appDescription": "Scheduling System",
     "navigation": "Navigation",
     "dashboard": "Dashboard",
+    "roster": "Roster",
     "availability": "Availability",
     "users": "Users",
     "positions": "Positions",
@@ -344,7 +345,8 @@
       "state": "State",
       "submissionWindow": "Submission Window",
       "plannedActiveFrom": "Planned Active From",
-      "createdAt": "Created"
+      "createdAt": "Created",
+      "actions": "Actions"
     },
     "pagination": {
       "previous": "Previous",
@@ -383,14 +385,29 @@
       "stateDescription": {
         "draft": "Submissions open at {{time}}.",
         "collecting": "Submissions remain open until {{time}}.",
-        "assigning": "Submissions are closed and assignment is not implemented yet.",
+        "assigning": "Submissions are closed. Review candidates and assign the weekly roster.",
         "active": "This publication became active at {{time}}.",
         "ended": "This publication ended at {{time}}."
       }
     },
     "actions": {
       "delete": "Delete Publication",
+      "activate": "Activate",
+      "end": "End",
+      "openAssignmentBoard": "Open Assignment Board",
       "viewExisting": "View it"
+    },
+    "activateDialog": {
+      "title": "Activate publication",
+      "description": "Activate {{name}} now? Assignment changes will be locked after activation.",
+      "confirm": "Activate Publication",
+      "submitting": "Activating..."
+    },
+    "endDialog": {
+      "title": "End publication",
+      "description": "End {{name}} now? It will disappear from the current roster view.",
+      "confirm": "End Publication",
+      "submitting": "Ending..."
     },
     "deleteDialog": {
       "title": "Delete publication",
@@ -409,7 +426,9 @@
     },
     "success": {
       "created": "Publication created successfully.",
-      "deleted": "Publication deleted successfully."
+      "deleted": "Publication deleted successfully.",
+      "activated": "Publication activated successfully.",
+      "ended": "Publication ended successfully."
     },
     "errors": {
       "FORBIDDEN": "Forbidden",
@@ -417,14 +436,44 @@
       "INVALID_REQUEST": "Invalid request",
       "INTERNAL_ERROR": "Internal server error",
       "PUBLICATION_ALREADY_EXISTS": "A non-ended publication already exists.",
+      "PUBLICATION_NOT_ACTIVE": "This publication is not active right now.",
+      "PUBLICATION_NOT_ASSIGNING": "This publication is not accepting assignment changes right now.",
       "PUBLICATION_NOT_COLLECTING": "This publication is not collecting availability right now.",
       "PUBLICATION_NOT_DELETABLE": "Only draft publications can be deleted.",
       "PUBLICATION_NOT_FOUND": "Publication not found",
       "TEMPLATE_NOT_FOUND": "Template not found",
       "TEMPLATE_SHIFT_NOT_FOUND": "Template shift not found",
       "NOT_QUALIFIED": "You are not qualified for this shift.",
+      "USER_DISABLED": "This user is disabled.",
+      "USER_NOT_FOUND": "User not found",
       "UNAUTHORIZED": "Unauthorized"
     }
+  },
+  "assignments": {
+    "title": "Assignment Board",
+    "descriptionEditable": "Click candidates to assign them to {{name}}. Click assigned employees to remove them.",
+    "descriptionReadOnly": "{{name}} is already active. The board is read-only.",
+    "backToPublication": "Back to publication",
+    "loadError": "The assignment board could not be loaded right now.",
+    "emptyWeekday": "No shifts are scheduled for this weekday.",
+    "shiftSummary": "{{startTime}}-{{endTime}}",
+    "headcount": "{{assigned}} / {{required}} assigned",
+    "understaffed": "Understaffed",
+    "candidates": "Candidates",
+    "assigned": "Assigned",
+    "emptyCandidates": "No candidates submitted availability for this shift.",
+    "emptyAssignments": "Nobody is assigned to this shift yet."
+  },
+  "roster": {
+    "title": "Weekly Roster",
+    "description": "See the currently active weekly roster.",
+    "descriptionWithPublication": "Showing the active weekly roster for {{name}}.",
+    "loadError": "The roster could not be loaded right now.",
+    "empty": "There is no active publication right now.",
+    "today": "Today",
+    "emptyWeekday": "No shifts are scheduled for this weekday.",
+    "emptyAssignments": "No employees are assigned to this shift yet.",
+    "shiftSummary": "{{startTime}}-{{endTime}} · {{required}} staff needed"
   },
   "availability": {
     "title": "Availability",
@@ -440,7 +489,7 @@
       "draft": "Submissions open at {{time}}.",
       "collecting": "Submissions close at {{time}}. Update your availability before then.",
       "assigning": "Submissions are closed. The admin is assigning shifts now.",
-      "active": "Weekly roster views arrive in PR 4. Availability changes are closed."
+      "active": "This publication is active. Availability changes are closed; check the roster view for assignments."
     },
     "shift": {
       "timeRange": "{{startTime}}-{{endTime}}",

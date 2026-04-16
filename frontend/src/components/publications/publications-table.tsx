@@ -1,6 +1,8 @@
 import { useTranslation } from "react-i18next"
 
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { getPublicationLifecycleAction } from "@/lib/publications"
 import type { Pagination, Publication } from "@/lib/types"
 
 import { PublicationStateBadge } from "./publication-state-badge"
@@ -11,6 +13,10 @@ type PublicationsTableProps = {
   isLoading: boolean
   isFetching: boolean
   onOpen: (publication: Publication) => void
+  onLifecycleAction: (
+    publication: Publication,
+    action: "activate" | "end",
+  ) => void
   onPageChange: (page: number) => void
 }
 
@@ -20,6 +26,7 @@ export function PublicationsTable({
   isLoading,
   isFetching,
   onOpen,
+  onLifecycleAction,
   onPageChange,
 }: PublicationsTableProps) {
   const { t, i18n } = useTranslation()
@@ -69,6 +76,9 @@ export function PublicationsTable({
               <th className="px-4 py-3 font-medium">
                 {t("publications.table.createdAt")}
               </th>
+              <th className="px-4 py-3 font-medium">
+                {t("publications.table.actions")}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -111,6 +121,30 @@ export function PublicationsTable({
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">
                   {formatter.format(new Date(publication.created_at))}
+                </td>
+                <td className="px-4 py-3">
+                  {(() => {
+                    const action = getPublicationLifecycleAction(
+                      publication.state,
+                    )
+
+                    if (!action) {
+                      return <span className="text-muted-foreground">-</span>
+                    }
+
+                    return (
+                      <Button
+                        size="sm"
+                        variant={action === "activate" ? "secondary" : "destructive"}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onLifecycleAction(publication, action)
+                        }}
+                      >
+                        {t(`publications.actions.${action}`)}
+                      </Button>
+                    )
+                  })()}
                 </td>
               </tr>
             ))}

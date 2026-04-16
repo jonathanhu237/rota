@@ -3,12 +3,14 @@ import { isAxiosError } from "axios"
 
 import api from "./axios"
 import type {
+  AssignmentBoard,
   Pagination,
   Position,
   Publication,
   Template,
   TemplateDetail,
   TemplateShift,
+  Roster,
   User,
   UserStatus,
 } from "./types"
@@ -64,6 +66,10 @@ export type PublicationShiftsResponse = {
 export type MyPublicationSubmissionsResponse = {
   shift_ids: number[]
 }
+
+export type AssignmentBoardResponse = AssignmentBoard
+
+export type RosterResponse = Roster
 
 export type CreateUserInput = {
   email: string
@@ -129,6 +135,11 @@ export type CreatePublicationInput = {
   submission_start_at: string
   submission_end_at: string
   planned_active_from: string
+}
+
+export type CreateAssignmentInput = {
+  user_id: number
+  template_shift_id: number
 }
 
 export const currentUserQueryOptions = queryOptions({
@@ -304,6 +315,26 @@ export const publicationShiftsQueryOptions = (publicationID: number) =>
     enabled: publicationID > 0,
   })
 
+export const publicationAssignmentBoardQueryOptions = (publicationID: number) =>
+  queryOptions({
+    queryKey: ["publications", "detail", publicationID, "board"],
+    queryFn: async () => {
+      const res = await api.get<AssignmentBoardResponse>(
+        `/publications/${publicationID}/assignment-board`,
+      )
+      return res.data
+    },
+    enabled: publicationID > 0,
+  })
+
+export const rosterCurrentQueryOptions = queryOptions({
+  queryKey: ["roster", "current"],
+  queryFn: async () => {
+    const res = await api.get<RosterResponse>("/roster/current")
+    return res.data
+  },
+})
+
 export const myPublicationSubmissionsQueryOptions = (publicationID: number) =>
   queryOptions({
     queryKey: ["publications", "current", "submissions", publicationID],
@@ -425,8 +456,30 @@ export async function createPublication(input: CreatePublicationInput) {
   return res.data.publication
 }
 
+export async function activatePublication(publicationID: number) {
+  await api.post(`/publications/${publicationID}/activate`)
+}
+
+export async function endPublication(publicationID: number) {
+  await api.post(`/publications/${publicationID}/end`)
+}
+
 export async function deletePublication(publicationID: number) {
   await api.delete(`/publications/${publicationID}`)
+}
+
+export async function createAssignment(
+  publicationID: number,
+  input: CreateAssignmentInput,
+) {
+  await api.post(`/publications/${publicationID}/assignments`, input)
+}
+
+export async function deleteAssignment(
+  publicationID: number,
+  assignmentID: number,
+) {
+  await api.delete(`/publications/${publicationID}/assignments/${assignmentID}`)
 }
 
 export async function createAvailabilitySubmission(

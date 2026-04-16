@@ -71,3 +71,57 @@ export type Publication = {
   created_at: string
   updated_at: string
 }
+
+export type PublicationShift = {
+  id: number
+  weekday: number
+  start_time: string
+  end_time: string
+  position_id: number
+  position_name: string
+  required_headcount: number
+}
+
+export type AssignmentBoardCandidate = {
+  user_id: number
+  name: string
+  email: string
+}
+
+export type AssignmentBoardAssignment = {
+  assignment_id: number
+  user_id: number
+  name: string
+  email: string
+}
+
+export type AssignmentBoardShift = {
+  shift: PublicationShift
+  candidates: AssignmentBoardCandidate[]
+  assignments: AssignmentBoardAssignment[]
+}
+
+export type AssignmentBoard = {
+  publication: Publication
+  shifts: AssignmentBoardShift[]
+}
+
+export type RosterAssignment = {
+  user_id: number
+  name: string
+}
+
+export type RosterShift = {
+  shift: PublicationShift
+  assignments: RosterAssignment[]
+}
+
+export type RosterWeekday = {
+  weekday: number
+  shifts: RosterShift[]
+}
+
+export type Roster = {
+  publication: Publication | null
+  weekdays: RosterWeekday[]
+}

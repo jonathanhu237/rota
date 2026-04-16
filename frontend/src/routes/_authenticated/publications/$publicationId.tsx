@@ -4,9 +4,11 @@ import { Link, createFileRoute, redirect, useNavigate } from "@tanstack/react-ro
 import { Trash2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
+import { ActivatePublicationDialog } from "@/components/publications/activate-publication-dialog"
 import { DeletePublicationDialog } from "@/components/publications/delete-publication-dialog"
+import { EndPublicationDialog } from "@/components/publications/end-publication-dialog"
 import { PublicationStateBadge } from "@/components/publications/publication-state-badge"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -17,9 +19,12 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/components/ui/toast"
 import { getTranslatedApiError } from "@/lib/api-error"
+import { getPublicationLifecycleAction } from "@/lib/publications"
 import {
+  activatePublication,
   currentUserQueryOptions,
   deletePublication,
+  endPublication,
   publicationQueryOptions,
 } from "@/lib/queries"
 
@@ -43,6 +48,8 @@ function PublicationDetailPage() {
   const { toast } = useToast()
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isActivateDialogOpen, setIsActivateDialogOpen] = useState(false)
+  const [isEndDialogOpen, setIsEndDialogOpen] = useState(false)
 
   const { data: currentUser } = useQuery(currentUserQueryOptions)
   const publicationQuery = useQuery(publicationQueryOptions(numericPublicationID))
@@ -92,6 +99,66 @@ function PublicationDetailPage() {
     },
   })
 
+  const invalidatePublicationState = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["publications", "list"] }),
+      queryClient.invalidateQueries({
+        queryKey: ["publications", "detail", numericPublicationID],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["publications", "detail", numericPublicationID, "board"],
+      }),
+      queryClient.invalidateQueries({ queryKey: ["publications", "current"] }),
+      queryClient.invalidateQueries({ queryKey: ["roster", "current"] }),
+    ])
+  }
+
+  const activatePublicationMutation = useMutation({
+    mutationFn: () => activatePublication(numericPublicationID),
+    onSuccess: async () => {
+      setIsActivateDialogOpen(false)
+      await invalidatePublicationState()
+      toast({
+        variant: "default",
+        description: t("publications.success.activated"),
+      })
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        description: getTranslatedApiError(
+          t,
+          error,
+          "publications.errors",
+          "publications.errors.INTERNAL_ERROR",
+        ),
+      })
+    },
+  })
+
+  const endPublicationMutation = useMutation({
+    mutationFn: () => endPublication(numericPublicationID),
+    onSuccess: async () => {
+      setIsEndDialogOpen(false)
+      await invalidatePublicationState()
+      toast({
+        variant: "default",
+        description: t("publications.success.ended"),
+      })
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        description: getTranslatedApiError(
+          t,
+          error,
+          "publications.errors",
+          "publications.errors.INTERNAL_ERROR",
+        ),
+      })
+    },
+  })
+
   const getStateDescription = () => {
     if (!publication) {
       return ""
@@ -118,6 +185,10 @@ function PublicationDetailPage() {
         })
     }
   }
+
+  const lifecycleAction = publication
+    ? getPublicationLifecycleAction(publication.state)
+    : null
 
   if (publicationQuery.isLoading) {
     return (
@@ -150,15 +221,40 @@ function PublicationDetailPage() {
               <CardTitle>{publication.name}</CardTitle>
               <CardDescription>{t("publications.detail.description")}</CardDescription>
             </div>
-            {publication.state === "DRAFT" && (
-              <Button
-                variant="destructive"
-                onClick={() => setIsDeleteDialogOpen(true)}
-              >
-                <Trash2 />
-                {t("publications.actions.delete")}
-              </Button>
-            )}
+            <div className="flex flex-wrap gap-2">
+              {(publication.state === "ASSIGNING" ||
+                publication.state === "ACTIVE") && (
+                <Link
+                  className={buttonVariants({ variant: "outline" })}
+                  params={{ publicationId: String(publication.id) }}
+                  to="/publications/$publicationId/assignments"
+                >
+                  {t("publications.actions.openAssignmentBoard")}
+                </Link>
+              )}
+              {lifecycleAction === "activate" && (
+                <Button onClick={() => setIsActivateDialogOpen(true)}>
+                  {t("publications.actions.activate")}
+                </Button>
+              )}
+              {lifecycleAction === "end" && (
+                <Button
+                  variant="destructive"
+                  onClick={() => setIsEndDialogOpen(true)}
+                >
+                  {t("publications.actions.end")}
+                </Button>
+              )}
+              {publication.state === "DRAFT" && (
+                <Button
+                  variant="destructive"
+                  onClick={() => setIsDeleteDialogOpen(true)}
+                >
+                  <Trash2 />
+                  {t("publications.actions.delete")}
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="grid gap-4">
             <div className="flex flex-wrap items-center gap-3">
@@ -222,6 +318,20 @@ function PublicationDetailPage() {
         isPending={deletePublicationMutation.isPending}
         onConfirm={() => deletePublicationMutation.mutate()}
         onOpenChange={setIsDeleteDialogOpen}
+      />
+      <ActivatePublicationDialog
+        open={isActivateDialogOpen}
+        publication={publication}
+        isPending={activatePublicationMutation.isPending}
+        onConfirm={() => activatePublicationMutation.mutate()}
+        onOpenChange={setIsActivateDialogOpen}
+      />
+      <EndPublicationDialog
+        open={isEndDialogOpen}
+        publication={publication}
+        isPending={endPublicationMutation.isPending}
+        onConfirm={() => endPublicationMutation.mutate()}
+        onOpenChange={setIsEndDialogOpen}
       />
     </>
   )

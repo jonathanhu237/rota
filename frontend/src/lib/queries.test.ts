@@ -26,9 +26,13 @@ vi.mock("./axios", () => ({
 }))
 
 import {
+  activatePublication,
   createAvailabilitySubmission,
+  createAssignment,
   createPublication,
   deleteAvailabilitySubmission,
+  deleteAssignment,
+  endPublication,
   replaceUserPositions,
   updateTemplate,
 } from "./queries"
@@ -154,5 +158,61 @@ describe("availability submissions", () => {
     await deleteAvailabilitySubmission(7, 11)
 
     expect(deleteMock).toHaveBeenCalledWith("/publications/7/submissions/11")
+  })
+})
+
+describe("publication lifecycle actions", () => {
+  beforeEach(() => {
+    deleteMock.mockReset()
+    postMock.mockReset()
+    patchMock.mockReset()
+    putMock.mockReset()
+  })
+
+  it("activates a publication with the activate endpoint", async () => {
+    postMock.mockResolvedValue({ data: undefined })
+
+    await activatePublication(7)
+
+    expect(postMock).toHaveBeenCalledWith("/publications/7/activate")
+  })
+
+  it("ends a publication with the end endpoint", async () => {
+    postMock.mockResolvedValue({ data: undefined })
+
+    await endPublication(7)
+
+    expect(postMock).toHaveBeenCalledWith("/publications/7/end")
+  })
+})
+
+describe("assignment mutations", () => {
+  beforeEach(() => {
+    deleteMock.mockReset()
+    postMock.mockReset()
+    patchMock.mockReset()
+    putMock.mockReset()
+  })
+
+  it("creates an assignment with the user and template shift ids", async () => {
+    postMock.mockResolvedValue({ data: undefined })
+
+    await createAssignment(7, {
+      user_id: 8,
+      template_shift_id: 11,
+    })
+
+    expect(postMock).toHaveBeenCalledWith("/publications/7/assignments", {
+      user_id: 8,
+      template_shift_id: 11,
+    })
+  })
+
+  it("deletes an assignment by assignment id", async () => {
+    deleteMock.mockResolvedValue({ data: undefined })
+
+    await deleteAssignment(7, 19)
+
+    expect(deleteMock).toHaveBeenCalledWith("/publications/7/assignments/19")
   })
 })

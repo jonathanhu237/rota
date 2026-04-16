@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jonathanhu237/rota/backend/internal/model"
+	"github.com/jonathanhu237/rota/backend/internal/service"
 )
 
 func TestTemplateDetailResponseIncludesEmptyShiftsArray(t *testing.T) {
@@ -125,6 +126,96 @@ func TestPublicationResponseIncludesFrontendFields(t *testing.T) {
 		if _, ok := getPublicationField(payload, field); !ok {
 			t.Fatalf("expected publication response to include %q, got %s", field, payload)
 		}
+	}
+}
+
+func TestRosterResponseOmitsAssignmentEmail(t *testing.T) {
+	t.Parallel()
+
+	payload, err := json.Marshal(newRosterResponse(&service.RosterResult{
+		Publication: &model.Publication{
+			ID:                9,
+			TemplateID:        3,
+			TemplateName:      "Weekday Template",
+			Name:              "April schedule",
+			State:             model.PublicationStateActive,
+			SubmissionStartAt: time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC),
+			SubmissionEndAt:   time.Date(2026, 4, 16, 17, 0, 0, 0, time.UTC),
+			PlannedActiveFrom: time.Date(2026, 4, 17, 9, 0, 0, 0, time.UTC),
+			ActivatedAt:       ptrTime(time.Date(2026, 4, 17, 9, 5, 0, 0, time.UTC)),
+			CreatedAt:         time.Date(2026, 4, 15, 8, 0, 0, 0, time.UTC),
+			UpdatedAt:         time.Date(2026, 4, 16, 8, 0, 0, 0, time.UTC),
+		},
+		Weekdays: []*service.RosterWeekdayResult{
+			{
+				Weekday: 1,
+				Shifts: []*service.RosterShiftResult{
+					{
+						Shift: &model.PublicationShift{
+							ID:                11,
+							TemplateID:        3,
+							Weekday:           1,
+							StartTime:         "09:00",
+							EndTime:           "12:00",
+							PositionID:        101,
+							PositionName:      "Front Desk",
+							RequiredHeadcount: 2,
+						},
+						Assignments: []*model.AssignmentParticipant{
+							{
+								AssignmentID:    1,
+								TemplateShiftID: 11,
+								UserID:          7,
+								Name:            "Alice",
+								Email:           "alice@example.com",
+							},
+						},
+					},
+				},
+			},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("marshal roster response: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("unmarshal roster response: %v", err)
+	}
+
+	weekdays, ok := decoded["weekdays"].([]any)
+	if !ok || len(weekdays) != 1 {
+		t.Fatalf("expected one weekday, got %v", decoded["weekdays"])
+	}
+
+	weekday, ok := weekdays[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected weekday object, got %T", weekdays[0])
+	}
+	shifts, ok := weekday["shifts"].([]any)
+	if !ok || len(shifts) != 1 {
+		t.Fatalf("expected one shift, got %v", weekday["shifts"])
+	}
+
+	shift, ok := shifts[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected shift object, got %T", shifts[0])
+	}
+	assignments, ok := shift["assignments"].([]any)
+	if !ok || len(assignments) != 1 {
+		t.Fatalf("expected one assignment, got %v", shift["assignments"])
+	}
+
+	assignment, ok := assignments[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected assignment object, got %T", assignments[0])
+	}
+	if _, exists := assignment["email"]; exists {
+		t.Fatalf("expected roster assignment email to be omitted, got %s", payload)
+	}
+	if assignment["name"] != "Alice" {
+		t.Fatalf("expected assignment name Alice, got %v", assignment["name"])
 	}
 }
 

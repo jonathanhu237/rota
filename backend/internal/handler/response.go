@@ -88,6 +88,63 @@ type publicationResponse struct {
 	UpdatedAt         time.Time              `json:"updated_at"`
 }
 
+type publicationShiftResponse struct {
+	ID                int64     `json:"id"`
+	TemplateID        int64     `json:"template_id"`
+	Weekday           int       `json:"weekday"`
+	StartTime         string    `json:"start_time"`
+	EndTime           string    `json:"end_time"`
+	PositionID        int64     `json:"position_id"`
+	PositionName      string    `json:"position_name"`
+	RequiredHeadcount int       `json:"required_headcount"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+
+type assignmentCandidateResponse struct {
+	UserID int64  `json:"user_id"`
+	Name   string `json:"name"`
+	Email  string `json:"email"`
+}
+
+type assignmentResponse struct {
+	AssignmentID int64  `json:"assignment_id"`
+	UserID       int64  `json:"user_id"`
+	Name         string `json:"name"`
+	Email        string `json:"email"`
+}
+
+type assignmentBoardShiftResponse struct {
+	Shift       publicationShiftResponse      `json:"shift"`
+	Candidates  []assignmentCandidateResponse `json:"candidates"`
+	Assignments []assignmentResponse          `json:"assignments"`
+}
+
+type assignmentBoardResponse struct {
+	Publication *publicationResponse           `json:"publication"`
+	Shifts      []assignmentBoardShiftResponse `json:"shifts"`
+}
+
+type rosterAssignmentResponse struct {
+	UserID int64  `json:"user_id"`
+	Name   string `json:"name"`
+}
+
+type rosterShiftResponse struct {
+	Shift       publicationShiftResponse   `json:"shift"`
+	Assignments []rosterAssignmentResponse `json:"assignments"`
+}
+
+type rosterWeekdayResponse struct {
+	Weekday int                   `json:"weekday"`
+	Shifts  []rosterShiftResponse `json:"shifts"`
+}
+
+type rosterResponse struct {
+	Publication *publicationResponse    `json:"publication"`
+	Weekdays    []rosterWeekdayResponse `json:"weekdays"`
+}
+
 func newUserResponse(user *model.User) userResponse {
 	return userResponse{
 		ID:      user.ID,
@@ -172,6 +229,25 @@ func newPublicationResponse(publication *model.Publication) *publicationResponse
 		EndedAt:           publication.EndedAt,
 		CreatedAt:         publication.CreatedAt,
 		UpdatedAt:         publication.UpdatedAt,
+	}
+}
+
+func newPublicationShiftResponse(shift *model.PublicationShift) publicationShiftResponse {
+	if shift == nil {
+		return publicationShiftResponse{}
+	}
+
+	return publicationShiftResponse{
+		ID:                shift.ID,
+		TemplateID:        shift.TemplateID,
+		Weekday:           shift.Weekday,
+		StartTime:         shift.StartTime,
+		EndTime:           shift.EndTime,
+		PositionID:        shift.PositionID,
+		PositionName:      shift.PositionName,
+		RequiredHeadcount: shift.RequiredHeadcount,
+		CreatedAt:         shift.CreatedAt,
+		UpdatedAt:         shift.UpdatedAt,
 	}
 }
 

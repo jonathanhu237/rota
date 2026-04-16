@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"sort"
 	"strconv"
@@ -23,10 +24,13 @@ func (c fixedClock) Now() time.Time {
 type publicationRepositoryStatefulMock struct {
 	nextPublicationID int64
 	nextSubmissionID  int64
+	nextAssignmentID  int64
 	publications      map[int64]*model.Publication
 	templates         map[int64]*model.Template
 	templateShifts    map[int64]*model.TemplateShift
+	users             map[int64]*model.User
 	submissions       map[string]*model.AvailabilitySubmission
+	assignments       map[string]*model.Assignment
 	qualifiedByUser   map[int64]map[int64]struct{}
 }
 
@@ -34,6 +38,7 @@ func newPublicationRepositoryStatefulMock() *publicationRepositoryStatefulMock {
 	return &publicationRepositoryStatefulMock{
 		nextPublicationID: 2,
 		nextSubmissionID:  2,
+		nextAssignmentID:  2,
 		publications: map[int64]*model.Publication{
 			1: {},
 		},
@@ -63,7 +68,28 @@ func newPublicationRepositoryStatefulMock() *publicationRepositoryStatefulMock {
 				RequiredHeadcount: 1,
 			},
 		},
+		users: map[int64]*model.User{
+			7: {
+				ID:     7,
+				Email:  "alice@example.com",
+				Name:   "Alice",
+				Status: model.UserStatusActive,
+			},
+			8: {
+				ID:     8,
+				Email:  "bob@example.com",
+				Name:   "Bob",
+				Status: model.UserStatusActive,
+			},
+			9: {
+				ID:     9,
+				Email:  "cora@example.com",
+				Name:   "Cora",
+				Status: model.UserStatusDisabled,
+			},
+		},
 		submissions: make(map[string]*model.AvailabilitySubmission),
+		assignments: make(map[string]*model.Assignment),
 		qualifiedByUser: map[int64]map[int64]struct{}{
 			7: {
 				101: {},
@@ -134,6 +160,19 @@ func (m *publicationRepositoryStatefulMock) GetCurrent(
 	})
 
 	return clonePublication(publications[0]), nil
+}
+
+func (m *publicationRepositoryStatefulMock) GetUserByID(
+	ctx context.Context,
+	id int64,
+) (*model.User, error) {
+	user, ok := m.users[id]
+	if !ok {
+		return nil, repository.ErrUserNotFound
+	}
+
+	cloned := *user
+	return &cloned, nil
 }
 
 func (m *publicationRepositoryStatefulMock) CreatePublication(
@@ -329,6 +368,202 @@ func (m *publicationRepositoryStatefulMock) ListQualifiedShifts(
 	})
 
 	return shifts, nil
+}
+
+func (m *publicationRepositoryStatefulMock) CreateAssignment(
+	ctx context.Context,
+	params repository.CreateAssignmentParams,
+) (*model.Assignment, error) {
+	if _, ok := m.publications[params.PublicationID]; !ok {
+		return nil, repository.ErrPublicationNotFound
+	}
+
+	key := assignmentKey(params.PublicationID, params.UserID, params.TemplateShiftID)
+	if existing, ok := m.assignments[key]; ok {
+		return cloneAssignment(existing), nil
+	}
+
+	assignment := &model.Assignment{
+		ID:              m.nextAssignmentID,
+		PublicationID:   params.PublicationID,
+		UserID:          params.UserID,
+		TemplateShiftID: params.TemplateShiftID,
+		CreatedAt:       params.CreatedAt,
+	}
+	m.assignments[key] = cloneAssignment(assignment)
+	m.nextAssignmentID++
+
+	return cloneAssignment(assignment), nil
+}
+
+func (m *publicationRepositoryStatefulMock) DeleteAssignment(
+	ctx context.Context,
+	params repository.DeleteAssignmentParams,
+) error {
+	for key, assignment := range m.assignments {
+		if assignment.PublicationID == params.PublicationID && assignment.ID == params.AssignmentID {
+			delete(m.assignments, key)
+			break
+		}
+	}
+
+	return nil
+}
+
+func (m *publicationRepositoryStatefulMock) ActivatePublication(
+	ctx context.Context,
+	params repository.ActivatePublicationParams,
+) (*model.Publication, error) {
+	publication, ok := m.publications[params.ID]
+	if !ok {
+		return nil, repository.ErrPublicationNotFound
+	}
+	if publication.State == model.PublicationStateActive || publication.State == model.PublicationStateEnded {
+		return nil, sql.ErrNoRows
+	}
+
+	publication.State = model.PublicationStateActive
+	publication.ActivatedAt = &params.Now
+	publication.UpdatedAt = params.Now
+
+	return clonePublication(publication), nil
+}
+
+func (m *publicationRepositoryStatefulMock) EndPublication(
+	ctx context.Context,
+	params repository.EndPublicationParams,
+) (*model.Publication, error) {
+	publication, ok := m.publications[params.ID]
+	if !ok {
+		return nil, repository.ErrPublicationNotFound
+	}
+	if publication.State != model.PublicationStateActive {
+		return nil, sql.ErrNoRows
+	}
+
+	publication.State = model.PublicationStateEnded
+	publication.EndedAt = &params.Now
+	publication.UpdatedAt = params.Now
+
+	return clonePublication(publication), nil
+}
+
+func (m *publicationRepositoryStatefulMock) ListPublicationShifts(
+	ctx context.Context,
+	publicationID int64,
+) ([]*model.PublicationShift, error) {
+	publication, ok := m.publications[publicationID]
+	if !ok {
+		return nil, repository.ErrPublicationNotFound
+	}
+
+	shifts := make([]*model.PublicationShift, 0)
+	for _, shift := range m.templateShifts {
+		if shift.TemplateID != publication.TemplateID {
+			continue
+		}
+
+		positionName := "Unknown"
+		switch shift.PositionID {
+		case 101:
+			positionName = "Front Desk"
+		case 102:
+			positionName = "Cashier"
+		case 103:
+			positionName = "Pharmacist"
+		}
+
+		shifts = append(shifts, &model.PublicationShift{
+			ID:                shift.ID,
+			TemplateID:        shift.TemplateID,
+			Weekday:           shift.Weekday,
+			StartTime:         shift.StartTime,
+			EndTime:           shift.EndTime,
+			PositionID:        shift.PositionID,
+			PositionName:      positionName,
+			RequiredHeadcount: shift.RequiredHeadcount,
+			CreatedAt:         shift.CreatedAt,
+			UpdatedAt:         shift.UpdatedAt,
+		})
+	}
+
+	sort.Slice(shifts, func(i, j int) bool {
+		if shifts[i].Weekday != shifts[j].Weekday {
+			return shifts[i].Weekday < shifts[j].Weekday
+		}
+		if shifts[i].StartTime != shifts[j].StartTime {
+			return shifts[i].StartTime < shifts[j].StartTime
+		}
+		return shifts[i].ID < shifts[j].ID
+	})
+
+	return shifts, nil
+}
+
+func (m *publicationRepositoryStatefulMock) ListAssignmentCandidates(
+	ctx context.Context,
+	publicationID int64,
+) ([]*model.AssignmentCandidate, error) {
+	if _, ok := m.publications[publicationID]; !ok {
+		return nil, repository.ErrPublicationNotFound
+	}
+
+	candidates := make([]*model.AssignmentCandidate, 0)
+	for _, submission := range m.submissions {
+		user, ok := m.users[submission.UserID]
+		if !ok {
+			continue
+		}
+		candidates = append(candidates, &model.AssignmentCandidate{
+			TemplateShiftID: submission.TemplateShiftID,
+			UserID:          user.ID,
+			Name:            user.Name,
+			Email:           user.Email,
+		})
+	}
+
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].TemplateShiftID != candidates[j].TemplateShiftID {
+			return candidates[i].TemplateShiftID < candidates[j].TemplateShiftID
+		}
+		return candidates[i].UserID < candidates[j].UserID
+	})
+
+	return candidates, nil
+}
+
+func (m *publicationRepositoryStatefulMock) ListPublicationAssignments(
+	ctx context.Context,
+	publicationID int64,
+) ([]*model.AssignmentParticipant, error) {
+	if _, ok := m.publications[publicationID]; !ok {
+		return nil, repository.ErrPublicationNotFound
+	}
+
+	assignments := make([]*model.AssignmentParticipant, 0)
+	for _, assignment := range m.assignments {
+		user, ok := m.users[assignment.UserID]
+		if !ok {
+			continue
+		}
+		assignments = append(assignments, &model.AssignmentParticipant{
+			AssignmentID:    assignment.ID,
+			TemplateShiftID: assignment.TemplateShiftID,
+			UserID:          user.ID,
+			Name:            user.Name,
+			Email:           user.Email,
+			CreatedAt:       assignment.CreatedAt,
+		})
+	}
+
+	sort.Slice(assignments, func(i, j int) bool {
+		if assignments[i].TemplateShiftID != assignments[j].TemplateShiftID {
+			return assignments[i].TemplateShiftID < assignments[j].TemplateShiftID
+		}
+		return assignments[i].UserID < assignments[j].UserID
+	})
+
+	return assignments, nil
 }
 
 func TestPublicationServiceCreatePublication(t *testing.T) {
@@ -1162,6 +1397,10 @@ func submissionKey(publicationID, userID, shiftID int64) string {
 		":" + strconv.FormatInt(shiftID, 10)
 }
 
+func assignmentKey(publicationID, userID, shiftID int64) string {
+	return submissionKey(publicationID, userID, shiftID)
+}
+
 func clonePublication(publication *model.Publication) *model.Publication {
 	if publication == nil {
 		return nil
@@ -1177,6 +1416,15 @@ func cloneSubmission(submission *model.AvailabilitySubmission) *model.Availabili
 	}
 
 	cloned := *submission
+	return &cloned
+}
+
+func cloneAssignment(assignment *model.Assignment) *model.Assignment {
+	if assignment == nil {
+		return nil
+	}
+
+	cloned := *assignment
 	return &cloned
 }
 

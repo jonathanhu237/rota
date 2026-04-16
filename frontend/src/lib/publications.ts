@@ -15,4 +15,19 @@ export function getPublicationStateTranslationKey(state: PublicationState) {
   }
 }
 
+export type PublicationLifecycleAction = "activate" | "end"
+
+export function getPublicationLifecycleAction(
+  state: PublicationState,
+): PublicationLifecycleAction | null {
+  switch (state) {
+    case "ASSIGNING":
+      return "activate"
+    case "ACTIVE":
+      return "end"
+    default:
+      return null
+  }
+}
+
 export type { PublicationState } from "./types"

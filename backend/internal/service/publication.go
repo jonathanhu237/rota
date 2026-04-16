@@ -20,6 +20,8 @@ var (
 	ErrPublicationNotFound      = model.ErrPublicationNotFound
 	ErrPublicationNotDeletable  = model.ErrPublicationNotDeletable
 	ErrPublicationNotCollecting = model.ErrPublicationNotCollecting
+	ErrPublicationNotAssigning  = model.ErrPublicationNotAssigning
+	ErrPublicationNotActive     = model.ErrPublicationNotActive
 	ErrNotQualified             = model.ErrNotQualified
 )
 
@@ -37,6 +39,7 @@ type publicationRepository interface {
 	ListPaginated(ctx context.Context, params repository.ListPublicationsParams) ([]*model.Publication, int, error)
 	GetByID(ctx context.Context, id int64) (*model.Publication, error)
 	GetCurrent(ctx context.Context) (*model.Publication, error)
+	GetUserByID(ctx context.Context, id int64) (*model.User, error)
 	CreatePublication(ctx context.Context, params repository.CreatePublicationParams) (*model.Publication, error)
 	DeletePublication(ctx context.Context, id int64) error
 	ListSubmissionShiftIDs(ctx context.Context, publicationID, userID int64) ([]int64, error)
@@ -45,6 +48,13 @@ type publicationRepository interface {
 	GetTemplateShift(ctx context.Context, templateID, shiftID int64) (*model.TemplateShift, error)
 	IsUserQualifiedForPosition(ctx context.Context, userID, positionID int64) (bool, error)
 	ListQualifiedShifts(ctx context.Context, publicationID, userID int64) ([]*model.TemplateShift, error)
+	CreateAssignment(ctx context.Context, params repository.CreateAssignmentParams) (*model.Assignment, error)
+	DeleteAssignment(ctx context.Context, params repository.DeleteAssignmentParams) error
+	ActivatePublication(ctx context.Context, params repository.ActivatePublicationParams) (*model.Publication, error)
+	EndPublication(ctx context.Context, params repository.EndPublicationParams) (*model.Publication, error)
+	ListPublicationShifts(ctx context.Context, publicationID int64) ([]*model.PublicationShift, error)
+	ListAssignmentCandidates(ctx context.Context, publicationID int64) ([]*model.AssignmentCandidate, error)
+	ListPublicationAssignments(ctx context.Context, publicationID int64) ([]*model.AssignmentParticipant, error)
 }
 
 type PublicationService struct {
@@ -83,6 +93,17 @@ type DeleteAvailabilitySubmissionInput struct {
 	PublicationID   int64
 	UserID          int64
 	TemplateShiftID int64
+}
+
+type CreateAssignmentInput struct {
+	PublicationID   int64
+	UserID          int64
+	TemplateShiftID int64
+}
+
+type DeleteAssignmentInput struct {
+	PublicationID int64
+	AssignmentID  int64
 }
 
 func NewPublicationService(publicationRepo publicationRepository, clock Clock) *PublicationService {
@@ -407,6 +428,8 @@ func mapPublicationRepositoryError(err error) error {
 		return ErrTemplateNotFound
 	case errors.Is(err, repository.ErrTemplateShiftNotFound):
 		return ErrTemplateShiftNotFound
+	case errors.Is(err, repository.ErrUserNotFound):
+		return ErrUserNotFound
 	default:
 		return err
 	}

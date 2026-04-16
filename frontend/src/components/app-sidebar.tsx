@@ -4,6 +4,7 @@ import {
   Briefcase,
   CalendarCheck,
   CalendarDays,
+  CalendarRange,
   ChevronsUpDown,
   FileText,
   Globe,
@@ -63,6 +64,11 @@ export function AppSidebar() {
       title: t("sidebar.dashboard"),
       url: "/",
       icon: Home,
+    },
+    {
+      title: t("sidebar.roster"),
+      url: "/roster",
+      icon: CalendarRange,
     },
     {
       title: t("sidebar.availability"),

@@ -4,7 +4,9 @@ import { Link, createFileRoute, redirect, useNavigate } from "@tanstack/react-ro
 import { Plus } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
+import { ActivatePublicationDialog } from "@/components/publications/activate-publication-dialog"
 import { CreatePublicationDialog } from "@/components/publications/create-publication-dialog"
+import { EndPublicationDialog } from "@/components/publications/end-publication-dialog"
 import { PublicationsTable } from "@/components/publications/publications-table"
 import { Button } from "@/components/ui/button"
 import {
@@ -20,10 +22,12 @@ import {
   getTranslatedApiError,
 } from "@/lib/api-error"
 import {
+  activatePublication,
   allTemplatesQueryOptions,
   createPublication,
   currentPublicationQueryOptions,
   currentUserQueryOptions,
+  endPublication,
   publicationsQueryOptions,
 } from "@/lib/queries"
 import type { Publication } from "@/lib/types"
@@ -48,6 +52,10 @@ function PublicationsPage() {
 
   const [page, setPage] = useState(1)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [activationTarget, setActivationTarget] = useState<Publication | null>(
+    null,
+  )
+  const [endTarget, setEndTarget] = useState<Publication | null>(null)
 
   const { data: currentUser } = useQuery(currentUserQueryOptions)
   const publicationsQuery = useQuery(publicationsQueryOptions(page, pageSize))
@@ -122,6 +130,64 @@ function PublicationsPage() {
     },
   })
 
+  const invalidatePublicationState = async (publicationID: number) => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["publications", "list"] }),
+      queryClient.invalidateQueries({ queryKey: ["publications", "detail", publicationID] }),
+      queryClient.invalidateQueries({
+        queryKey: ["publications", "detail", publicationID, "board"],
+      }),
+      queryClient.invalidateQueries({ queryKey: ["publications", "current"] }),
+      queryClient.invalidateQueries({ queryKey: ["roster", "current"] }),
+    ])
+  }
+
+  const activatePublicationMutation = useMutation({
+    mutationFn: (publicationID: number) => activatePublication(publicationID),
+    onSuccess: async (_, publicationID) => {
+      setActivationTarget(null)
+      await invalidatePublicationState(publicationID)
+      toast({
+        variant: "default",
+        description: t("publications.success.activated"),
+      })
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        description: getTranslatedApiError(
+          t,
+          error,
+          "publications.errors",
+          "publications.errors.INTERNAL_ERROR",
+        ),
+      })
+    },
+  })
+
+  const endPublicationMutation = useMutation({
+    mutationFn: (publicationID: number) => endPublication(publicationID),
+    onSuccess: async (_, publicationID) => {
+      setEndTarget(null)
+      await invalidatePublicationState(publicationID)
+      toast({
+        variant: "default",
+        description: t("publications.success.ended"),
+      })
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        description: getTranslatedApiError(
+          t,
+          error,
+          "publications.errors",
+          "publications.errors.INTERNAL_ERROR",
+        ),
+      })
+    },
+  })
+
   const openPublication = (publication: Publication) => {
     navigate({
       to: "/publications/$publicationId",
@@ -159,6 +225,14 @@ function PublicationsPage() {
               isLoading={publicationsQuery.isLoading}
               isFetching={publicationsQuery.isFetching}
               onOpen={openPublication}
+              onLifecycleAction={(publication, action) => {
+                if (action === "activate") {
+                  setActivationTarget(publication)
+                  return
+                }
+
+                setEndTarget(publication)
+              }}
               onPageChange={setPage}
             />
           )}
@@ -171,6 +245,40 @@ function PublicationsPage() {
         isTemplatesLoading={templatesQuery.isLoading}
         onOpenChange={setIsCreateDialogOpen}
         onSubmit={(values) => createPublicationMutation.mutate(values)}
+      />
+      <ActivatePublicationDialog
+        open={activationTarget !== null}
+        publication={activationTarget}
+        isPending={activatePublicationMutation.isPending}
+        onConfirm={() => {
+          if (!activationTarget) {
+            return
+          }
+
+          activatePublicationMutation.mutate(activationTarget.id)
+        }}
+        onOpenChange={(open: boolean) => {
+          if (!open) {
+            setActivationTarget(null)
+          }
+        }}
+      />
+      <EndPublicationDialog
+        open={endTarget !== null}
+        publication={endTarget}
+        isPending={endPublicationMutation.isPending}
+        onConfirm={() => {
+          if (!endTarget) {
+            return
+          }
+
+          endPublicationMutation.mutate(endTarget.id)
+        }}
+        onOpenChange={(open: boolean) => {
+          if (!open) {
+            setEndTarget(null)
+          }
+        }}
       />
     </>
   )

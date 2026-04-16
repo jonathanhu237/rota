@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedRosterRouteImport } from './routes/_authenticated/roster'
 import { Route as AuthenticatedAvailabilityRouteImport } from './routes/_authenticated/availability'
 import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
 import { Route as AuthenticatedTemplatesIndexRouteImport } from './routes/_authenticated/templates/index'
@@ -19,6 +20,7 @@ import { Route as AuthenticatedPublicationsIndexRouteImport } from './routes/_au
 import { Route as AuthenticatedPositionsIndexRouteImport } from './routes/_authenticated/positions/index'
 import { Route as AuthenticatedTemplatesTemplateIdRouteImport } from './routes/_authenticated/templates/$templateId'
 import { Route as AuthenticatedPublicationsPublicationIdRouteImport } from './routes/_authenticated/publications/$publicationId'
+import { Route as AuthenticatedPublicationsPublicationIdAssignmentsRouteImport } from './routes/_authenticated/publications/$publicationId/assignments'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -32,6 +34,11 @@ const AuthenticatedRoute = AuthenticatedRouteImport.update({
 const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedRosterRoute = AuthenticatedRosterRouteImport.update({
+  id: '/roster',
+  path: '/roster',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedAvailabilityRoute =
@@ -75,41 +82,53 @@ const AuthenticatedPublicationsPublicationIdRoute =
     path: '/publications/$publicationId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedPublicationsPublicationIdAssignmentsRoute =
+  AuthenticatedPublicationsPublicationIdAssignmentsRouteImport.update({
+    id: '/assignments',
+    path: '/assignments',
+    getParentRoute: () => AuthenticatedPublicationsPublicationIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/login': typeof LoginRoute
   '/availability': typeof AuthenticatedAvailabilityRoute
-  '/publications/$publicationId': typeof AuthenticatedPublicationsPublicationIdRoute
+  '/roster': typeof AuthenticatedRosterRoute
+  '/publications/$publicationId': typeof AuthenticatedPublicationsPublicationIdRouteWithChildren
   '/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRoute
   '/positions/': typeof AuthenticatedPositionsIndexRoute
   '/publications/': typeof AuthenticatedPublicationsIndexRoute
   '/templates/': typeof AuthenticatedTemplatesIndexRoute
   '/users/': typeof AuthenticatedUsersIndexRoute
+  '/publications/$publicationId/assignments': typeof AuthenticatedPublicationsPublicationIdAssignmentsRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/availability': typeof AuthenticatedAvailabilityRoute
+  '/roster': typeof AuthenticatedRosterRoute
   '/': typeof AuthenticatedIndexRoute
-  '/publications/$publicationId': typeof AuthenticatedPublicationsPublicationIdRoute
+  '/publications/$publicationId': typeof AuthenticatedPublicationsPublicationIdRouteWithChildren
   '/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRoute
   '/positions': typeof AuthenticatedPositionsIndexRoute
   '/publications': typeof AuthenticatedPublicationsIndexRoute
   '/templates': typeof AuthenticatedTemplatesIndexRoute
   '/users': typeof AuthenticatedUsersIndexRoute
+  '/publications/$publicationId/assignments': typeof AuthenticatedPublicationsPublicationIdAssignmentsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/login': typeof LoginRoute
   '/_authenticated/availability': typeof AuthenticatedAvailabilityRoute
+  '/_authenticated/roster': typeof AuthenticatedRosterRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
-  '/_authenticated/publications/$publicationId': typeof AuthenticatedPublicationsPublicationIdRoute
+  '/_authenticated/publications/$publicationId': typeof AuthenticatedPublicationsPublicationIdRouteWithChildren
   '/_authenticated/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRoute
   '/_authenticated/positions/': typeof AuthenticatedPositionsIndexRoute
   '/_authenticated/publications/': typeof AuthenticatedPublicationsIndexRoute
   '/_authenticated/templates/': typeof AuthenticatedTemplatesIndexRoute
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
+  '/_authenticated/publications/$publicationId/assignments': typeof AuthenticatedPublicationsPublicationIdAssignmentsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -117,16 +136,19 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/availability'
+    | '/roster'
     | '/publications/$publicationId'
     | '/templates/$templateId'
     | '/positions/'
     | '/publications/'
     | '/templates/'
     | '/users/'
+    | '/publications/$publicationId/assignments'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
     | '/availability'
+    | '/roster'
     | '/'
     | '/publications/$publicationId'
     | '/templates/$templateId'
@@ -134,11 +156,13 @@ export interface FileRouteTypes {
     | '/publications'
     | '/templates'
     | '/users'
+    | '/publications/$publicationId/assignments'
   id:
     | '__root__'
     | '/_authenticated'
     | '/login'
     | '/_authenticated/availability'
+    | '/_authenticated/roster'
     | '/_authenticated/'
     | '/_authenticated/publications/$publicationId'
     | '/_authenticated/templates/$templateId'
@@ -146,6 +170,7 @@ export interface FileRouteTypes {
     | '/_authenticated/publications/'
     | '/_authenticated/templates/'
     | '/_authenticated/users/'
+    | '/_authenticated/publications/$publicationId/assignments'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -174,6 +199,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/roster': {
+      id: '/_authenticated/roster'
+      path: '/roster'
+      fullPath: '/roster'
+      preLoaderRoute: typeof AuthenticatedRosterRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/availability': {
@@ -225,13 +257,36 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPublicationsPublicationIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/publications/$publicationId/assignments': {
+      id: '/_authenticated/publications/$publicationId/assignments'
+      path: '/assignments'
+      fullPath: '/publications/$publicationId/assignments'
+      preLoaderRoute: typeof AuthenticatedPublicationsPublicationIdAssignmentsRouteImport
+      parentRoute: typeof AuthenticatedPublicationsPublicationIdRoute
+    }
   }
 }
 
+interface AuthenticatedPublicationsPublicationIdRouteChildren {
+  AuthenticatedPublicationsPublicationIdAssignmentsRoute: typeof AuthenticatedPublicationsPublicationIdAssignmentsRoute
+}
+
+const AuthenticatedPublicationsPublicationIdRouteChildren: AuthenticatedPublicationsPublicationIdRouteChildren =
+  {
+    AuthenticatedPublicationsPublicationIdAssignmentsRoute:
+      AuthenticatedPublicationsPublicationIdAssignmentsRoute,
+  }
+
+const AuthenticatedPublicationsPublicationIdRouteWithChildren =
+  AuthenticatedPublicationsPublicationIdRoute._addFileChildren(
+    AuthenticatedPublicationsPublicationIdRouteChildren,
+  )
+
 interface AuthenticatedRouteChildren {
   AuthenticatedAvailabilityRoute: typeof AuthenticatedAvailabilityRoute
+  AuthenticatedRosterRoute: typeof AuthenticatedRosterRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
-  AuthenticatedPublicationsPublicationIdRoute: typeof AuthenticatedPublicationsPublicationIdRoute
+  AuthenticatedPublicationsPublicationIdRoute: typeof AuthenticatedPublicationsPublicationIdRouteWithChildren
   AuthenticatedTemplatesTemplateIdRoute: typeof AuthenticatedTemplatesTemplateIdRoute
   AuthenticatedPositionsIndexRoute: typeof AuthenticatedPositionsIndexRoute
   AuthenticatedPublicationsIndexRoute: typeof AuthenticatedPublicationsIndexRoute
@@ -241,9 +296,10 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAvailabilityRoute: AuthenticatedAvailabilityRoute,
+  AuthenticatedRosterRoute: AuthenticatedRosterRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedPublicationsPublicationIdRoute:
-    AuthenticatedPublicationsPublicationIdRoute,
+    AuthenticatedPublicationsPublicationIdRouteWithChildren,
   AuthenticatedTemplatesTemplateIdRoute: AuthenticatedTemplatesTemplateIdRoute,
   AuthenticatedPositionsIndexRoute: AuthenticatedPositionsIndexRoute,
   AuthenticatedPublicationsIndexRoute: AuthenticatedPublicationsIndexRoute,
