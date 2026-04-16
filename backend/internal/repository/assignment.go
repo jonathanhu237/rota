@@ -21,6 +21,17 @@ type DeleteAssignmentParams struct {
 	AssignmentID  int64
 }
 
+type ReplaceAssignmentParams struct {
+	UserID          int64
+	TemplateShiftID int64
+}
+
+type ReplaceAssignmentsParams struct {
+	PublicationID int64
+	Assignments   []ReplaceAssignmentParams
+	CreatedAt     time.Time
+}
+
 type ActivatePublicationParams struct {
 	ID  int64
 	Now time.Time
@@ -105,6 +116,51 @@ func (r *PublicationRepository) DeleteAssignment(ctx context.Context, params Del
 
 	_, err = result.RowsAffected()
 	return err
+}
+
+func (r *PublicationRepository) ReplaceAssignments(
+	ctx context.Context,
+	params ReplaceAssignmentsParams,
+) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	const deleteQuery = `
+		DELETE FROM assignments
+		WHERE publication_id = $1;
+	`
+
+	if _, err := tx.ExecContext(ctx, deleteQuery, params.PublicationID); err != nil {
+		return err
+	}
+
+	const insertQuery = `
+		INSERT INTO assignments (
+			publication_id,
+			user_id,
+			template_shift_id,
+			created_at
+		)
+		VALUES ($1, $2, $3, $4);
+	`
+
+	for _, assignment := range params.Assignments {
+		if _, err := tx.ExecContext(
+			ctx,
+			insertQuery,
+			params.PublicationID,
+			assignment.UserID,
+			assignment.TemplateShiftID,
+			params.CreatedAt,
+		); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (r *PublicationRepository) ActivatePublication(

@@ -475,6 +475,13 @@ export async function createAssignment(
   await api.post(`/publications/${publicationID}/assignments`, input)
 }
 
+export async function autoAssignPublication(publicationID: number) {
+  const res = await api.post<AssignmentBoardResponse>(
+    `/publications/${publicationID}/auto-assign`,
+  )
+  return res.data
+}
+
 export async function deleteAssignment(
   publicationID: number,
   assignmentID: number,

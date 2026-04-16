@@ -26,6 +26,7 @@ vi.mock("./axios", () => ({
 }))
 
 import {
+  autoAssignPublication,
   activatePublication,
   createAvailabilitySubmission,
   createAssignment,
@@ -214,5 +215,40 @@ describe("assignment mutations", () => {
     await deleteAssignment(7, 19)
 
     expect(deleteMock).toHaveBeenCalledWith("/publications/7/assignments/19")
+  })
+})
+
+describe("auto assign publication", () => {
+  beforeEach(() => {
+    deleteMock.mockReset()
+    postMock.mockReset()
+    patchMock.mockReset()
+    putMock.mockReset()
+  })
+
+  it("posts to the auto-assign endpoint", async () => {
+    postMock.mockResolvedValue({
+      data: {
+        publication: {
+          id: 7,
+          template_id: 2,
+          template_name: "Weekday Template",
+          name: "May Coverage",
+          state: "ASSIGNING",
+          submission_start_at: "2026-05-01T09:00:00Z",
+          submission_end_at: "2026-05-03T09:00:00Z",
+          planned_active_from: "2026-05-04T09:00:00Z",
+          activated_at: null,
+          ended_at: null,
+          created_at: "2026-04-20T08:00:00Z",
+          updated_at: "2026-04-20T08:00:00Z",
+        },
+        shifts: [],
+      },
+    })
+
+    await autoAssignPublication(7)
+
+    expect(postMock).toHaveBeenCalledWith("/publications/7/auto-assign")
   })
 })

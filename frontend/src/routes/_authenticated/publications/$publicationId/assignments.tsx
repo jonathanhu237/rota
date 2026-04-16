@@ -1,8 +1,10 @@
+import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link, createFileRoute, redirect } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
 import { AssignmentBoard } from "@/components/assignments/assignment-board"
+import { AutoAssignDialog } from "@/components/publications/auto-assign-dialog"
 import {
   Card,
   CardContent,
@@ -10,10 +12,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/components/ui/toast"
 import { getTranslatedApiError } from "@/lib/api-error"
 import {
+  autoAssignPublication,
   createAssignment,
   currentUserQueryOptions,
   deleteAssignment,
@@ -39,6 +43,7 @@ function PublicationAssignmentsPage() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { toast } = useToast()
+  const [isAutoAssignDialogOpen, setIsAutoAssignDialogOpen] = useState(false)
 
   const boardQuery = useQuery(publicationAssignmentBoardQueryOptions(numericPublicationID))
   const board = boardQuery.data
@@ -88,6 +93,29 @@ function PublicationAssignmentsPage() {
     },
   })
 
+  const autoAssignMutation = useMutation({
+    mutationFn: () => autoAssignPublication(numericPublicationID),
+    onSuccess: async () => {
+      setIsAutoAssignDialogOpen(false)
+      await invalidateBoard()
+      toast({
+        variant: "default",
+        description: t("assignments.success.autoAssigned"),
+      })
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        description: getTranslatedApiError(
+          t,
+          error,
+          "publications.errors",
+          "publications.errors.INTERNAL_ERROR",
+        ),
+      })
+    },
+  })
+
   if (boardQuery.isLoading) {
     return (
       <div className="grid gap-4">
@@ -109,53 +137,76 @@ function PublicationAssignmentsPage() {
   }
 
   const isReadOnly = board.publication.state === "ACTIVE"
+  const canAutoAssign = board.publication.state === "ASSIGNING"
+  const isPending =
+    updateAssignmentMutation.isPending || autoAssignMutation.isPending
 
   return (
-    <div className="grid gap-6">
-      <Card>
-        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1">
-            <CardTitle>{t("assignments.title")}</CardTitle>
-            <CardDescription>
-              {t(
-                isReadOnly
-                  ? "assignments.descriptionReadOnly"
-                  : "assignments.descriptionEditable",
-                {
-                  name: board.publication.name,
-                },
+    <>
+      <AutoAssignDialog
+        open={isAutoAssignDialogOpen}
+        publication={board.publication}
+        isPending={autoAssignMutation.isPending}
+        onConfirm={() => autoAssignMutation.mutate()}
+        onOpenChange={setIsAutoAssignDialogOpen}
+      />
+      <div className="grid gap-6">
+        <Card>
+          <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-1">
+              <CardTitle>{t("assignments.title")}</CardTitle>
+              <CardDescription>
+                {t(
+                  isReadOnly
+                    ? "assignments.descriptionReadOnly"
+                    : "assignments.descriptionEditable",
+                  {
+                    name: board.publication.name,
+                  },
+                )}
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {canAutoAssign && (
+                <Button
+                  type="button"
+                  onClick={() => setIsAutoAssignDialogOpen(true)}
+                  disabled={isPending}
+                >
+                  {t("assignments.autoAssign")}
+                </Button>
               )}
-            </CardDescription>
-          </div>
-          <Link
-            className="text-sm font-medium text-foreground underline underline-offset-4"
-            params={{ publicationId: String(board.publication.id) }}
-            to="/publications/$publicationId"
-          >
-            {t("assignments.backToPublication")}
-          </Link>
-        </CardHeader>
-        <CardContent>
-          <AssignmentBoard
-            shifts={board.shifts}
-            isPending={updateAssignmentMutation.isPending}
-            isReadOnly={isReadOnly}
-            onAssign={(userID, templateShiftID) =>
-              updateAssignmentMutation.mutate({
-                type: "assign",
-                userID,
-                templateShiftID,
-              })
-            }
-            onUnassign={(assignmentID) =>
-              updateAssignmentMutation.mutate({
-                type: "unassign",
-                assignmentID,
-              })
-            }
-          />
-        </CardContent>
-      </Card>
-    </div>
+              <Link
+                className="text-sm font-medium text-foreground underline underline-offset-4"
+                params={{ publicationId: String(board.publication.id) }}
+                to="/publications/$publicationId"
+              >
+                {t("assignments.backToPublication")}
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <AssignmentBoard
+              shifts={board.shifts}
+              isPending={isPending}
+              isReadOnly={isReadOnly}
+              onAssign={(userID, templateShiftID) =>
+                updateAssignmentMutation.mutate({
+                  type: "assign",
+                  userID,
+                  templateShiftID,
+                })
+              }
+              onUnassign={(assignmentID) =>
+                updateAssignmentMutation.mutate({
+                  type: "unassign",
+                  assignmentID,
+                })
+              }
+            />
+          </CardContent>
+        </Card>
+      </div>
+    </>
   )
 }

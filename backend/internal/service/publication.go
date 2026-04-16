@@ -50,6 +50,7 @@ type publicationRepository interface {
 	ListQualifiedShifts(ctx context.Context, publicationID, userID int64) ([]*model.TemplateShift, error)
 	CreateAssignment(ctx context.Context, params repository.CreateAssignmentParams) (*model.Assignment, error)
 	DeleteAssignment(ctx context.Context, params repository.DeleteAssignmentParams) error
+	ReplaceAssignments(ctx context.Context, params repository.ReplaceAssignmentsParams) error
 	ActivatePublication(ctx context.Context, params repository.ActivatePublicationParams) (*model.Publication, error)
 	EndPublication(ctx context.Context, params repository.EndPublicationParams) (*model.Publication, error)
 	ListPublicationShifts(ctx context.Context, publicationID int64) ([]*model.PublicationShift, error)

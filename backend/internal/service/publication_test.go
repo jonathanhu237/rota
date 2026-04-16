@@ -410,6 +410,35 @@ func (m *publicationRepositoryStatefulMock) DeleteAssignment(
 	return nil
 }
 
+func (m *publicationRepositoryStatefulMock) ReplaceAssignments(
+	ctx context.Context,
+	params repository.ReplaceAssignmentsParams,
+) error {
+	if _, ok := m.publications[params.PublicationID]; !ok {
+		return repository.ErrPublicationNotFound
+	}
+
+	for key, assignment := range m.assignments {
+		if assignment.PublicationID == params.PublicationID {
+			delete(m.assignments, key)
+		}
+	}
+
+	for _, input := range params.Assignments {
+		key := assignmentKey(params.PublicationID, input.UserID, input.TemplateShiftID)
+		m.assignments[key] = &model.Assignment{
+			ID:              m.nextAssignmentID,
+			PublicationID:   params.PublicationID,
+			UserID:          input.UserID,
+			TemplateShiftID: input.TemplateShiftID,
+			CreatedAt:       params.CreatedAt,
+		}
+		m.nextAssignmentID++
+	}
+
+	return nil
+}
+
 func (m *publicationRepositoryStatefulMock) ActivatePublication(
 	ctx context.Context,
 	params repository.ActivatePublicationParams,

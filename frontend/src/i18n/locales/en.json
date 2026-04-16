@@ -453,6 +453,7 @@
     "title": "Assignment Board",
     "descriptionEditable": "Click candidates to assign them to {{name}}. Click assigned employees to remove them.",
     "descriptionReadOnly": "{{name}} is already active. The board is read-only.",
+    "autoAssign": "Auto-assign",
     "backToPublication": "Back to publication",
     "loadError": "The assignment board could not be loaded right now.",
     "emptyWeekday": "No shifts are scheduled for this weekday.",
@@ -462,7 +463,16 @@
     "candidates": "Candidates",
     "assigned": "Assigned",
     "emptyCandidates": "No candidates submitted availability for this shift.",
-    "emptyAssignments": "Nobody is assigned to this shift yet."
+    "emptyAssignments": "Nobody is assigned to this shift yet.",
+    "autoAssignDialog": {
+      "title": "Auto-assign shifts",
+      "description": "This will replace all current assignments for {{name}}. Continue?",
+      "confirm": "Auto-assign",
+      "submitting": "Auto-assigning..."
+    },
+    "success": {
+      "autoAssigned": "Assignments auto-assigned successfully."
+    }
   },
   "roster": {
     "title": "Weekly Roster",

@@ -452,6 +452,7 @@
     "title": "分配面板",
     "descriptionEditable": "点击候选人即可把他们分配到 {{name}}。点击已分配员工即可移除。",
     "descriptionReadOnly": "{{name}} 已经生效，当前面板为只读。",
+    "autoAssign": "自动分配",
     "backToPublication": "返回发布详情",
     "loadError": "当前无法加载分配面板。",
     "emptyWeekday": "这一天没有排班班次。",
@@ -461,7 +462,16 @@
     "candidates": "候选人",
     "assigned": "已分配",
     "emptyCandidates": "这个班次没有人提交可用性。",
-    "emptyAssignments": "这个班次还没有分配员工。"
+    "emptyAssignments": "这个班次还没有分配员工。",
+    "autoAssignDialog": {
+      "title": "自动分配班次",
+      "description": "这会替换 {{name}} 当前的所有分配。是否继续？",
+      "confirm": "自动分配",
+      "submitting": "自动分配中..."
+    },
+    "success": {
+      "autoAssigned": "班次已自动分配成功。"
+    }
   },
   "roster": {
     "title": "每周排班表",

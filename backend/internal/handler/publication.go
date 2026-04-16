@@ -21,6 +21,7 @@ type publicationService interface {
 	DeleteAvailabilitySubmission(ctx context.Context, input service.DeleteAvailabilitySubmissionInput) error
 	ListQualifiedPublicationShifts(ctx context.Context, publicationID, userID int64) ([]*model.TemplateShift, error)
 	GetAssignmentBoard(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error)
+	AutoAssignPublication(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error)
 	CreateAssignment(ctx context.Context, input service.CreateAssignmentInput) (*model.Assignment, error)
 	DeleteAssignment(ctx context.Context, input service.DeleteAssignmentInput) error
 	ActivatePublication(ctx context.Context, publicationID int64) (*model.Publication, error)
@@ -314,38 +315,23 @@ func (h *PublicationHandler) GetAssignmentBoard(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	responseShifts := make([]assignmentBoardShiftResponse, 0, len(result.Shifts))
-	for _, shiftResult := range result.Shifts {
-		candidates := make([]assignmentCandidateResponse, 0, len(shiftResult.Candidates))
-		for _, candidate := range shiftResult.Candidates {
-			candidates = append(candidates, assignmentCandidateResponse{
-				UserID: candidate.UserID,
-				Name:   candidate.Name,
-				Email:  candidate.Email,
-			})
-		}
+	writeData(w, http.StatusOK, newAssignmentBoardResponse(result))
+}
 
-		assignments := make([]assignmentResponse, 0, len(shiftResult.Assignments))
-		for _, assignment := range shiftResult.Assignments {
-			assignments = append(assignments, assignmentResponse{
-				AssignmentID: assignment.AssignmentID,
-				UserID:       assignment.UserID,
-				Name:         assignment.Name,
-				Email:        assignment.Email,
-			})
-		}
-
-		responseShifts = append(responseShifts, assignmentBoardShiftResponse{
-			Shift:       newPublicationShiftResponse(shiftResult.Shift),
-			Candidates:  candidates,
-			Assignments: assignments,
-		})
+func (h *PublicationHandler) AutoAssign(w http.ResponseWriter, r *http.Request) {
+	publicationID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
 	}
 
-	writeData(w, http.StatusOK, assignmentBoardResponse{
-		Publication: newPublicationResponse(result.Publication),
-		Shifts:      responseShifts,
-	})
+	result, err := h.publicationService.AutoAssignPublication(r.Context(), publicationID)
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, newAssignmentBoardResponse(result))
 }
 
 func (h *PublicationHandler) CreateAssignment(w http.ResponseWriter, r *http.Request) {
@@ -461,6 +447,41 @@ func (h *PublicationHandler) GetCurrentRoster(w http.ResponseWriter, r *http.Req
 	}
 
 	writeData(w, http.StatusOK, newRosterResponse(result))
+}
+
+func newAssignmentBoardResponse(result *service.AssignmentBoardResult) assignmentBoardResponse {
+	responseShifts := make([]assignmentBoardShiftResponse, 0, len(result.Shifts))
+	for _, shiftResult := range result.Shifts {
+		candidates := make([]assignmentCandidateResponse, 0, len(shiftResult.Candidates))
+		for _, candidate := range shiftResult.Candidates {
+			candidates = append(candidates, assignmentCandidateResponse{
+				UserID: candidate.UserID,
+				Name:   candidate.Name,
+				Email:  candidate.Email,
+			})
+		}
+
+		assignments := make([]assignmentResponse, 0, len(shiftResult.Assignments))
+		for _, assignment := range shiftResult.Assignments {
+			assignments = append(assignments, assignmentResponse{
+				AssignmentID: assignment.AssignmentID,
+				UserID:       assignment.UserID,
+				Name:         assignment.Name,
+				Email:        assignment.Email,
+			})
+		}
+
+		responseShifts = append(responseShifts, assignmentBoardShiftResponse{
+			Shift:       newPublicationShiftResponse(shiftResult.Shift),
+			Candidates:  candidates,
+			Assignments: assignments,
+		})
+	}
+
+	return assignmentBoardResponse{
+		Publication: newPublicationResponse(result.Publication),
+		Shifts:      responseShifts,
+	}
 }
 
 func newRosterResponse(result *service.RosterResult) rosterResponse {
