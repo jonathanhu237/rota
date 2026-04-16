@@ -114,6 +114,7 @@ func (r *PublicationRepository) DeleteAssignment(ctx context.Context, params Del
 		return err
 	}
 
+	// Idempotent: deleting a non-existent assignment is not an error.
 	_, err = result.RowsAffected()
 	return err
 }

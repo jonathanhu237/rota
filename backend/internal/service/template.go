@@ -307,12 +307,12 @@ func (s *TemplateService) ensurePositionExists(ctx context.Context, positionID i
 
 func normalizeTemplateInput(name, description string) (string, string, error) {
 	normalizedName := strings.TrimSpace(name)
-	if normalizedName == "" || len(normalizedName) > maxTemplateNameLength {
+	if normalizedName == "" || utf8.RuneCountInString(normalizedName) > maxTemplateNameLength {
 		return "", "", ErrInvalidInput
 	}
 
 	normalizedDescription := strings.TrimSpace(description)
-	if len(normalizedDescription) > maxTemplateDescriptionLength {
+	if utf8.RuneCountInString(normalizedDescription) > maxTemplateDescriptionLength {
 		return "", "", ErrInvalidInput
 	}
 
@@ -381,22 +381,21 @@ func mapTemplateRepositoryError(err error) error {
 }
 
 func buildTemplateCloneName(name string) string {
-	maxBaseNameLength := maxTemplateNameLength - len(templateCloneSuffix)
-	if len(name) <= maxBaseNameLength {
+	maxBaseRunes := maxTemplateNameLength - utf8.RuneCountInString(templateCloneSuffix)
+	if utf8.RuneCountInString(name) <= maxBaseRunes {
 		return name + templateCloneSuffix
 	}
 
 	var builder strings.Builder
 	builder.Grow(maxTemplateNameLength)
 
-	currentLength := 0
+	runeCount := 0
 	for _, r := range name {
-		runeLength := utf8.RuneLen(r)
-		if currentLength+runeLength > maxBaseNameLength {
+		if runeCount >= maxBaseRunes {
 			break
 		}
 		builder.WriteRune(r)
-		currentLength += runeLength
+		runeCount++
 	}
 
 	builder.WriteString(templateCloneSuffix)

@@ -15,11 +15,12 @@ func (s *PublicationService) AutoAssignPublication(
 		return nil, ErrInvalidInput
 	}
 
+	now := s.clock.Now()
 	publication, err := s.publicationRepo.GetByID(ctx, publicationID)
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
-	if model.ResolvePublicationState(publication, s.clock.Now()) != model.PublicationStateAssigning {
+	if model.ResolvePublicationState(publication, now) != model.PublicationStateAssigning {
 		return nil, ErrPublicationNotAssigning
 	}
 
@@ -73,7 +74,7 @@ func (s *PublicationService) AutoAssignPublication(
 	if err := s.publicationRepo.ReplaceAssignments(ctx, repository.ReplaceAssignmentsParams{
 		PublicationID: publicationID,
 		Assignments:   replacementAssignments,
-		CreatedAt:     s.clock.Now(),
+		CreatedAt:     now,
 	}); err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}

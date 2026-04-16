@@ -41,7 +41,7 @@ type publicationRepository interface {
 	GetCurrent(ctx context.Context) (*model.Publication, error)
 	GetUserByID(ctx context.Context, id int64) (*model.User, error)
 	CreatePublication(ctx context.Context, params repository.CreatePublicationParams) (*model.Publication, error)
-	DeletePublication(ctx context.Context, id int64) error
+	DeletePublication(ctx context.Context, params repository.DeletePublicationParams) error
 	ListSubmissionShiftIDs(ctx context.Context, publicationID, userID int64) ([]int64, error)
 	UpsertSubmission(ctx context.Context, params repository.UpsertAvailabilitySubmissionParams) (*model.AvailabilitySubmission, error)
 	DeleteSubmission(ctx context.Context, params repository.DeleteAvailabilitySubmissionParams) error
@@ -206,7 +206,8 @@ func (s *PublicationService) GetPublicationByID(
 		return nil, mapPublicationRepositoryError(err)
 	}
 
-	return publicationWithEffectiveState(publication, s.clock.Now()), nil
+	now := s.clock.Now()
+	return publicationWithEffectiveState(publication, now), nil
 }
 
 func (s *PublicationService) GetCurrentPublication(
@@ -220,7 +221,8 @@ func (s *PublicationService) GetCurrentPublication(
 		return nil, nil
 	}
 
-	return publicationWithEffectiveState(publication, s.clock.Now()), nil
+	now := s.clock.Now()
+	return publicationWithEffectiveState(publication, now), nil
 }
 
 func (s *PublicationService) DeletePublication(ctx context.Context, id int64) error {
@@ -228,19 +230,30 @@ func (s *PublicationService) DeletePublication(ctx context.Context, id int64) er
 		return ErrInvalidInput
 	}
 
-	publication, err := s.publicationRepo.GetByID(ctx, id)
-	if err != nil {
+	now := s.clock.Now()
+	err := s.publicationRepo.DeletePublication(ctx, repository.DeletePublicationParams{
+		ID:  id,
+		Now: now,
+	})
+	switch {
+	case err == nil:
+		return nil
+	case !errors.Is(err, repository.ErrPublicationNotFound):
 		return mapPublicationRepositoryError(err)
 	}
-	if model.ResolvePublicationState(publication, s.clock.Now()) != model.PublicationStateDraft {
+
+	publication, getErr := s.publicationRepo.GetByID(ctx, id)
+	if errors.Is(getErr, repository.ErrPublicationNotFound) {
+		return ErrPublicationNotFound
+	}
+	if getErr != nil {
+		return mapPublicationRepositoryError(getErr)
+	}
+	if publication != nil {
 		return ErrPublicationNotDeletable
 	}
 
-	if err := s.publicationRepo.DeletePublication(ctx, id); err != nil {
-		return mapPublicationRepositoryError(err)
-	}
-
-	return nil
+	return ErrPublicationNotFound
 }
 
 func (s *PublicationService) ListAvailabilitySubmissionShiftIDs(
@@ -349,7 +362,8 @@ func (s *PublicationService) ListQualifiedPublicationShifts(
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
-	if model.ResolvePublicationState(publication, s.clock.Now()) != model.PublicationStateCollecting {
+	now := s.clock.Now()
+	if model.ResolvePublicationState(publication, now) != model.PublicationStateCollecting {
 		return nil, ErrPublicationNotCollecting
 	}
 

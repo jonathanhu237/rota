@@ -161,6 +161,38 @@ func TestTemplateServiceCreateTemplate(t *testing.T) {
 			t.Fatalf("expected ErrInvalidInput, got %v", err)
 		}
 	})
+
+	t.Run("allows a 100-rune Chinese name", func(t *testing.T) {
+		t.Parallel()
+
+		chineseName := strings.Repeat("排", 100)
+		service := NewTemplateService(
+			&templateRepositoryMock{
+				createFunc: func(ctx context.Context, params repository.CreateTemplateParams) (*model.Template, error) {
+					if params.Name != chineseName {
+						t.Fatalf("expected name %q, got %q", chineseName, params.Name)
+					}
+					return &model.Template{
+						ID:          1,
+						Name:        params.Name,
+						Description: params.Description,
+					}, nil
+				},
+			},
+			&positionLookupRepositoryMock{},
+		)
+
+		template, err := service.CreateTemplate(context.Background(), CreateTemplateInput{
+			Name:        chineseName,
+			Description: "中文模板",
+		})
+		if err != nil {
+			t.Fatalf("CreateTemplate returned error: %v", err)
+		}
+		if template.Name != chineseName {
+			t.Fatalf("unexpected template name: %q", template.Name)
+		}
+	})
 }
 
 func TestTemplateServiceGetTemplateByID(t *testing.T) {
@@ -426,6 +458,43 @@ func TestTemplateServiceCloneTemplate(t *testing.T) {
 		)
 
 		clone, err := service.CloneTemplate(context.Background(), 12)
+		if err != nil {
+			t.Fatalf("CloneTemplate returned error: %v", err)
+		}
+		if clone.Name != expectedCloneName {
+			t.Fatalf("expected clone name %q, got %q", expectedCloneName, clone.Name)
+		}
+	})
+
+	t.Run("truncates clone name by rune count for CJK text", func(t *testing.T) {
+		t.Parallel()
+
+		sourceName := strings.Repeat("排", maxTemplateNameLength)
+		expectedCloneName := strings.Repeat(
+			"排",
+			maxTemplateNameLength-len([]rune(templateCloneSuffix)),
+		) + templateCloneSuffix
+
+		service := NewTemplateService(
+			&templateRepositoryMock{
+				cloneFunc: func(ctx context.Context, id int64, name string) (*model.Template, error) {
+					if len([]rune(name)) != maxTemplateNameLength {
+						t.Fatalf("expected clone name rune length %d, got %d", maxTemplateNameLength, len([]rune(name)))
+					}
+					if name != expectedCloneName {
+						t.Fatalf("expected clone name %q, got %q", expectedCloneName, name)
+					}
+
+					return &model.Template{ID: 13, Name: name, IsLocked: false}, nil
+				},
+				getByIDFunc: func(ctx context.Context, id int64) (*model.Template, error) {
+					return &model.Template{ID: id, Name: sourceName, IsLocked: false}, nil
+				},
+			},
+			&positionLookupRepositoryMock{},
+		)
+
+		clone, err := service.CloneTemplate(context.Background(), 13)
 		if err != nil {
 			t.Fatalf("CloneTemplate returned error: %v", err)
 		}

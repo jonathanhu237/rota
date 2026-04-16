@@ -116,7 +116,7 @@ func (h *PublicationHandler) List(w http.ResponseWriter, r *http.Request) {
 
 func (h *PublicationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req createPublicationRequest
-	if err := readJSON(r, &req); err != nil {
+	if err := readJSON(w, r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
 		return
 	}
@@ -225,7 +225,7 @@ func (h *PublicationHandler) CreateSubmission(w http.ResponseWriter, r *http.Req
 	}
 
 	var req createSubmissionRequest
-	if err := readJSON(r, &req); err != nil {
+	if err := readJSON(w, r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
 		return
 	}
@@ -342,7 +342,7 @@ func (h *PublicationHandler) CreateAssignment(w http.ResponseWriter, r *http.Req
 	}
 
 	var req createAssignmentRequest
-	if err := readJSON(r, &req); err != nil {
+	if err := readJSON(w, r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
 		return
 	}

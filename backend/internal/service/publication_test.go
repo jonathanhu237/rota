@@ -22,16 +22,17 @@ func (c fixedClock) Now() time.Time {
 }
 
 type publicationRepositoryStatefulMock struct {
-	nextPublicationID int64
-	nextSubmissionID  int64
-	nextAssignmentID  int64
-	publications      map[int64]*model.Publication
-	templates         map[int64]*model.Template
-	templateShifts    map[int64]*model.TemplateShift
-	users             map[int64]*model.User
-	submissions       map[string]*model.AvailabilitySubmission
-	assignments       map[string]*model.Assignment
-	qualifiedByUser   map[int64]map[int64]struct{}
+	nextPublicationID     int64
+	nextSubmissionID      int64
+	nextAssignmentID      int64
+	deletePublicationFunc func(ctx context.Context, params repository.DeletePublicationParams) error
+	publications          map[int64]*model.Publication
+	templates             map[int64]*model.Template
+	templateShifts        map[int64]*model.TemplateShift
+	users                 map[int64]*model.User
+	submissions           map[string]*model.AvailabilitySubmission
+	assignments           map[string]*model.Assignment
+	qualifiedByUser       map[int64]map[int64]struct{}
 }
 
 func newPublicationRepositoryStatefulMock() *publicationRepositoryStatefulMock {
@@ -218,15 +219,22 @@ func (m *publicationRepositoryStatefulMock) CreatePublication(
 
 func (m *publicationRepositoryStatefulMock) DeletePublication(
 	ctx context.Context,
-	id int64,
+	params repository.DeletePublicationParams,
 ) error {
-	if _, ok := m.publications[id]; !ok {
+	if m.deletePublicationFunc != nil {
+		return m.deletePublicationFunc(ctx, params)
+	}
+	publication, ok := m.publications[params.ID]
+	if !ok {
+		return repository.ErrPublicationNotFound
+	}
+	if publication.State != model.PublicationStateDraft || !publication.SubmissionStartAt.After(params.Now) {
 		return repository.ErrPublicationNotFound
 	}
 
-	delete(m.publications, id)
+	delete(m.publications, params.ID)
 	for key, submission := range m.submissions {
-		if submission.PublicationID == id {
+		if submission.PublicationID == params.ID {
 			delete(m.submissions, key)
 		}
 	}
@@ -976,6 +984,62 @@ func TestPublicationServiceDeletePublication(t *testing.T) {
 			PlannedActiveFrom: now.Add(48 * time.Hour),
 			CreatedAt:         now.Add(-24 * time.Hour),
 			UpdatedAt:         now.Add(-24 * time.Hour),
+		}
+		service := NewPublicationService(repo, fixedClock{now: now})
+
+		err := service.DeletePublication(context.Background(), 1)
+		if !errors.Is(err, ErrPublicationNotDeletable) {
+			t.Fatalf("expected ErrPublicationNotDeletable, got %v", err)
+		}
+	})
+
+	t.Run("rejects delete when stored state is draft but clock is past submission start", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC)
+		repo := newPublicationRepositoryStatefulMock()
+		repo.publications[1] = &model.Publication{
+			ID:                1,
+			TemplateID:        1,
+			TemplateName:      "Core Week",
+			Name:              "Clock Race",
+			State:             model.PublicationStateDraft,
+			SubmissionStartAt: now.Add(-1 * time.Minute),
+			SubmissionEndAt:   now.Add(24 * time.Hour),
+			PlannedActiveFrom: now.Add(48 * time.Hour),
+			CreatedAt:         now.Add(-24 * time.Hour),
+			UpdatedAt:         now.Add(-24 * time.Hour),
+		}
+		service := NewPublicationService(repo, fixedClock{now: now})
+
+		err := service.DeletePublication(context.Background(), 1)
+		if !errors.Is(err, ErrPublicationNotDeletable) {
+			t.Fatalf("expected ErrPublicationNotDeletable, got %v", err)
+		}
+		if _, ok := repo.publications[1]; !ok {
+			t.Fatal("expected publication to remain when delete is rejected")
+		}
+	})
+
+	t.Run("returns not deletable when atomic delete condition no longer matches", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC)
+		repo := newPublicationRepositoryStatefulMock()
+		repo.publications[1] = &model.Publication{
+			ID:                1,
+			TemplateID:        1,
+			TemplateName:      "Core Week",
+			Name:              "Delete Race",
+			State:             model.PublicationStateDraft,
+			SubmissionStartAt: now.Add(1 * time.Minute),
+			SubmissionEndAt:   now.Add(24 * time.Hour),
+			PlannedActiveFrom: now.Add(48 * time.Hour),
+			CreatedAt:         now.Add(-24 * time.Hour),
+			UpdatedAt:         now.Add(-24 * time.Hour),
+		}
+		repo.deletePublicationFunc = func(ctx context.Context, params repository.DeletePublicationParams) error {
+			return repository.ErrPublicationNotFound
 		}
 		service := NewPublicationService(repo, fixedClock{now: now})
 

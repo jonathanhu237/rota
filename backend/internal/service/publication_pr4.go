@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"sort"
+	"time"
 
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
@@ -44,11 +45,12 @@ func (s *PublicationService) CreateAssignment(
 		return nil, ErrInvalidInput
 	}
 
+	now := s.clock.Now()
 	publication, err := s.publicationRepo.GetByID(ctx, input.PublicationID)
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
-	if model.ResolvePublicationState(publication, s.clock.Now()) != model.PublicationStateAssigning {
+	if model.ResolvePublicationState(publication, now) != model.PublicationStateAssigning {
 		return nil, ErrPublicationNotAssigning
 	}
 
@@ -72,7 +74,7 @@ func (s *PublicationService) CreateAssignment(
 		PublicationID:   input.PublicationID,
 		UserID:          input.UserID,
 		TemplateShiftID: input.TemplateShiftID,
-		CreatedAt:       s.clock.Now(),
+		CreatedAt:       now,
 	})
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
@@ -89,11 +91,12 @@ func (s *PublicationService) DeleteAssignment(
 		return ErrInvalidInput
 	}
 
+	now := s.clock.Now()
 	publication, err := s.publicationRepo.GetByID(ctx, input.PublicationID)
 	if err != nil {
 		return mapPublicationRepositoryError(err)
 	}
-	if model.ResolvePublicationState(publication, s.clock.Now()) != model.PublicationStateAssigning {
+	if model.ResolvePublicationState(publication, now) != model.PublicationStateAssigning {
 		return ErrPublicationNotAssigning
 	}
 
@@ -115,17 +118,18 @@ func (s *PublicationService) ActivatePublication(
 		return nil, ErrInvalidInput
 	}
 
+	now := s.clock.Now()
 	publication, err := s.publicationRepo.GetByID(ctx, publicationID)
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
-	if model.ResolvePublicationState(publication, s.clock.Now()) != model.PublicationStateAssigning {
+	if model.ResolvePublicationState(publication, now) != model.PublicationStateAssigning {
 		return nil, ErrPublicationNotAssigning
 	}
 
 	updated, err := s.publicationRepo.ActivatePublication(ctx, repository.ActivatePublicationParams{
 		ID:  publicationID,
-		Now: s.clock.Now(),
+		Now: now,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		_, reloadErr := s.publicationRepo.GetByID(ctx, publicationID)
@@ -138,7 +142,7 @@ func (s *PublicationService) ActivatePublication(
 		return nil, mapPublicationRepositoryError(err)
 	}
 
-	return publicationWithEffectiveState(updated, s.clock.Now()), nil
+	return publicationWithEffectiveState(updated, now), nil
 }
 
 func (s *PublicationService) EndPublication(
@@ -149,17 +153,18 @@ func (s *PublicationService) EndPublication(
 		return nil, ErrInvalidInput
 	}
 
+	now := s.clock.Now()
 	publication, err := s.publicationRepo.GetByID(ctx, publicationID)
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
-	if model.ResolvePublicationState(publication, s.clock.Now()) != model.PublicationStateActive {
+	if model.ResolvePublicationState(publication, now) != model.PublicationStateActive {
 		return nil, ErrPublicationNotActive
 	}
 
 	updated, err := s.publicationRepo.EndPublication(ctx, repository.EndPublicationParams{
 		ID:  publicationID,
-		Now: s.clock.Now(),
+		Now: now,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		_, reloadErr := s.publicationRepo.GetByID(ctx, publicationID)
@@ -172,7 +177,7 @@ func (s *PublicationService) EndPublication(
 		return nil, mapPublicationRepositoryError(err)
 	}
 
-	return publicationWithEffectiveState(updated, s.clock.Now()), nil
+	return publicationWithEffectiveState(updated, now), nil
 }
 
 func (s *PublicationService) GetAssignmentBoard(
@@ -183,12 +188,13 @@ func (s *PublicationService) GetAssignmentBoard(
 		return nil, ErrInvalidInput
 	}
 
+	now := s.clock.Now()
 	publication, err := s.publicationRepo.GetByID(ctx, publicationID)
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
 
-	effectiveState := model.ResolvePublicationState(publication, s.clock.Now())
+	effectiveState := model.ResolvePublicationState(publication, now)
 	if effectiveState != model.PublicationStateAssigning && effectiveState != model.PublicationStateActive {
 		return nil, ErrPublicationNotAssigning
 	}
@@ -216,7 +222,7 @@ func (s *PublicationService) GetAssignmentBoard(
 	}
 
 	result := &AssignmentBoardResult{
-		Publication: publicationWithEffectiveState(publication, s.clock.Now()),
+		Publication: publicationWithEffectiveState(publication, now),
 		Shifts:      make([]*AssignmentBoardShiftResult, 0, len(shifts)),
 	}
 	for _, shift := range shifts {
@@ -238,35 +244,38 @@ func (s *PublicationService) GetPublicationRoster(
 		return nil, ErrInvalidInput
 	}
 
+	now := s.clock.Now()
 	publication, err := s.publicationRepo.GetByID(ctx, publicationID)
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
-	if model.ResolvePublicationState(publication, s.clock.Now()) != model.PublicationStateActive {
+	if model.ResolvePublicationState(publication, now) != model.PublicationStateActive {
 		return nil, ErrPublicationNotActive
 	}
 
-	return s.buildRoster(ctx, publication)
+	return s.buildRoster(ctx, publication, now)
 }
 
 func (s *PublicationService) GetCurrentRoster(ctx context.Context) (*RosterResult, error) {
+	now := s.clock.Now()
 	publication, err := s.publicationRepo.GetCurrent(ctx)
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
-	if publication == nil || model.ResolvePublicationState(publication, s.clock.Now()) != model.PublicationStateActive {
+	if publication == nil || model.ResolvePublicationState(publication, now) != model.PublicationStateActive {
 		return &RosterResult{
 			Publication: nil,
 			Weekdays:    make([]*RosterWeekdayResult, 0),
 		}, nil
 	}
 
-	return s.buildRoster(ctx, publication)
+	return s.buildRoster(ctx, publication, now)
 }
 
 func (s *PublicationService) buildRoster(
 	ctx context.Context,
 	publication *model.Publication,
+	now time.Time,
 ) (*RosterResult, error) {
 	shifts, err := s.publicationRepo.ListPublicationShifts(ctx, publication.ID)
 	if err != nil {
@@ -302,7 +311,7 @@ func (s *PublicationService) buildRoster(
 	}
 
 	return &RosterResult{
-		Publication: publicationWithEffectiveState(publication, s.clock.Now()),
+		Publication: publicationWithEffectiveState(publication, now),
 		Weekdays:    weekdays,
 	}, nil
 }
@@ -317,8 +326,8 @@ func cloneAssignmentCandidates(candidates []*model.AssignmentCandidate) []*model
 		if candidate == nil {
 			continue
 		}
-		copy := *candidate
-		cloned = append(cloned, &copy)
+		clonedCandidate := *candidate
+		cloned = append(cloned, &clonedCandidate)
 	}
 	sort.Slice(cloned, func(i, j int) bool {
 		return cloned[i].UserID < cloned[j].UserID
@@ -336,8 +345,8 @@ func cloneAssignmentParticipants(participants []*model.AssignmentParticipant) []
 		if participant == nil {
 			continue
 		}
-		copy := *participant
-		cloned = append(cloned, &copy)
+		clonedParticipant := *participant
+		cloned = append(cloned, &clonedParticipant)
 	}
 	sort.Slice(cloned, func(i, j int) bool {
 		return cloned[i].UserID < cloned[j].UserID

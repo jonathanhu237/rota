@@ -36,6 +36,11 @@ type CreatePublicationParams struct {
 	CreatedAt         time.Time
 }
 
+type DeletePublicationParams struct {
+	ID  int64
+	Now time.Time
+}
+
 type UpsertAvailabilitySubmissionParams struct {
 	PublicationID    int64
 	UserID           int64
@@ -232,13 +237,15 @@ func (r *PublicationRepository) CreatePublication(
 	return publication, nil
 }
 
-func (r *PublicationRepository) DeletePublication(ctx context.Context, id int64) error {
+func (r *PublicationRepository) DeletePublication(ctx context.Context, params DeletePublicationParams) error {
 	const query = `
 		DELETE FROM publications
-		WHERE id = $1;
+		WHERE id = $1
+			AND state = 'DRAFT'
+			AND submission_start_at > $2;
 	`
 
-	result, err := r.db.ExecContext(ctx, query, id)
+	result, err := r.db.ExecContext(ctx, query, params.ID, params.Now)
 	if err != nil {
 		return err
 	}
