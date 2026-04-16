@@ -1,0 +1,904 @@
+package handler
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/jonathanhu237/rota/backend/internal/model"
+	"github.com/jonathanhu237/rota/backend/internal/service"
+)
+
+type stubPublicationService struct {
+	listPublicationsFunc               func(ctx context.Context, input service.ListPublicationsInput) (*service.ListPublicationsResult, error)
+	createPublicationFunc              func(ctx context.Context, input service.CreatePublicationInput) (*model.Publication, error)
+	getPublicationByIDFunc             func(ctx context.Context, id int64) (*model.Publication, error)
+	deletePublicationFunc              func(ctx context.Context, id int64) error
+	getCurrentPublicationFunc          func(ctx context.Context) (*model.Publication, error)
+	listSubmissionShiftIDsFunc         func(ctx context.Context, publicationID, userID int64) ([]int64, error)
+	createAvailabilitySubmissionFunc   func(ctx context.Context, input service.CreateAvailabilitySubmissionInput) (*model.AvailabilitySubmission, error)
+	deleteAvailabilitySubmissionFunc   func(ctx context.Context, input service.DeleteAvailabilitySubmissionInput) error
+	listQualifiedPublicationShiftsFunc func(ctx context.Context, publicationID, userID int64) ([]*model.TemplateShift, error)
+	getAssignmentBoardFunc             func(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error)
+	autoAssignPublicationFunc          func(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error)
+	createAssignmentFunc               func(ctx context.Context, input service.CreateAssignmentInput) (*model.Assignment, error)
+	deleteAssignmentFunc               func(ctx context.Context, input service.DeleteAssignmentInput) error
+	activatePublicationFunc            func(ctx context.Context, publicationID int64) (*model.Publication, error)
+	endPublicationFunc                 func(ctx context.Context, publicationID int64) (*model.Publication, error)
+	getPublicationRosterFunc           func(ctx context.Context, publicationID int64) (*service.RosterResult, error)
+	getCurrentRosterFunc               func(ctx context.Context) (*service.RosterResult, error)
+}
+
+func (s *stubPublicationService) ListPublications(ctx context.Context, input service.ListPublicationsInput) (*service.ListPublicationsResult, error) {
+	return s.listPublicationsFunc(ctx, input)
+}
+
+func (s *stubPublicationService) CreatePublication(ctx context.Context, input service.CreatePublicationInput) (*model.Publication, error) {
+	return s.createPublicationFunc(ctx, input)
+}
+
+func (s *stubPublicationService) GetPublicationByID(ctx context.Context, id int64) (*model.Publication, error) {
+	return s.getPublicationByIDFunc(ctx, id)
+}
+
+func (s *stubPublicationService) DeletePublication(ctx context.Context, id int64) error {
+	return s.deletePublicationFunc(ctx, id)
+}
+
+func (s *stubPublicationService) GetCurrentPublication(ctx context.Context) (*model.Publication, error) {
+	return s.getCurrentPublicationFunc(ctx)
+}
+
+func (s *stubPublicationService) ListAvailabilitySubmissionShiftIDs(ctx context.Context, publicationID, userID int64) ([]int64, error) {
+	return s.listSubmissionShiftIDsFunc(ctx, publicationID, userID)
+}
+
+func (s *stubPublicationService) CreateAvailabilitySubmission(ctx context.Context, input service.CreateAvailabilitySubmissionInput) (*model.AvailabilitySubmission, error) {
+	return s.createAvailabilitySubmissionFunc(ctx, input)
+}
+
+func (s *stubPublicationService) DeleteAvailabilitySubmission(ctx context.Context, input service.DeleteAvailabilitySubmissionInput) error {
+	return s.deleteAvailabilitySubmissionFunc(ctx, input)
+}
+
+func (s *stubPublicationService) ListQualifiedPublicationShifts(ctx context.Context, publicationID, userID int64) ([]*model.TemplateShift, error) {
+	return s.listQualifiedPublicationShiftsFunc(ctx, publicationID, userID)
+}
+
+func (s *stubPublicationService) GetAssignmentBoard(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error) {
+	return s.getAssignmentBoardFunc(ctx, publicationID)
+}
+
+func (s *stubPublicationService) AutoAssignPublication(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error) {
+	return s.autoAssignPublicationFunc(ctx, publicationID)
+}
+
+func (s *stubPublicationService) CreateAssignment(ctx context.Context, input service.CreateAssignmentInput) (*model.Assignment, error) {
+	return s.createAssignmentFunc(ctx, input)
+}
+
+func (s *stubPublicationService) DeleteAssignment(ctx context.Context, input service.DeleteAssignmentInput) error {
+	return s.deleteAssignmentFunc(ctx, input)
+}
+
+func (s *stubPublicationService) ActivatePublication(ctx context.Context, publicationID int64) (*model.Publication, error) {
+	return s.activatePublicationFunc(ctx, publicationID)
+}
+
+func (s *stubPublicationService) EndPublication(ctx context.Context, publicationID int64) (*model.Publication, error) {
+	return s.endPublicationFunc(ctx, publicationID)
+}
+
+func (s *stubPublicationService) GetPublicationRoster(ctx context.Context, publicationID int64) (*service.RosterResult, error) {
+	return s.getPublicationRosterFunc(ctx, publicationID)
+}
+
+func (s *stubPublicationService) GetCurrentRoster(ctx context.Context) (*service.RosterResult, error) {
+	return s.getCurrentRosterFunc(ctx)
+}
+
+func TestPublicationHandler(t *testing.T) {
+	t.Run("List returns publications", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			listPublicationsFunc: func(ctx context.Context, input service.ListPublicationsInput) (*service.ListPublicationsResult, error) {
+				return &service.ListPublicationsResult{
+					Publications: []*model.Publication{samplePublication()},
+					Page:         1,
+					PageSize:     10,
+					Total:        1,
+					TotalPages:   1,
+				}, nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+
+		handler.List(recorder, httptest.NewRequest(http.MethodGet, "/publications?page=1&page_size=10", nil))
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", recorder.Code)
+		}
+		response := decodeJSONResponse[publicationsResponse](t, recorder)
+		if len(response.Publications) != 1 || response.Publications[0].ID != 1 {
+			t.Fatalf("unexpected response: %+v", response)
+		}
+	})
+
+	t.Run("Create returns created publication", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			createPublicationFunc: func(ctx context.Context, input service.CreatePublicationInput) (*model.Publication, error) {
+				return samplePublication(), nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+
+		handler.Create(recorder, jsonRequest(t, http.MethodPost, "/publications", sampleCreatePublicationPayload()))
+
+		if recorder.Code != http.StatusCreated {
+			t.Fatalf("expected status 201, got %d", recorder.Code)
+		}
+		response := decodeJSONResponse[publicationDetailResponse](t, recorder)
+		if response.Publication == nil || response.Publication.ID != 1 {
+			t.Fatalf("unexpected response: %+v", response)
+		}
+	})
+
+	t.Run("Create rejects invalid JSON", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{})
+		recorder := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/publications", strings.NewReader("{"))
+
+		handler.Create(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusBadRequest, "INVALID_REQUEST")
+	})
+
+	t.Run("Create maps service errors", func(t *testing.T) {
+		t.Parallel()
+
+		cases := []struct {
+			name   string
+			err    error
+			status int
+			code   string
+		}{
+			{name: "publication already exists", err: service.ErrPublicationAlreadyExists, status: http.StatusConflict, code: "PUBLICATION_ALREADY_EXISTS"},
+			{name: "invalid publication window", err: service.ErrInvalidPublicationWindow, status: http.StatusBadRequest, code: "INVALID_PUBLICATION_WINDOW"},
+			{name: "template not found", err: service.ErrTemplateNotFound, status: http.StatusNotFound, code: "TEMPLATE_NOT_FOUND"},
+		}
+
+		for _, tc := range cases {
+			tc := tc
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				handler := NewPublicationHandler(&stubPublicationService{
+					createPublicationFunc: func(ctx context.Context, input service.CreatePublicationInput) (*model.Publication, error) {
+						return nil, tc.err
+					},
+				})
+				recorder := httptest.NewRecorder()
+
+				handler.Create(recorder, jsonRequest(t, http.MethodPost, "/publications", sampleCreatePublicationPayload()))
+
+				assertErrorResponse(t, recorder, tc.status, tc.code)
+			})
+		}
+	})
+
+	t.Run("GetByID returns publication", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			getPublicationByIDFunc: func(ctx context.Context, id int64) (*model.Publication, error) {
+				return samplePublication(), nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithPathValues(httptest.NewRequest(http.MethodGet, "/publications/1", nil), map[string]string{"id": "1"})
+
+		handler.GetByID(recorder, req)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", recorder.Code)
+		}
+		response := decodeJSONResponse[publicationDetailResponse](t, recorder)
+		if response.Publication == nil || response.Publication.ID != 1 {
+			t.Fatalf("unexpected response: %+v", response)
+		}
+	})
+
+	t.Run("GetByID rejects invalid path id", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{})
+		recorder := httptest.NewRecorder()
+		req := requestWithPathValues(httptest.NewRequest(http.MethodGet, "/publications/bad", nil), map[string]string{"id": "bad"})
+
+		handler.GetByID(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusBadRequest, "INVALID_REQUEST")
+	})
+
+	t.Run("GetByID maps publication not found", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			getPublicationByIDFunc: func(ctx context.Context, id int64) (*model.Publication, error) {
+				return nil, service.ErrPublicationNotFound
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithPathValues(httptest.NewRequest(http.MethodGet, "/publications/2", nil), map[string]string{"id": "2"})
+
+		handler.GetByID(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusNotFound, "PUBLICATION_NOT_FOUND")
+	})
+
+	t.Run("Delete returns no content", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			deletePublicationFunc: func(ctx context.Context, id int64) error { return nil },
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/publications/1", nil), map[string]string{"id": "1"})
+
+		handler.Delete(recorder, req)
+
+		if recorder.Code != http.StatusNoContent {
+			t.Fatalf("expected status 204, got %d", recorder.Code)
+		}
+	})
+
+	t.Run("Delete maps publication not deletable", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			deletePublicationFunc: func(ctx context.Context, id int64) error { return service.ErrPublicationNotDeletable },
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/publications/1", nil), map[string]string{"id": "1"})
+
+		handler.Delete(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusConflict, "PUBLICATION_NOT_DELETABLE")
+	})
+
+	t.Run("GetCurrent returns publication", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			getCurrentPublicationFunc: func(ctx context.Context) (*model.Publication, error) {
+				return samplePublication(), nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+
+		handler.GetCurrent(recorder, httptest.NewRequest(http.MethodGet, "/publications/current", nil))
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", recorder.Code)
+		}
+		response := decodeJSONResponse[currentPublicationResponse](t, recorder)
+		if response.Publication == nil || response.Publication.ID != 1 {
+			t.Fatalf("unexpected response: %+v", response)
+		}
+	})
+
+	t.Run("GetCurrent returns null when no publication", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			getCurrentPublicationFunc: func(ctx context.Context) (*model.Publication, error) {
+				return nil, nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+
+		handler.GetCurrent(recorder, httptest.NewRequest(http.MethodGet, "/publications/current", nil))
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", recorder.Code)
+		}
+		response := decodeJSONResponse[currentPublicationResponse](t, recorder)
+		if response.Publication != nil {
+			t.Fatalf("expected nil publication, got %+v", response.Publication)
+		}
+	})
+
+	t.Run("ListMySubmissionShiftIDs returns shift ids", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			listSubmissionShiftIDsFunc: func(ctx context.Context, publicationID, userID int64) ([]int64, error) {
+				return []int64{2, 3}, nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithUser(
+			requestWithPathValues(httptest.NewRequest(http.MethodGet, "/publications/1/submissions/me", nil), map[string]string{"id": "1"}),
+			sampleUser(),
+		)
+
+		handler.ListMySubmissionShiftIDs(recorder, req)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", recorder.Code)
+		}
+		response := decodeJSONResponse[submissionsMeResponse](t, recorder)
+		if len(response.ShiftIDs) != 2 || response.ShiftIDs[0] != 2 || response.ShiftIDs[1] != 3 {
+			t.Fatalf("unexpected response: %+v", response)
+		}
+	})
+
+	t.Run("CreateSubmission returns created status", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			createAvailabilitySubmissionFunc: func(ctx context.Context, input service.CreateAvailabilitySubmissionInput) (*model.AvailabilitySubmission, error) {
+				return &model.AvailabilitySubmission{
+					ID:              1,
+					PublicationID:   input.PublicationID,
+					UserID:          input.UserID,
+					TemplateShiftID: input.TemplateShiftID,
+					CreatedAt:       samplePublicationTime(),
+				}, nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithUser(
+			requestWithPathValues(jsonRequest(t, http.MethodPost, "/publications/1/submissions", map[string]any{"template_shift_id": 2}), map[string]string{"id": "1"}),
+			sampleUser(),
+		)
+
+		handler.CreateSubmission(recorder, req)
+
+		if recorder.Code != http.StatusCreated {
+			t.Fatalf("expected status 201, got %d", recorder.Code)
+		}
+	})
+
+	t.Run("CreateSubmission maps service errors", func(t *testing.T) {
+		t.Parallel()
+
+		cases := []struct {
+			name   string
+			err    error
+			status int
+			code   string
+		}{
+			{name: "publication not collecting", err: service.ErrPublicationNotCollecting, status: http.StatusConflict, code: "PUBLICATION_NOT_COLLECTING"},
+			{name: "not qualified", err: service.ErrNotQualified, status: http.StatusForbidden, code: "NOT_QUALIFIED"},
+			{name: "template shift not found", err: service.ErrTemplateShiftNotFound, status: http.StatusNotFound, code: "TEMPLATE_SHIFT_NOT_FOUND"},
+		}
+
+		for _, tc := range cases {
+			tc := tc
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				handler := NewPublicationHandler(&stubPublicationService{
+					createAvailabilitySubmissionFunc: func(ctx context.Context, input service.CreateAvailabilitySubmissionInput) (*model.AvailabilitySubmission, error) {
+						return nil, tc.err
+					},
+				})
+				recorder := httptest.NewRecorder()
+				req := requestWithUser(
+					requestWithPathValues(jsonRequest(t, http.MethodPost, "/publications/1/submissions", map[string]any{"template_shift_id": 2}), map[string]string{"id": "1"}),
+					sampleUser(),
+				)
+
+				handler.CreateSubmission(recorder, req)
+
+				assertErrorResponse(t, recorder, tc.status, tc.code)
+			})
+		}
+	})
+
+	t.Run("DeleteSubmission returns no content", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			deleteAvailabilitySubmissionFunc: func(ctx context.Context, input service.DeleteAvailabilitySubmissionInput) error { return nil },
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithUser(
+			requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/publications/1/submissions/2", nil), map[string]string{"id": "1", "shift_id": "2"}),
+			sampleUser(),
+		)
+
+		handler.DeleteSubmission(recorder, req)
+
+		if recorder.Code != http.StatusNoContent {
+			t.Fatalf("expected status 204, got %d", recorder.Code)
+		}
+	})
+
+	t.Run("DeleteSubmission maps publication not collecting", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			deleteAvailabilitySubmissionFunc: func(ctx context.Context, input service.DeleteAvailabilitySubmissionInput) error {
+				return service.ErrPublicationNotCollecting
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithUser(
+			requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/publications/1/submissions/2", nil), map[string]string{"id": "1", "shift_id": "2"}),
+			sampleUser(),
+		)
+
+		handler.DeleteSubmission(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusConflict, "PUBLICATION_NOT_COLLECTING")
+	})
+
+	t.Run("ListMyQualifiedShifts returns shifts", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			listQualifiedPublicationShiftsFunc: func(ctx context.Context, publicationID, userID int64) ([]*model.TemplateShift, error) {
+				return []*model.TemplateShift{sampleTemplateShift()}, nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithUser(
+			requestWithPathValues(httptest.NewRequest(http.MethodGet, "/publications/1/shifts/me", nil), map[string]string{"id": "1"}),
+			sampleUser(),
+		)
+
+		handler.ListMyQualifiedShifts(recorder, req)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", recorder.Code)
+		}
+		response := decodeJSONResponse[shiftsMeResponse](t, recorder)
+		if len(response.Shifts) != 1 || response.Shifts[0].ID != 2 {
+			t.Fatalf("unexpected response: %+v", response)
+		}
+	})
+
+	t.Run("ListMyQualifiedShifts maps publication not collecting", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			listQualifiedPublicationShiftsFunc: func(ctx context.Context, publicationID, userID int64) ([]*model.TemplateShift, error) {
+				return nil, service.ErrPublicationNotCollecting
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithUser(
+			requestWithPathValues(httptest.NewRequest(http.MethodGet, "/publications/1/shifts/me", nil), map[string]string{"id": "1"}),
+			sampleUser(),
+		)
+
+		handler.ListMyQualifiedShifts(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusConflict, "PUBLICATION_NOT_COLLECTING")
+	})
+
+	t.Run("GetAssignmentBoard returns board", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			getAssignmentBoardFunc: func(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error) {
+				return sampleAssignmentBoardResult(), nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithPathValues(httptest.NewRequest(http.MethodGet, "/publications/1/assignment-board", nil), map[string]string{"id": "1"})
+
+		handler.GetAssignmentBoard(recorder, req)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", recorder.Code)
+		}
+		response := decodeJSONResponse[assignmentBoardResponse](t, recorder)
+		if response.Publication == nil || len(response.Shifts) != 1 || len(response.Shifts[0].Candidates) != 1 || len(response.Shifts[0].Assignments) != 1 {
+			t.Fatalf("unexpected response: %+v", response)
+		}
+	})
+
+	t.Run("GetAssignmentBoard maps publication not assigning", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			getAssignmentBoardFunc: func(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error) {
+				return nil, service.ErrPublicationNotAssigning
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithPathValues(httptest.NewRequest(http.MethodGet, "/publications/1/assignment-board", nil), map[string]string{"id": "1"})
+
+		handler.GetAssignmentBoard(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusConflict, "PUBLICATION_NOT_ASSIGNING")
+	})
+
+	t.Run("CreateAssignment returns created status", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			createAssignmentFunc: func(ctx context.Context, input service.CreateAssignmentInput) (*model.Assignment, error) {
+				return &model.Assignment{
+					ID:              1,
+					PublicationID:   input.PublicationID,
+					UserID:          input.UserID,
+					TemplateShiftID: input.TemplateShiftID,
+					CreatedAt:       samplePublicationTime(),
+				}, nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithPathValues(jsonRequest(t, http.MethodPost, "/publications/1/assignments", map[string]any{
+			"user_id": 1, "template_shift_id": 2,
+		}), map[string]string{"id": "1"})
+
+		handler.CreateAssignment(recorder, req)
+
+		if recorder.Code != http.StatusCreated {
+			t.Fatalf("expected status 201, got %d", recorder.Code)
+		}
+	})
+
+	t.Run("CreateAssignment maps service errors", func(t *testing.T) {
+		t.Parallel()
+
+		cases := []struct {
+			name   string
+			err    error
+			status int
+			code   string
+		}{
+			{name: "publication not assigning", err: service.ErrPublicationNotAssigning, status: http.StatusConflict, code: "PUBLICATION_NOT_ASSIGNING"},
+			{name: "user not found", err: service.ErrUserNotFound, status: http.StatusNotFound, code: "USER_NOT_FOUND"},
+			{name: "user disabled", err: service.ErrUserDisabled, status: http.StatusConflict, code: "USER_DISABLED"},
+		}
+
+		for _, tc := range cases {
+			tc := tc
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				handler := NewPublicationHandler(&stubPublicationService{
+					createAssignmentFunc: func(ctx context.Context, input service.CreateAssignmentInput) (*model.Assignment, error) {
+						return nil, tc.err
+					},
+				})
+				recorder := httptest.NewRecorder()
+				req := requestWithPathValues(jsonRequest(t, http.MethodPost, "/publications/1/assignments", map[string]any{
+					"user_id": 1, "template_shift_id": 2,
+				}), map[string]string{"id": "1"})
+
+				handler.CreateAssignment(recorder, req)
+
+				assertErrorResponse(t, recorder, tc.status, tc.code)
+			})
+		}
+	})
+
+	t.Run("DeleteAssignment returns no content", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			deleteAssignmentFunc: func(ctx context.Context, input service.DeleteAssignmentInput) error { return nil },
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/publications/1/assignments/3", nil), map[string]string{"id": "1", "assignment_id": "3"})
+
+		handler.DeleteAssignment(recorder, req)
+
+		if recorder.Code != http.StatusNoContent {
+			t.Fatalf("expected status 204, got %d", recorder.Code)
+		}
+	})
+
+	t.Run("DeleteAssignment maps publication not assigning", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			deleteAssignmentFunc: func(ctx context.Context, input service.DeleteAssignmentInput) error {
+				return service.ErrPublicationNotAssigning
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/publications/1/assignments/3", nil), map[string]string{"id": "1", "assignment_id": "3"})
+
+		handler.DeleteAssignment(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusConflict, "PUBLICATION_NOT_ASSIGNING")
+	})
+
+	t.Run("Activate returns publication", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			activatePublicationFunc: func(ctx context.Context, publicationID int64) (*model.Publication, error) {
+				publication := samplePublication()
+				publication.State = model.PublicationStateActive
+				activatedAt := samplePublicationTime()
+				publication.ActivatedAt = &activatedAt
+				return publication, nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithPathValues(httptest.NewRequest(http.MethodPost, "/publications/1/activate", nil), map[string]string{"id": "1"})
+
+		handler.Activate(recorder, req)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", recorder.Code)
+		}
+		response := decodeJSONResponse[publicationDetailResponse](t, recorder)
+		if response.Publication == nil || response.Publication.State != model.PublicationStateActive {
+			t.Fatalf("unexpected response: %+v", response)
+		}
+	})
+
+	t.Run("Activate maps publication not assigning", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			activatePublicationFunc: func(ctx context.Context, publicationID int64) (*model.Publication, error) {
+				return nil, service.ErrPublicationNotAssigning
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithPathValues(httptest.NewRequest(http.MethodPost, "/publications/1/activate", nil), map[string]string{"id": "1"})
+
+		handler.Activate(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusConflict, "PUBLICATION_NOT_ASSIGNING")
+	})
+
+	t.Run("End returns publication", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			endPublicationFunc: func(ctx context.Context, publicationID int64) (*model.Publication, error) {
+				publication := samplePublication()
+				publication.State = model.PublicationStateEnded
+				endedAt := samplePublicationTime()
+				publication.EndedAt = &endedAt
+				return publication, nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithPathValues(httptest.NewRequest(http.MethodPost, "/publications/1/end", nil), map[string]string{"id": "1"})
+
+		handler.End(recorder, req)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", recorder.Code)
+		}
+		response := decodeJSONResponse[publicationDetailResponse](t, recorder)
+		if response.Publication == nil || response.Publication.State != model.PublicationStateEnded {
+			t.Fatalf("unexpected response: %+v", response)
+		}
+	})
+
+	t.Run("End maps publication not active", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			endPublicationFunc: func(ctx context.Context, publicationID int64) (*model.Publication, error) {
+				return nil, service.ErrPublicationNotActive
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithPathValues(httptest.NewRequest(http.MethodPost, "/publications/1/end", nil), map[string]string{"id": "1"})
+
+		handler.End(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusConflict, "PUBLICATION_NOT_ACTIVE")
+	})
+
+	t.Run("GetRoster returns roster", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			getPublicationRosterFunc: func(ctx context.Context, publicationID int64) (*service.RosterResult, error) {
+				return sampleRosterResult(), nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithPathValues(httptest.NewRequest(http.MethodGet, "/publications/1/roster", nil), map[string]string{"id": "1"})
+
+		handler.GetRoster(recorder, req)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", recorder.Code)
+		}
+		response := decodeJSONResponse[rosterResponse](t, recorder)
+		if response.Publication == nil || len(response.Weekdays) != 1 || len(response.Weekdays[0].Shifts) != 1 {
+			t.Fatalf("unexpected response: %+v", response)
+		}
+	})
+
+	t.Run("GetRoster maps publication not active", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			getPublicationRosterFunc: func(ctx context.Context, publicationID int64) (*service.RosterResult, error) {
+				return nil, service.ErrPublicationNotActive
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithPathValues(httptest.NewRequest(http.MethodGet, "/publications/1/roster", nil), map[string]string{"id": "1"})
+
+		handler.GetRoster(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusConflict, "PUBLICATION_NOT_ACTIVE")
+	})
+
+	t.Run("GetCurrentRoster returns roster", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			getCurrentRosterFunc: func(ctx context.Context) (*service.RosterResult, error) {
+				return sampleRosterResult(), nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+
+		handler.GetCurrentRoster(recorder, httptest.NewRequest(http.MethodGet, "/publications/current/roster", nil))
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", recorder.Code)
+		}
+		response := decodeJSONResponse[rosterResponse](t, recorder)
+		if response.Publication == nil || response.Publication.ID != 1 {
+			t.Fatalf("unexpected response: %+v", response)
+		}
+	})
+
+	t.Run("AutoAssign returns assignment board", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			autoAssignPublicationFunc: func(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error) {
+				return sampleAssignmentBoardResult(), nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithPathValues(httptest.NewRequest(http.MethodPost, "/publications/1/auto-assign", nil), map[string]string{"id": "1"})
+
+		handler.AutoAssign(recorder, req)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", recorder.Code)
+		}
+		response := decodeJSONResponse[assignmentBoardResponse](t, recorder)
+		if response.Publication == nil || len(response.Shifts) != 1 {
+			t.Fatalf("unexpected response: %+v", response)
+		}
+	})
+
+	t.Run("AutoAssign maps publication not assigning", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			autoAssignPublicationFunc: func(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error) {
+				return nil, service.ErrPublicationNotAssigning
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithPathValues(httptest.NewRequest(http.MethodPost, "/publications/1/auto-assign", nil), map[string]string{"id": "1"})
+
+		handler.AutoAssign(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusConflict, "PUBLICATION_NOT_ASSIGNING")
+	})
+}
+
+func samplePublication() *model.Publication {
+	now := samplePublicationTime()
+	return &model.Publication{
+		ID:                1,
+		TemplateID:        1,
+		TemplateName:      "Weekday Template",
+		Name:              "Week 16",
+		State:             model.PublicationStateCollecting,
+		SubmissionStartAt: now.Add(-24 * time.Hour),
+		SubmissionEndAt:   now.Add(24 * time.Hour),
+		PlannedActiveFrom: now.Add(48 * time.Hour),
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}
+}
+
+func samplePublicationShift() *model.PublicationShift {
+	now := samplePublicationTime()
+	return &model.PublicationShift{
+		ID:                2,
+		TemplateID:        1,
+		Weekday:           1,
+		StartTime:         "09:00",
+		EndTime:           "12:00",
+		PositionID:        7,
+		PositionName:      "Front Desk",
+		RequiredHeadcount: 2,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}
+}
+
+func sampleAssignmentBoardResult() *service.AssignmentBoardResult {
+	return &service.AssignmentBoardResult{
+		Publication: samplePublication(),
+		Shifts: []*service.AssignmentBoardShiftResult{
+			{
+				Shift: samplePublicationShift(),
+				Candidates: []*model.AssignmentCandidate{
+					{
+						TemplateShiftID: 2,
+						UserID:          1,
+						Name:            "Worker",
+						Email:           "worker@example.com",
+					},
+				},
+				Assignments: []*model.AssignmentParticipant{
+					{
+						AssignmentID:    3,
+						TemplateShiftID: 2,
+						UserID:          1,
+						Name:            "Worker",
+						Email:           "worker@example.com",
+						CreatedAt:       samplePublicationTime(),
+					},
+				},
+			},
+		},
+	}
+}
+
+func sampleRosterResult() *service.RosterResult {
+	return &service.RosterResult{
+		Publication: samplePublication(),
+		Weekdays: []*service.RosterWeekdayResult{
+			{
+				Weekday: 1,
+				Shifts: []*service.RosterShiftResult{
+					{
+						Shift: samplePublicationShift(),
+						Assignments: []*model.AssignmentParticipant{
+							{
+								AssignmentID:    3,
+								TemplateShiftID: 2,
+								UserID:          1,
+								Name:            "Worker",
+								Email:           "worker@example.com",
+								CreatedAt:       samplePublicationTime(),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func sampleCreatePublicationPayload() map[string]any {
+	now := samplePublicationTime()
+	return map[string]any{
+		"template_id":         1,
+		"name":                "Week 16",
+		"submission_start_at": now,
+		"submission_end_at":   now.Add(24 * time.Hour),
+		"planned_active_from": now.Add(48 * time.Hour),
+	}
+}
+
+func samplePublicationTime() time.Time {
+	return time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC)
+}

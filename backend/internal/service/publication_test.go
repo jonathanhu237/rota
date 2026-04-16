@@ -1050,6 +1050,68 @@ func TestPublicationServiceDeletePublication(t *testing.T) {
 	})
 }
 
+func TestPublicationServiceListAvailabilitySubmissionShiftIDs(t *testing.T) {
+	t.Run("returns submitted shift IDs", func(t *testing.T) {
+		t.Parallel()
+
+		repo := newPublicationRepositoryStatefulMock()
+		repo.submissions[submissionKey(1, 7, 11)] = &model.AvailabilitySubmission{
+			ID:              1,
+			PublicationID:   1,
+			UserID:          7,
+			TemplateShiftID: 11,
+		}
+		repo.submissions[submissionKey(1, 7, 12)] = &model.AvailabilitySubmission{
+			ID:              2,
+			PublicationID:   1,
+			UserID:          7,
+			TemplateShiftID: 12,
+		}
+		service := NewPublicationService(repo, fixedClock{})
+
+		shiftIDs, err := service.ListAvailabilitySubmissionShiftIDs(context.Background(), 1, 7)
+		if err != nil {
+			t.Fatalf("ListAvailabilitySubmissionShiftIDs returned error: %v", err)
+		}
+		if len(shiftIDs) != 2 {
+			t.Fatalf("expected 2 shift ids, got %v", shiftIDs)
+		}
+		if shiftIDs[0] != 11 || shiftIDs[1] != 12 {
+			t.Fatalf("expected [11 12], got %v", shiftIDs)
+		}
+	})
+
+	t.Run("returns empty slice when user has no submissions", func(t *testing.T) {
+		t.Parallel()
+
+		repo := newPublicationRepositoryStatefulMock()
+		service := NewPublicationService(repo, fixedClock{})
+
+		shiftIDs, err := service.ListAvailabilitySubmissionShiftIDs(context.Background(), 1, 8)
+		if err != nil {
+			t.Fatalf("ListAvailabilitySubmissionShiftIDs returned error: %v", err)
+		}
+		if shiftIDs == nil {
+			t.Fatal("expected empty slice, got nil")
+		}
+		if len(shiftIDs) != 0 {
+			t.Fatalf("expected no shift ids, got %v", shiftIDs)
+		}
+	})
+
+	t.Run("returns ErrPublicationNotFound for missing publication", func(t *testing.T) {
+		t.Parallel()
+
+		repo := newPublicationRepositoryStatefulMock()
+		service := NewPublicationService(repo, fixedClock{})
+
+		_, err := service.ListAvailabilitySubmissionShiftIDs(context.Background(), 999, 7)
+		if !errors.Is(err, ErrPublicationNotFound) {
+			t.Fatalf("expected ErrPublicationNotFound, got %v", err)
+		}
+	})
+}
+
 func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 	t.Run("creates a submission during collecting", func(t *testing.T) {
 		t.Parallel()
