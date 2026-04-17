@@ -7,7 +7,7 @@ export default mergeConfig(
   viteConfig,
   defineConfig({
     test: {
-      environment: "node",
+      environment: "jsdom",
       setupFiles: ["./src/vitest.setup.ts"],
     },
   }),

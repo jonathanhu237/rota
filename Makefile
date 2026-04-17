@@ -6,7 +6,7 @@ GOOSE_DRIVER = postgres
 GOOSE_DBSTRING = postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
 GOOSE_MIGRATION_DIR = ./migrations
 
-.PHONY: run-backend run-frontend migrate-up migrate-down migrate-status test-backend
+.PHONY: run-backend run-frontend migrate-up migrate-down migrate-status test-backend test-integration
 
 run-backend:
 	@cd backend && go run ./cmd/server
@@ -25,3 +25,6 @@ migrate-status:
 
 test-backend:
 	@cd backend && go test ./...
+
+test-integration:
+	@cd backend && go test -tags=integration ./...
