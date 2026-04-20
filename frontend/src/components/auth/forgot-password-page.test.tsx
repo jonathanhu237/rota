@@ -22,4 +22,32 @@ describe("ForgotPasswordPage", () => {
       await findByText("forgotPassword.success"),
     ).toBeInTheDocument()
   })
+
+  it("shows a rate limit error when the API returns TOO_MANY_REQUESTS", async () => {
+    const user = userEvent.setup()
+    const requestPasswordReset = vi.fn().mockRejectedValue({
+      isAxiosError: true,
+      response: {
+        data: {
+          error: {
+            code: "TOO_MANY_REQUESTS",
+            message: "Too many requests",
+          },
+        },
+      },
+    })
+
+    const { getByLabelText, getByRole, findByText, queryByText } =
+      renderWithProviders(
+        <ForgotPasswordPage requestPasswordReset={requestPasswordReset} />,
+      )
+
+    await user.type(getByLabelText("forgotPassword.email"), "worker@example.com")
+    await user.click(getByRole("button", { name: "forgotPassword.submit" }))
+
+    expect(
+      await findByText("forgotPassword.errors.TOO_MANY_REQUESTS"),
+    ).toBeInTheDocument()
+    expect(queryByText("forgotPassword.success")).not.toBeInTheDocument()
+  })
 })

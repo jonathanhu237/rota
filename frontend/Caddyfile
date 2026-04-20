@@ -1,5 +1,15 @@
 {$CADDY_SITE_ADDRESS:http://localhost} {
     encode gzip
+    header {
+        X-Frame-Options "DENY"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "same-origin"
+        -Server
+    }
+    @tls {
+        protocol https
+    }
+    header @tls Strict-Transport-Security "max-age=31536000; includeSubDomains"
 
     handle_path /api/* {
         reverse_proxy backend:8080

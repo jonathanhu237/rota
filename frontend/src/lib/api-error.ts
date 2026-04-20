@@ -26,6 +26,7 @@ export type ApiErrorCode =
   | "INVALID_TOKEN"
   | "TOKEN_EXPIRED"
   | "TOKEN_NOT_FOUND"
+  | "TOO_MANY_REQUESTS"
   | "TOKEN_USED"
   | "UNAUTHORIZED"
   | "USER_DISABLED"

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { getApiErrorDetails, getTranslatedApiError } from "@/lib/api-error"
 import { createForgotPasswordSchema, type ForgotPasswordFormValues } from "./auth-schemas"
 import { requestPasswordReset as defaultRequestPasswordReset } from "@/lib/queries"
 
@@ -26,6 +27,7 @@ export function ForgotPasswordPage({
   const { t, i18n } = useTranslation()
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [isPending, setIsPending] = useState(false)
+  const [submitError, setSubmitError] = useState<unknown>(null)
 
   const forgotPasswordSchema = createForgotPasswordSchema(t)
 
@@ -40,13 +42,20 @@ export function ForgotPasswordPage({
 
   const submitRequest = async ({ email }: ForgotPasswordFormValues) => {
     setIsPending(true)
+    setSubmitError(null)
     try {
       await requestPasswordReset(email)
-    } catch {
+      setIsSubmitted(true)
+    } catch (error) {
+      if (getApiErrorDetails(error)?.code === "TOO_MANY_REQUESTS") {
+        setSubmitError(error)
+        return
+      }
+
       // Always show the generic success state to avoid account enumeration.
+      setIsSubmitted(true)
     } finally {
       setIsPending(false)
-      setIsSubmitted(true)
     }
   }
 
@@ -60,6 +69,15 @@ export function ForgotPasswordPage({
   useEffect(() => {
     revalidateVisibleErrors()
   }, [i18n.language])
+
+  const submitErrorMessage = submitError
+    ? getTranslatedApiError(
+        t,
+        submitError,
+        "forgotPassword.errors",
+        "forgotPassword.unexpectedError",
+      )
+    : null
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
@@ -95,10 +113,13 @@ export function ForgotPasswordPage({
                 />
                 {errors.email && (
                   <p className="text-sm text-destructive">
-                    {errors.email.message}
+                {errors.email.message}
                   </p>
                 )}
               </div>
+              {submitErrorMessage && (
+                <p className="text-sm text-destructive">{submitErrorMessage}</p>
+              )}
               <Button type="submit" disabled={isPending}>
                 {isPending
                   ? t("forgotPassword.submitting")

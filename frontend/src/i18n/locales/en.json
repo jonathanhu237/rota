@@ -29,6 +29,7 @@
       "INVALID_CREDENTIALS": "Invalid email or password",
       "INVALID_REQUEST": "Invalid request",
       "INTERNAL_ERROR": "Internal server error",
+      "TOO_MANY_REQUESTS": "Too many requests. Please try again in a moment.",
       "UNAUTHORIZED": "Unauthorized",
       "USER_DISABLED": "User is disabled",
       "USER_PENDING": "Your account is waiting for the invitation link. Check your email or ask an admin to resend it."
@@ -39,6 +40,7 @@
     "description": "Enter your email and we'll send a reset link if an account exists.",
     "email": "Email",
     "emailPlaceholder": "you@example.com",
+    "unexpectedError": "An unexpected error occurred",
     "validation": {
       "emailRequired": "Email is required",
       "emailInvalid": "Please enter a valid email address"
@@ -46,7 +48,10 @@
     "submit": "Send reset link",
     "submitting": "Sending...",
     "success": "If an account exists, a password reset link has been sent.",
-    "backToLogin": "Back to login"
+    "backToLogin": "Back to login",
+    "errors": {
+      "TOO_MANY_REQUESTS": "Too many requests. Please try again in a moment."
+    }
   },
   "setupPassword": {
     "title": "Set password",

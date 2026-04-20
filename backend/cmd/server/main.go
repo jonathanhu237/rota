@@ -18,6 +18,7 @@ import (
 	"github.com/jonathanhu237/rota/backend/internal/session"
 	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/time/rate"
 )
 
 func main() {
@@ -141,12 +142,33 @@ func main() {
 	templateHandler := handler.NewTemplateHandler(templateService)
 	publicationHandler := handler.NewPublicationHandler(publicationService)
 	userPositionHandler := handler.NewUserPositionHandler(userPositionService)
+	loginRateLimitByIP := handler.NewRateLimitMiddleware(
+		handler.ClientIPRateLimitKey,
+		rate.Every(time.Minute/5),
+		5,
+	)
+	loginRateLimitByEmail := handler.NewRateLimitMiddleware(
+		handler.LoginEmailRateLimitKey,
+		rate.Every(15*time.Minute/10),
+		10,
+	)
+	passwordResetRateLimitByIP := handler.NewRateLimitMiddleware(
+		handler.ClientIPRateLimitKey,
+		rate.Every(time.Hour/3),
+		3,
+	)
 
 	// Register routes
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler.HealthCheck)
-	mux.HandleFunc("POST /auth/login", authHandler.Login)
-	mux.HandleFunc("POST /auth/password-reset-request", authHandler.RequestPasswordReset)
+	mux.HandleFunc(
+		"POST /auth/login",
+		handler.Chain(authHandler.Login, loginRateLimitByIP, loginRateLimitByEmail),
+	)
+	mux.HandleFunc(
+		"POST /auth/password-reset-request",
+		handler.Chain(authHandler.RequestPasswordReset, passwordResetRateLimitByIP),
+	)
 	mux.HandleFunc("GET /auth/setup-token", authHandler.PreviewSetupToken)
 	mux.HandleFunc("POST /auth/setup-password", authHandler.SetupPassword)
 	mux.HandleFunc("POST /auth/logout", authHandler.Logout)
