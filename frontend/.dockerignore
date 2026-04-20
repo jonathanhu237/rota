@@ -1,0 +1,12 @@
+.git
+.gitignore
+node_modules
+dist
+coverage
+*.md
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+.DS_Store
+ClAUDE.local.md

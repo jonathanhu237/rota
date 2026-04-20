@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 
@@ -14,54 +14,14 @@ import {
   userPositionsQueryOptions,
 } from "@/lib/queries"
 import type { Position, User } from "@/lib/types"
+import {
+  hasQualificationSelectionChanged,
+  normalizeQualificationPositionIDs,
+} from "./user-qualification-helpers"
 
 type UserQualificationsProps = {
   open: boolean
   user: User
-}
-
-export function normalizeQualificationPositionIDs(positionIDs: number[]) {
-  return Array.from(new Set(positionIDs)).sort((left, right) => left - right)
-}
-
-export function hasQualificationSelectionChanged(
-  initialPositionIDs: number[],
-  nextPositionIDs: number[],
-) {
-  const normalizedInitial = normalizeQualificationPositionIDs(initialPositionIDs)
-  const normalizedNext = normalizeQualificationPositionIDs(nextPositionIDs)
-
-  if (normalizedInitial.length !== normalizedNext.length) {
-    return true
-  }
-
-  return normalizedInitial.some((positionID, index) => {
-    return positionID !== normalizedNext[index]
-  })
-}
-
-type ShouldInitializeQualificationSelectionInput = {
-  open: boolean
-  wasOpen: boolean
-  userID: number
-  initializedUserID: number | null
-}
-
-export function shouldInitializeQualificationSelection({
-  open,
-  wasOpen,
-  userID,
-  initializedUserID,
-}: ShouldInitializeQualificationSelectionInput) {
-  if (!open) {
-    return false
-  }
-
-  if (!wasOpen) {
-    return true
-  }
-
-  return initializedUserID !== userID
 }
 
 export function UserQualifications({
@@ -71,9 +31,9 @@ export function UserQualifications({
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { toast } = useToast()
-  const [selectedPositionIDs, setSelectedPositionIDs] = useState<number[]>([])
-  const wasOpenRef = useRef(false)
-  const initializedUserIDRef = useRef<number | null>(null)
+  const [draftSelectedPositionIDs, setDraftSelectedPositionIDs] = useState<
+    number[] | null
+  >(null)
 
   const positionsQuery = useQuery({
     ...allPositionsQueryOptions(),
@@ -84,40 +44,11 @@ export function UserQualifications({
     enabled: open && user.id > 0,
   })
 
-  useEffect(() => {
-    if (!open) {
-      wasOpenRef.current = false
-      initializedUserIDRef.current = null
-      return
-    }
-
-    if (userPositionsQuery.data === undefined) {
-      wasOpenRef.current = true
-      return
-    }
-
-    if (
-      shouldInitializeQualificationSelection({
-        open,
-        wasOpen: wasOpenRef.current,
-        userID: user.id,
-        initializedUserID: initializedUserIDRef.current,
-      })
-    ) {
-      setSelectedPositionIDs(
-        normalizeQualificationPositionIDs(
-          userPositionsQuery.data.map((position) => position.id),
-        ),
-      )
-      initializedUserIDRef.current = user.id
-    }
-
-    wasOpenRef.current = true
-  }, [open, user.id, userPositionsQuery.data])
-
   const currentPositionIDs = normalizeQualificationPositionIDs(
     (userPositionsQuery.data ?? []).map((position) => position.id),
   )
+  const selectedPositionIDs =
+    draftSelectedPositionIDs ?? currentPositionIDs
 
   const saveQualificationsMutation = useMutation({
     mutationFn: (positionIDs: number[]) => replaceUserPositions(user.id, positionIDs),
@@ -132,8 +63,7 @@ export function UserQualifications({
         return position ? [position] : []
       })
 
-      initializedUserIDRef.current = user.id
-      setSelectedPositionIDs(normalizedPositionIDs)
+      setDraftSelectedPositionIDs(null)
       queryClient.setQueryData<Position[]>(
         ["users", "positions", user.id],
         nextUserPositions,
@@ -160,15 +90,18 @@ export function UserQualifications({
   })
 
   const togglePosition = (positionID: number, checked: boolean) => {
-    setSelectedPositionIDs((currentPositionIDs) => {
+    setDraftSelectedPositionIDs((currentDraftSelectedPositionIDs) => {
+      const basePositionIDs =
+        currentDraftSelectedPositionIDs ?? currentPositionIDs
+
       if (checked) {
         return normalizeQualificationPositionIDs([
-          ...currentPositionIDs,
+          ...basePositionIDs,
           positionID,
         ])
       }
 
-      return currentPositionIDs.filter(
+      return basePositionIDs.filter(
         (currentPositionID) => currentPositionID !== positionID,
       )
     })

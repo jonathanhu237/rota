@@ -296,15 +296,15 @@ func (r *TemplateRepository) CreateShift(ctx context.Context, params CreateTempl
 		FROM templates t
 		WHERE t.id = $1 AND t.is_locked = FALSE
 		RETURNING
-			id,
-			template_id,
-			weekday,
-			TO_CHAR(start_time, 'HH24:MI'),
-			TO_CHAR(end_time, 'HH24:MI'),
-			position_id,
-			required_headcount,
-			created_at,
-			updated_at;
+			template_shifts.id,
+			template_shifts.template_id,
+			template_shifts.weekday,
+			TO_CHAR(template_shifts.start_time, 'HH24:MI'),
+			TO_CHAR(template_shifts.end_time, 'HH24:MI'),
+			template_shifts.position_id,
+			template_shifts.required_headcount,
+			template_shifts.created_at,
+			template_shifts.updated_at;
 	`
 
 	shift := &model.TemplateShift{}
@@ -355,15 +355,15 @@ func (r *TemplateRepository) UpdateShift(ctx context.Context, params UpdateTempl
 			templates.id = template_shifts.template_id AND
 			templates.is_locked = FALSE
 		RETURNING
-			id,
-			template_id,
-			weekday,
-			TO_CHAR(start_time, 'HH24:MI'),
-			TO_CHAR(end_time, 'HH24:MI'),
-			position_id,
-			required_headcount,
-			created_at,
-			updated_at;
+			template_shifts.id,
+			template_shifts.template_id,
+			template_shifts.weekday,
+			TO_CHAR(template_shifts.start_time, 'HH24:MI'),
+			TO_CHAR(template_shifts.end_time, 'HH24:MI'),
+			template_shifts.position_id,
+			template_shifts.required_headcount,
+			template_shifts.created_at,
+			template_shifts.updated_at;
 	`
 
 	shift := &model.TemplateShift{}

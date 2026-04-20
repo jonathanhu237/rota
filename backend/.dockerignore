@@ -1,0 +1,10 @@
+.git
+.gitignore
+.env
+.env.*
+*.md
+**/*_test.go
+**/*.test.go
+**/*.out
+.DS_Store
+Claude.local.md

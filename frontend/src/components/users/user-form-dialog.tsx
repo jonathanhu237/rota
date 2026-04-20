@@ -131,7 +131,13 @@ export function UserFormDialog({
             <Checkbox {...register("is_admin")} />
             <span>{t("users.isAdmin")}</span>
           </label>
-          {mode === "edit" && user && <UserQualifications open={open} user={user} />}
+          {mode === "edit" && user && (
+            <UserQualifications
+              key={`${user.id}-${open ? "open" : "closed"}`}
+              open={open}
+              user={user}
+            />
+          )}
           <DialogFooter>
             <Button
               type="button"

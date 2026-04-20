@@ -4,7 +4,7 @@ import {
   hasQualificationSelectionChanged,
   normalizeQualificationPositionIDs,
   shouldInitializeQualificationSelection,
-} from "./user-qualifications"
+} from "./user-qualification-helpers"
 
 describe("normalizeQualificationPositionIDs", () => {
   it("dedupes and sorts selected position IDs", () => {
