@@ -22,7 +22,6 @@ import { UserQualifications } from "./user-qualifications"
 export type UserFormValues = {
   email: string
   name: string
-  password?: string
   is_admin: boolean
 }
 
@@ -52,13 +51,6 @@ export function UserFormDialog({
       .trim()
       .min(1, t("users.validation.emailRequired"))
       .email(t("users.validation.emailInvalid")),
-    password:
-      mode === "create"
-        ? z
-            .string()
-            .min(1, t("users.validation.passwordRequired"))
-            .min(8, t("users.validation.passwordMin"))
-        : z.string().optional(),
     is_admin: z.boolean(),
   })
 
@@ -74,7 +66,6 @@ export function UserFormDialog({
     defaultValues: {
       email: user?.email ?? "",
       name: user?.name ?? "",
-      password: "",
       is_admin: user?.is_admin ?? false,
     },
   })
@@ -83,7 +74,6 @@ export function UserFormDialog({
     reset({
       email: user?.email ?? "",
       name: user?.name ?? "",
-      password: "",
       is_admin: user?.is_admin ?? false,
     })
   }, [mode, open, reset, user])
@@ -133,19 +123,9 @@ export function UserFormDialog({
             )}
           </div>
           {mode === "create" && (
-            <div className="grid gap-2">
-              <Label htmlFor="user-password">{t("users.password")}</Label>
-              <Input
-                id="user-password"
-                type="password"
-                {...register("password")}
-              />
-              {errors.password && (
-                <p className="text-sm text-destructive">
-                  {errors.password.message}
-                </p>
-              )}
-            </div>
+            <p className="text-sm text-muted-foreground">
+              {t("users.form.invitationHint")}
+            </p>
           )}
           <label className="flex items-center gap-3 text-sm font-medium">
             <Checkbox {...register("is_admin")} />

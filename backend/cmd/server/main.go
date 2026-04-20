@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jonathanhu237/rota/backend/internal/config"
+	"github.com/jonathanhu237/rota/backend/internal/email"
 	"github.com/jonathanhu237/rota/backend/internal/handler"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 	"github.com/jonathanhu237/rota/backend/internal/service"
@@ -74,12 +75,59 @@ func main() {
 		os.Exit(1)
 	}
 
+	var emailer email.Emailer
+	switch cfg.EmailMode {
+	case "", "log":
+		emailer = email.NewLoggerEmailer(os.Stdout)
+	case "smtp":
+		emailer, err = email.NewSMTPEmailer(email.SMTPConfig{
+			Host:     cfg.SMTPHost,
+			Port:     cfg.SMTPPort,
+			User:     cfg.SMTPUser,
+			Password: cfg.SMTPPassword,
+			From:     cfg.SMTPFrom,
+			TLSMode:  cfg.SMTPTLSMode,
+		})
+		if err != nil {
+			slog.Error("Failed to initialize SMTP emailer", "error", err)
+			os.Exit(1)
+		}
+		logInsecureSMTPTLSWarning(slog.Default(), cfg.EmailMode, cfg.SMTPTLSMode)
+	default:
+		slog.Error("Invalid email mode", "email_mode", cfg.EmailMode)
+		os.Exit(1)
+	}
+
 	sessionStore := session.NewStore(
 		redisClient,
 		time.Duration(cfg.SessionExpiresHours)*time.Hour,
 	)
-	authService := service.NewAuthService(userRepo, sessionStore)
-	userService := service.NewUserService(userRepo, sessionStore)
+	setupTokenRepo := repository.NewSetupTokenRepository(db)
+	setupTxManager := repository.NewSetupTxManager(db)
+	authService := service.NewAuthService(
+		userRepo,
+		sessionStore,
+		service.WithAuthSetupFlows(service.SetupFlowConfig{
+			TxManager:             setupTxManager,
+			SetupTokenRepo:        setupTokenRepo,
+			Emailer:               emailer,
+			Logger:                slog.Default(),
+			AppBaseURL:            cfg.AppBaseURL,
+			InvitationTokenTTL:    cfg.InvitationTokenTTL,
+			PasswordResetTokenTTL: cfg.PasswordResetTokenTTL,
+		}),
+	)
+	userService := service.NewUserService(
+		userRepo,
+		sessionStore,
+		service.WithSetupFlows(service.SetupFlowConfig{
+			TxManager:          setupTxManager,
+			Emailer:            emailer,
+			Logger:             slog.Default(),
+			AppBaseURL:         cfg.AppBaseURL,
+			InvitationTokenTTL: cfg.InvitationTokenTTL,
+		}),
+	)
 	positionService := service.NewPositionService(positionRepo)
 	templateService := service.NewTemplateService(templateRepo, positionRepo)
 	publicationService := service.NewPublicationService(publicationRepo, nil)
@@ -98,13 +146,16 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler.HealthCheck)
 	mux.HandleFunc("POST /auth/login", authHandler.Login)
+	mux.HandleFunc("POST /auth/password-reset-request", authHandler.RequestPasswordReset)
+	mux.HandleFunc("GET /auth/setup-token", authHandler.PreviewSetupToken)
+	mux.HandleFunc("POST /auth/setup-password", authHandler.SetupPassword)
 	mux.HandleFunc("POST /auth/logout", authHandler.Logout)
 	mux.HandleFunc("GET /auth/me", authHandler.RequireAuth(authHandler.Me))
 	mux.HandleFunc("GET /users", authHandler.RequireAdmin(userHandler.List))
 	mux.HandleFunc("POST /users", authHandler.RequireAdmin(userHandler.Create))
 	mux.HandleFunc("GET /users/{id}", authHandler.RequireAdmin(userHandler.GetByID))
 	mux.HandleFunc("PUT /users/{id}", authHandler.RequireAdmin(userHandler.Update))
-	mux.HandleFunc("PATCH /users/{id}/password", authHandler.RequireAdmin(userHandler.UpdatePassword))
+	mux.HandleFunc("POST /users/{id}/resend-invitation", authHandler.RequireAdmin(userHandler.ResendInvitation))
 	mux.HandleFunc("PATCH /users/{id}/status", authHandler.RequireAdmin(userHandler.UpdateStatus))
 	mux.HandleFunc("GET /users/{id}/positions", authHandler.RequireAdmin(userPositionHandler.List))
 	mux.HandleFunc("PUT /users/{id}/positions", authHandler.RequireAdmin(userPositionHandler.Replace))
@@ -147,4 +198,12 @@ func main() {
 		slog.Error("Failed to start server", "error", err)
 		os.Exit(1)
 	}
+}
+
+func logInsecureSMTPTLSWarning(logger *slog.Logger, emailMode, tlsMode string) {
+	if logger == nil || emailMode != "smtp" || tlsMode != "none" {
+		return
+	}
+
+	logger.Warn("SMTP is configured without TLS — credentials and emails may be visible on the network", "tls_mode", tlsMode)
 }

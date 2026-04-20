@@ -16,6 +16,9 @@ type currentUserContextKey struct{}
 
 type authService interface {
 	Login(ctx context.Context, email, password string) (*service.LoginResult, error)
+	RequestPasswordReset(ctx context.Context, emailAddress string) error
+	PreviewSetupToken(ctx context.Context, rawToken string) (*service.SetupTokenPreview, error)
+	SetupPassword(ctx context.Context, input service.SetupPasswordInput) error
 	Authenticate(ctx context.Context, sessionID string) (*service.AuthenticateResult, error)
 	Logout(ctx context.Context, sessionID string) error
 }
@@ -29,8 +32,27 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
+type passwordResetRequest struct {
+	Email string `json:"email"`
+}
+
+type setupPasswordRequest struct {
+	Token    string `json:"token"`
+	Password string `json:"password"`
+}
+
 type authUserResponse struct {
 	User userResponse `json:"user"`
+}
+
+type passwordResetRequestResponse struct {
+	Message string `json:"message"`
+}
+
+type setupTokenPreviewResponse struct {
+	Email   string                  `json:"email"`
+	Name    string                  `json:"name"`
+	Purpose model.SetupTokenPurpose `json:"purpose"`
 }
 
 func NewAuthHandler(authService authService) *AuthHandler {
@@ -53,6 +75,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, service.ErrInvalidCredentials):
 			writeError(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "Invalid email or password")
+		case errors.Is(err, service.ErrUserPending):
+			writeError(w, http.StatusForbidden, "USER_PENDING", "User has not finished setting a password")
 		case errors.Is(err, service.ErrUserDisabled):
 			writeError(w, http.StatusForbidden, "USER_DISABLED", "User is disabled")
 		default:
@@ -66,6 +90,80 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, authUserResponse{
 		User: newUserResponse(result.User),
 	})
+}
+
+func (h *AuthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
+	var req passwordResetRequest
+	if err := readJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+
+	if err := h.authService.RequestPasswordReset(r.Context(), req.Email); err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+		return
+	}
+
+	writeData(w, http.StatusOK, passwordResetRequestResponse{
+		Message: "If an account exists, a reset link has been sent",
+	})
+}
+
+func (h *AuthHandler) PreviewSetupToken(w http.ResponseWriter, r *http.Request) {
+	preview, err := h.authService.PreviewSetupToken(r.Context(), r.URL.Query().Get("token"))
+	if err != nil {
+		switch {
+		case errors.Is(err, model.ErrInvalidToken):
+			writeError(w, http.StatusBadRequest, "INVALID_TOKEN", "Invalid token")
+		case errors.Is(err, model.ErrTokenNotFound):
+			writeError(w, http.StatusNotFound, "TOKEN_NOT_FOUND", "Token not found")
+		case errors.Is(err, model.ErrTokenExpired):
+			writeError(w, http.StatusGone, "TOKEN_EXPIRED", "Token expired")
+		case errors.Is(err, model.ErrTokenUsed):
+			writeError(w, http.StatusGone, "TOKEN_USED", "Token already used")
+		default:
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+		}
+		return
+	}
+
+	writeData(w, http.StatusOK, setupTokenPreviewResponse{
+		Email:   preview.Email,
+		Name:    preview.Name,
+		Purpose: preview.Purpose,
+	})
+}
+
+func (h *AuthHandler) SetupPassword(w http.ResponseWriter, r *http.Request) {
+	var req setupPasswordRequest
+	if err := readJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+
+	err := h.authService.SetupPassword(r.Context(), service.SetupPasswordInput{
+		Token:    req.Token,
+		Password: req.Password,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, model.ErrPasswordTooShort):
+			writeError(w, http.StatusBadRequest, "PASSWORD_TOO_SHORT", "Password must have at least 8 characters")
+		case errors.Is(err, model.ErrInvalidToken):
+			writeError(w, http.StatusBadRequest, "INVALID_TOKEN", "Invalid token")
+		case errors.Is(err, model.ErrTokenNotFound):
+			writeError(w, http.StatusNotFound, "TOKEN_NOT_FOUND", "Token not found")
+		case errors.Is(err, model.ErrTokenExpired):
+			writeError(w, http.StatusGone, "TOKEN_EXPIRED", "Token expired")
+		case errors.Is(err, model.ErrTokenUsed):
+			writeError(w, http.StatusGone, "TOKEN_USED", "Token already used")
+		default:
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {

@@ -1,4 +1,4 @@
-export type UserStatus = "active" | "disabled"
+export type UserStatus = "pending" | "active" | "disabled"
 
 export type User = {
   id: number
@@ -7,6 +7,14 @@ export type User = {
   is_admin: boolean
   status: UserStatus
   version: number
+}
+
+export type SetupTokenPurpose = "invitation" | "password_reset"
+
+export type SetupTokenPreview = {
+  email: string
+  name: string
+  purpose: SetupTokenPurpose
 }
 
 export type Pagination = {

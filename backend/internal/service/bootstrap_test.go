@@ -75,7 +75,10 @@ func TestEnsureBootstrapAdmin(t *testing.T) {
 				if params.Status != model.UserStatusActive {
 					t.Fatalf("expected status %q, got %q", model.UserStatusActive, params.Status)
 				}
-				if err := bcrypt.CompareHashAndPassword([]byte(params.PasswordHash), []byte(password)); err != nil {
+				if params.PasswordHash == nil {
+					t.Fatalf("expected bootstrap admin password hash to be set")
+				}
+				if err := bcrypt.CompareHashAndPassword([]byte(*params.PasswordHash), []byte(password)); err != nil {
 					t.Fatalf("expected password hash to match input password: %v", err)
 				}
 				return &model.User{ID: 1}, nil

@@ -19,7 +19,7 @@ func TestUserRepositoryIntegration(t *testing.T) {
 
 		created, err := repo.Create(ctx, CreateUserParams{
 			Email:        "worker@example.com",
-			PasswordHash: "hash-1",
+			PasswordHash: stringPtr("hash-1"),
 			Name:         "Worker",
 			IsAdmin:      true,
 			Status:       model.UserStatusActive,
@@ -69,7 +69,7 @@ func TestUserRepositoryIntegration(t *testing.T) {
 
 		_, err := repo.Create(ctx, CreateUserParams{
 			Email:        existing.Email,
-			PasswordHash: "hash-2",
+			PasswordHash: stringPtr("hash-2"),
 			Name:         "Duplicate",
 			IsAdmin:      false,
 			Status:       model.UserStatusActive,
@@ -156,4 +156,8 @@ func TestUserRepositoryIntegration(t *testing.T) {
 			t.Fatalf("expected ErrUserNotFound, got %v", err)
 		}
 	})
+}
+
+func stringPtr(value string) *string {
+	return &value
 }

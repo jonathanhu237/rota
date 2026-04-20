@@ -8,7 +8,6 @@ import (
 
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
-	"golang.org/x/crypto/bcrypt"
 )
 
 const (
@@ -31,7 +30,6 @@ type userRepository interface {
 	Create(ctx context.Context, params repository.CreateUserParams) (*model.User, error)
 	Update(ctx context.Context, params repository.UpdateUserParams) (*model.User, error)
 	UpdateStatus(ctx context.Context, params repository.UpdateUserStatusParams) (*model.User, error)
-	UpdatePassword(ctx context.Context, params repository.UpdateUserPasswordParams) (*model.User, error)
 }
 
 type userSessionStore interface {
@@ -41,7 +39,10 @@ type userSessionStore interface {
 type UserService struct {
 	userRepo     userRepository
 	sessionStore userSessionStore
+	setupFlows   *setupFlowHelper
 }
+
+type UserServiceOption func(*UserService)
 
 type ListUsersInput struct {
 	Page     int
@@ -57,10 +58,9 @@ type ListUsersResult struct {
 }
 
 type CreateUserInput struct {
-	Email    string
-	Name     string
-	Password string
-	IsAdmin  bool
+	Email   string
+	Name    string
+	IsAdmin bool
 }
 
 type UpdateUserInput struct {
@@ -71,23 +71,29 @@ type UpdateUserInput struct {
 	Version int
 }
 
-type UpdateUserPasswordInput struct {
-	ID       int64
-	Password string
-	Version  int
-}
-
 type UpdateUserStatusInput struct {
 	ID      int64
 	Status  model.UserStatus
 	Version int
 }
 
-func NewUserService(userRepo userRepository, sessionStore userSessionStore) *UserService {
-	return &UserService{
+func WithSetupFlows(config SetupFlowConfig) UserServiceOption {
+	return func(service *UserService) {
+		service.setupFlows = newSetupFlowHelper(config)
+	}
+}
+
+func NewUserService(userRepo userRepository, sessionStore userSessionStore, opts ...UserServiceOption) *UserService {
+	service := &UserService{
 		userRepo:     userRepo,
 		sessionStore: sessionStore,
 	}
+
+	for _, opt := range opts {
+		opt(service)
+	}
+
+	return service
 }
 
 func (s *UserService) ListUsers(ctx context.Context, input ListUsersInput) (*ListUsersResult, error) {
@@ -120,34 +126,93 @@ func (s *UserService) ListUsers(ctx context.Context, input ListUsersInput) (*Lis
 }
 
 func (s *UserService) CreateUser(ctx context.Context, input CreateUserInput) (*model.User, error) {
+	if s.setupFlows == nil || s.setupFlows.txManager == nil {
+		return nil, ErrInvalidInput
+	}
+
 	email, name, err := normalizeUserProfileInput(input.Email, input.Name)
 	if err != nil {
-		return nil, err
-	}
-	if err := model.ValidatePassword(input.Password); err != nil {
 		return nil, err
 	}
 	if err := s.ensureEmailAvailable(ctx, email, 0); err != nil {
 		return nil, err
 	}
 
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	var createdUser *model.User
+	var rawToken string
+	err = s.setupFlows.txManager.WithinTx(ctx, func(
+		ctx context.Context,
+		txUserRepo repository.SetupUserRepository,
+		txTokenRepo repository.SetupTokenRepositoryWriter,
+	) error {
+		createdUser, err = txUserRepo.Create(ctx, repository.CreateUserParams{
+			Email:        email,
+			PasswordHash: nil,
+			Name:         name,
+			IsAdmin:      input.IsAdmin,
+			Status:       model.UserStatusPending,
+		})
+		if err != nil {
+			return mapRepositoryError(err)
+		}
+
+		rawToken, err = s.setupFlows.issueToken(
+			ctx,
+			txTokenRepo,
+			createdUser.ID,
+			model.SetupTokenPurposeInvitation,
+			s.setupFlows.invitationTokenTTL,
+		)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	user, err := s.userRepo.Create(ctx, repository.CreateUserParams{
-		Email:        email,
-		PasswordHash: string(passwordHash),
-		Name:         name,
-		IsAdmin:      input.IsAdmin,
-		Status:       model.UserStatusActive,
-	})
-	if err != nil {
-		return nil, mapRepositoryError(err)
+	s.setupFlows.sendInvitation(ctx, createdUser, rawToken)
+	return createdUser, nil
+}
+
+func (s *UserService) ResendInvitation(ctx context.Context, userID int64) error {
+	if s.setupFlows == nil || s.setupFlows.txManager == nil || userID <= 0 {
+		return ErrInvalidInput
 	}
 
-	return user, nil
+	var user *model.User
+	var rawToken string
+	err := s.setupFlows.txManager.WithinTx(ctx, func(
+		ctx context.Context,
+		txUserRepo repository.SetupUserRepository,
+		txTokenRepo repository.SetupTokenRepositoryWriter,
+	) error {
+		var err error
+		user, err = txUserRepo.GetByID(ctx, userID)
+		if err != nil {
+			return mapRepositoryError(err)
+		}
+		if user.Status != model.UserStatusPending {
+			return model.ErrUserNotPending
+		}
+
+		rawToken, err = s.setupFlows.issueToken(
+			ctx,
+			txTokenRepo,
+			user.ID,
+			model.SetupTokenPurposeInvitation,
+			s.setupFlows.invitationTokenTTL,
+		)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+
+	s.setupFlows.sendInvitation(ctx, user, rawToken)
+	return nil
 }
 
 func (s *UserService) GetUserByID(ctx context.Context, id int64) (*model.User, error) {
@@ -188,31 +253,6 @@ func (s *UserService) UpdateUser(ctx context.Context, input UpdateUserInput) (*m
 	return user, nil
 }
 
-func (s *UserService) UpdateUserPassword(ctx context.Context, input UpdateUserPasswordInput) (*model.User, error) {
-	if input.ID <= 0 || input.Version <= 0 {
-		return nil, ErrInvalidInput
-	}
-	if err := model.ValidatePassword(input.Password); err != nil {
-		return nil, err
-	}
-
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
-	if err != nil {
-		return nil, err
-	}
-
-	user, err := s.userRepo.UpdatePassword(ctx, repository.UpdateUserPasswordParams{
-		ID:           input.ID,
-		PasswordHash: string(passwordHash),
-		Version:      input.Version,
-	})
-	if err != nil {
-		return nil, mapRepositoryError(err)
-	}
-
-	return user, nil
-}
-
 func (s *UserService) UpdateUserStatus(ctx context.Context, input UpdateUserStatusInput) (*model.User, error) {
 	if input.ID <= 0 || input.Version <= 0 {
 		return nil, ErrInvalidInput
@@ -230,7 +270,7 @@ func (s *UserService) UpdateUserStatus(ctx context.Context, input UpdateUserStat
 		return nil, mapRepositoryError(err)
 	}
 
-	if user.Status == model.UserStatusDisabled {
+	if user.Status == model.UserStatusDisabled && s.sessionStore != nil {
 		if err := s.sessionStore.DeleteUserSessions(ctx, user.ID); err != nil {
 			return nil, err
 		}

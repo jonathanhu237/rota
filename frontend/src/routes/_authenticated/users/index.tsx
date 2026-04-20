@@ -4,7 +4,6 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router"
 import { UserPlus } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
-import { PasswordResetDialog } from "@/components/users/password-reset-dialog"
 import { StatusToggleDialog } from "@/components/users/status-toggle-dialog"
 import {
   UserFormDialog,
@@ -24,8 +23,8 @@ import { getTranslatedApiError } from "@/lib/api-error"
 import {
   createUser,
   currentUserQueryOptions,
+  resendInvitation,
   updateUser,
-  updateUserPassword,
   updateUserStatus,
   usersQueryOptions,
 } from "@/lib/queries"
@@ -53,7 +52,6 @@ function UsersPage() {
   const [formMode, setFormMode] = useState<"create" | "edit">("create")
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [isFormOpen, setIsFormOpen] = useState(false)
-  const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false)
   const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false)
 
   const { data: currentUser } = useQuery(currentUserQueryOptions)
@@ -102,6 +100,18 @@ function UsersPage() {
     onError: handleMutationError,
   })
 
+  const resendInvitationMutation = useMutation({
+    mutationFn: (userID: number) => resendInvitation(userID),
+    onSuccess: async () => {
+      await invalidateUsers()
+      toast({
+        variant: "default",
+        description: t("users.success.invitationResent"),
+      })
+    },
+    onError: handleMutationError,
+  })
+
   const updateUserMutation = useMutation({
     mutationFn: ({
       userID,
@@ -125,32 +135,6 @@ function UsersPage() {
       toast({
         variant: "default",
         description: t("users.success.updated"),
-      })
-    },
-    onError: handleMutationError,
-  })
-
-  const resetPasswordMutation = useMutation({
-    mutationFn: ({
-      userID,
-      version,
-      password,
-    }: {
-      userID: number
-      version: number
-      password: string
-    }) =>
-      updateUserPassword(userID, {
-        password,
-        version,
-      }),
-    onSuccess: async () => {
-      setIsPasswordDialogOpen(false)
-      setSelectedUser(null)
-      await invalidateUsers()
-      toast({
-        variant: "default",
-        description: t("users.success.passwordReset"),
       })
     },
     onError: handleMutationError,
@@ -199,11 +183,6 @@ function UsersPage() {
     setIsFormOpen(true)
   }
 
-  const openPasswordDialog = (user: User) => {
-    setSelectedUser(user)
-    setIsPasswordDialogOpen(true)
-  }
-
   const openStatusDialog = (user: User) => {
     setSelectedUser(user)
     setIsStatusDialogOpen(true)
@@ -214,7 +193,6 @@ function UsersPage() {
       createUserMutation.mutate({
         email: values.email,
         name: values.name,
-        password: values.password ?? "",
         is_admin: values.is_admin,
       })
       return
@@ -252,7 +230,9 @@ function UsersPage() {
             isFetching={usersQuery.isFetching}
             onPageChange={setPage}
             onEdit={openEditDialog}
-            onResetPassword={openPasswordDialog}
+            onResendInvitation={(user) => {
+              resendInvitationMutation.mutate(user.id)
+            }}
             onToggleStatus={openStatusDialog}
           />
         </CardContent>
@@ -274,28 +254,6 @@ function UsersPage() {
         }}
         onSubmit={handleUserFormSubmit}
       />
-      <PasswordResetDialog
-        open={isPasswordDialogOpen}
-        user={selectedUser}
-        isPending={resetPasswordMutation.isPending}
-        onOpenChange={(open) => {
-          setIsPasswordDialogOpen(open)
-          if (!open) {
-            setSelectedUser(null)
-          }
-        }}
-        onSubmit={({ password }) => {
-          if (!selectedUser) {
-            return
-          }
-
-          resetPasswordMutation.mutate({
-            userID: selectedUser.id,
-            version: selectedUser.version,
-            password,
-          })
-        }}
-      />
       <StatusToggleDialog
         open={isStatusDialogOpen}
         user={selectedUser}
@@ -314,7 +272,7 @@ function UsersPage() {
           updateStatusMutation.mutate({
             userID: selectedUser.id,
             version: selectedUser.version,
-            status: selectedUser.status === "active" ? "disabled" : "active",
+            status: selectedUser.status === "disabled" ? "active" : "disabled",
           })
         }}
       />

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
@@ -13,6 +14,7 @@ import (
 var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrUnauthorized       = errors.New("unauthorized")
+	ErrUserPending        = errors.New("user pending")
 	ErrUserDisabled       = errors.New("user disabled")
 )
 
@@ -31,7 +33,10 @@ type sessionStore interface {
 type AuthService struct {
 	userRepo     authUserRepository
 	sessionStore sessionStore
+	setupFlows   *setupFlowHelper
 }
+
+type AuthServiceOption func(*AuthService)
 
 type LoginResult struct {
 	SessionID string
@@ -39,11 +44,23 @@ type LoginResult struct {
 	User      *model.User
 }
 
-func NewAuthService(userRepo authUserRepository, sessionStore sessionStore) *AuthService {
-	return &AuthService{
+func WithAuthSetupFlows(config SetupFlowConfig) AuthServiceOption {
+	return func(service *AuthService) {
+		service.setupFlows = newSetupFlowHelper(config)
+	}
+}
+
+func NewAuthService(userRepo authUserRepository, sessionStore sessionStore, opts ...AuthServiceOption) *AuthService {
+	service := &AuthService{
 		userRepo:     userRepo,
 		sessionStore: sessionStore,
 	}
+
+	for _, opt := range opts {
+		opt(service)
+	}
+
+	return service
 }
 
 func (s *AuthService) Login(ctx context.Context, email, password string) (*LoginResult, error) {
@@ -57,6 +74,9 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (*Login
 
 	if user.Status == model.UserStatusDisabled {
 		return nil, ErrUserDisabled
+	}
+	if user.Status == model.UserStatusPending {
+		return nil, ErrUserPending
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
@@ -73,6 +93,91 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (*Login
 		ExpiresIn: expiresIn,
 		User:      user,
 	}, nil
+}
+
+func (s *AuthService) RequestPasswordReset(ctx context.Context, emailAddress string) error {
+	if s.setupFlows == nil || s.setupFlows.txManager == nil {
+		return ErrInvalidInput
+	}
+
+	normalizedEmail := strings.TrimSpace(emailAddress)
+	if normalizedEmail == "" {
+		return nil
+	}
+
+	var user *model.User
+	var rawToken string
+	err := s.setupFlows.txManager.WithinTx(ctx, func(
+		ctx context.Context,
+		txUserRepo repository.SetupUserRepository,
+		txTokenRepo repository.SetupTokenRepositoryWriter,
+	) error {
+		var err error
+		user, err = txUserRepo.GetByEmail(ctx, normalizedEmail)
+		if errors.Is(err, repository.ErrUserNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if user.Status != model.UserStatusActive {
+			return nil
+		}
+
+		rawToken, err = s.setupFlows.issueToken(
+			ctx,
+			txTokenRepo,
+			user.ID,
+			model.SetupTokenPurposePasswordReset,
+			s.setupFlows.passwordResetTokenTTL,
+		)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	if user == nil || rawToken == "" {
+		return nil
+	}
+
+	s.setupFlows.sendPasswordReset(ctx, user, rawToken)
+	return nil
+}
+
+func (s *AuthService) PreviewSetupToken(ctx context.Context, rawToken string) (*SetupTokenPreview, error) {
+	if s.setupFlows == nil || s.setupFlows.setupTokenRepo == nil {
+		return nil, ErrInvalidInput
+	}
+
+	token, _, err := s.setupFlows.resolveToken(ctx, s.setupFlows.setupTokenRepo, rawToken)
+	if err != nil {
+		return nil, err
+	}
+
+	user, err := s.userRepo.GetByID(ctx, token.UserID)
+	if err != nil {
+		return nil, mapRepositoryError(err)
+	}
+
+	return &SetupTokenPreview{
+		Email:   user.Email,
+		Name:    user.Name,
+		Purpose: token.Purpose,
+	}, nil
+}
+
+func (s *AuthService) SetupPassword(ctx context.Context, input SetupPasswordInput) error {
+	if s.setupFlows == nil || s.setupFlows.txManager == nil {
+		return ErrInvalidInput
+	}
+
+	return s.setupFlows.txManager.WithinTx(ctx, func(
+		ctx context.Context,
+		txUserRepo repository.SetupUserRepository,
+		txTokenRepo repository.SetupTokenRepositoryWriter,
+	) error {
+		return s.setupFlows.activatePassword(ctx, txUserRepo, txTokenRepo, input)
+	})
 }
 
 // AuthenticateResult holds the authenticated user and the refreshed session TTL.

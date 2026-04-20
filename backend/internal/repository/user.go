@@ -17,7 +17,7 @@ var (
 
 type CreateUserParams struct {
 	Email        string
-	PasswordHash string
+	PasswordHash *string
 	Name         string
 	IsAdmin      bool
 	Status       model.UserStatus
@@ -48,11 +48,23 @@ type UpdateUserPasswordParams struct {
 	Version      int
 }
 
-type UserRepository struct {
-	db *sql.DB
+type SetUserPasswordParams struct {
+	ID           int64
+	PasswordHash string
+	Status       model.UserStatus
 }
 
-func NewUserRepository(db *sql.DB) *UserRepository {
+type DBTX interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+type UserRepository struct {
+	db DBTX
+}
+
+func NewUserRepository(db DBTX) *UserRepository {
 	return &UserRepository{db: db}
 }
 
@@ -64,15 +76,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*model.User, er
 	`
 
 	user := &model.User{}
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&user.ID,
-		&user.Email,
-		&user.PasswordHash,
-		&user.Name,
-		&user.IsAdmin,
-		&user.Status,
-		&user.Version,
-	)
+	err := scanUser(r.db.QueryRowContext(ctx, query, id), user)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrUserNotFound
 	}
@@ -90,15 +94,7 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*model.U
 	`
 
 	user := &model.User{}
-	err := r.db.QueryRowContext(ctx, query, email).Scan(
-		&user.ID,
-		&user.Email,
-		&user.PasswordHash,
-		&user.Name,
-		&user.IsAdmin,
-		&user.Status,
-		&user.Version,
-	)
+	err := scanUser(r.db.QueryRowContext(ctx, query, email), user)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrUserNotFound
 	}
@@ -148,15 +144,7 @@ func (r *UserRepository) ListPaginated(ctx context.Context, params ListUsersPara
 	users := make([]*model.User, 0)
 	for rows.Next() {
 		user := &model.User{}
-		if err := rows.Scan(
-			&user.ID,
-			&user.Email,
-			&user.PasswordHash,
-			&user.Name,
-			&user.IsAdmin,
-			&user.Status,
-			&user.Version,
-		); err != nil {
+		if err := scanUser(rows, user); err != nil {
 			return nil, 0, err
 		}
 		users = append(users, user)
@@ -190,22 +178,17 @@ func (r *UserRepository) Create(ctx context.Context, params CreateUserParams) (*
 	`
 
 	user := &model.User{}
-	err := r.db.QueryRowContext(
-		ctx,
-		query,
-		params.Email,
-		params.PasswordHash,
-		params.Name,
-		params.IsAdmin,
-		params.Status,
-	).Scan(
-		&user.ID,
-		&user.Email,
-		&user.PasswordHash,
-		&user.Name,
-		&user.IsAdmin,
-		&user.Status,
-		&user.Version,
+	err := scanUser(
+		r.db.QueryRowContext(
+			ctx,
+			query,
+			params.Email,
+			params.PasswordHash,
+			params.Name,
+			params.IsAdmin,
+			params.Status,
+		),
+		user,
 	)
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -225,22 +208,17 @@ func (r *UserRepository) Update(ctx context.Context, params UpdateUserParams) (*
 	`
 
 	user := &model.User{}
-	err := r.db.QueryRowContext(
-		ctx,
-		query,
-		params.ID,
-		params.Email,
-		params.Name,
-		params.IsAdmin,
-		params.Version,
-	).Scan(
-		&user.ID,
-		&user.Email,
-		&user.PasswordHash,
-		&user.Name,
-		&user.IsAdmin,
-		&user.Status,
-		&user.Version,
+	err := scanUser(
+		r.db.QueryRowContext(
+			ctx,
+			query,
+			params.ID,
+			params.Email,
+			params.Name,
+			params.IsAdmin,
+			params.Version,
+		),
+		user,
 	)
 	if err != nil {
 		switch {
@@ -265,20 +243,15 @@ func (r *UserRepository) UpdateStatus(ctx context.Context, params UpdateUserStat
 	`
 
 	user := &model.User{}
-	err := r.db.QueryRowContext(
-		ctx,
-		query,
-		params.ID,
-		params.Status,
-		params.Version,
-	).Scan(
-		&user.ID,
-		&user.Email,
-		&user.PasswordHash,
-		&user.Name,
-		&user.IsAdmin,
-		&user.Status,
-		&user.Version,
+	err := scanUser(
+		r.db.QueryRowContext(
+			ctx,
+			query,
+			params.ID,
+			params.Status,
+			params.Version,
+		),
+		user,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -299,25 +272,49 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, params UpdateUserPa
 	`
 
 	user := &model.User{}
-	err := r.db.QueryRowContext(
-		ctx,
-		query,
-		params.ID,
-		params.PasswordHash,
-		params.Version,
-	).Scan(
-		&user.ID,
-		&user.Email,
-		&user.PasswordHash,
-		&user.Name,
-		&user.IsAdmin,
-		&user.Status,
-		&user.Version,
+	err := scanUser(
+		r.db.QueryRowContext(
+			ctx,
+			query,
+			params.ID,
+			params.PasswordHash,
+			params.Version,
+		),
+		user,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, r.resolveWriteConflict(ctx, params.ID)
 		}
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func (r *UserRepository) SetPasswordAndStatus(ctx context.Context, params SetUserPasswordParams) (*model.User, error) {
+	const query = `
+		UPDATE users
+		SET password_hash = $2, status = $3, version = version + 1
+		WHERE id = $1
+		RETURNING id, email, password_hash, name, is_admin, status, version;
+	`
+
+	user := &model.User{}
+	err := scanUser(
+		r.db.QueryRowContext(
+			ctx,
+			query,
+			params.ID,
+			params.PasswordHash,
+			params.Status,
+		),
+		user,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrUserNotFound
+	}
+	if err != nil {
 		return nil, err
 	}
 
@@ -339,4 +336,29 @@ func (r *UserRepository) resolveWriteConflict(ctx context.Context, id int64) err
 func isUniqueViolation(err error) bool {
 	var pqErr *pq.Error
 	return errors.As(err, &pqErr) && pqErr.Code == "23505"
+}
+
+type userScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanUser(scanner userScanner, user *model.User) error {
+	var passwordHash sql.NullString
+	if err := scanner.Scan(
+		&user.ID,
+		&user.Email,
+		&passwordHash,
+		&user.Name,
+		&user.IsAdmin,
+		&user.Status,
+		&user.Version,
+	); err != nil {
+		return err
+	}
+
+	user.PasswordHash = ""
+	if passwordHash.Valid {
+		user.PasswordHash = passwordHash.String
+	}
+	return nil
 }

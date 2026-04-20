@@ -85,6 +85,7 @@ func resetIntegrationDB(ctx context.Context, db *sql.DB) error {
 			availability_submissions,
 			publications,
 			template_shifts,
+			user_setup_tokens,
 			user_positions,
 			templates,
 			positions,

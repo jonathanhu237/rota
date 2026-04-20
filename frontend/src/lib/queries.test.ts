@@ -16,9 +16,14 @@ const { deleteMock } = vi.hoisted(() => ({
   deleteMock: vi.fn(),
 }))
 
+const { getMock } = vi.hoisted(() => ({
+  getMock: vi.fn(),
+}))
+
 vi.mock("./axios", () => ({
   default: {
     delete: deleteMock,
+    get: getMock,
     patch: patchMock,
     post: postMock,
     put: putMock,
@@ -34,13 +39,18 @@ import {
   deleteAvailabilitySubmission,
   deleteAssignment,
   endPublication,
+  previewSetupToken,
+  requestPasswordReset,
   replaceUserPositions,
+  resendInvitation,
+  setupPassword,
   updateTemplate,
 } from "./queries"
 
 describe("replaceUserPositions", () => {
   beforeEach(() => {
     deleteMock.mockReset()
+    getMock.mockReset()
     postMock.mockReset()
     patchMock.mockReset()
     putMock.mockReset()
@@ -60,6 +70,7 @@ describe("replaceUserPositions", () => {
 describe("updateTemplate", () => {
   beforeEach(() => {
     deleteMock.mockReset()
+    getMock.mockReset()
     postMock.mockReset()
     patchMock.mockReset()
     putMock.mockReset()
@@ -92,6 +103,7 @@ describe("updateTemplate", () => {
 describe("createPublication", () => {
   beforeEach(() => {
     deleteMock.mockReset()
+    getMock.mockReset()
     postMock.mockReset()
     patchMock.mockReset()
     putMock.mockReset()
@@ -138,6 +150,7 @@ describe("createPublication", () => {
 describe("availability submissions", () => {
   beforeEach(() => {
     deleteMock.mockReset()
+    getMock.mockReset()
     postMock.mockReset()
     patchMock.mockReset()
     putMock.mockReset()
@@ -165,6 +178,7 @@ describe("availability submissions", () => {
 describe("publication lifecycle actions", () => {
   beforeEach(() => {
     deleteMock.mockReset()
+    getMock.mockReset()
     postMock.mockReset()
     patchMock.mockReset()
     putMock.mockReset()
@@ -190,6 +204,7 @@ describe("publication lifecycle actions", () => {
 describe("assignment mutations", () => {
   beforeEach(() => {
     deleteMock.mockReset()
+    getMock.mockReset()
     postMock.mockReset()
     patchMock.mockReset()
     putMock.mockReset()
@@ -221,6 +236,7 @@ describe("assignment mutations", () => {
 describe("auto assign publication", () => {
   beforeEach(() => {
     deleteMock.mockReset()
+    getMock.mockReset()
     postMock.mockReset()
     patchMock.mockReset()
     putMock.mockReset()
@@ -250,5 +266,63 @@ describe("auto assign publication", () => {
     await autoAssignPublication(7)
 
     expect(postMock).toHaveBeenCalledWith("/publications/7/auto-assign")
+  })
+})
+
+describe("password setup queries", () => {
+  beforeEach(() => {
+    deleteMock.mockReset()
+    getMock.mockReset()
+    postMock.mockReset()
+    patchMock.mockReset()
+    putMock.mockReset()
+  })
+
+  it("requests a password reset with the email payload", async () => {
+    postMock.mockResolvedValue({ data: { message: "ok" } })
+
+    await requestPasswordReset("worker@example.com")
+
+    expect(postMock).toHaveBeenCalledWith("/auth/password-reset-request", {
+      email: "worker@example.com",
+    })
+  })
+
+  it("previews a setup token through query params", async () => {
+    getMock.mockResolvedValue({
+      data: {
+        email: "worker@example.com",
+        name: "Worker",
+        purpose: "invitation",
+      },
+    })
+
+    await previewSetupToken("token-123")
+
+    expect(getMock).toHaveBeenCalledWith("/auth/setup-token", {
+      params: { token: "token-123" },
+    })
+  })
+
+  it("submits setup password payload unchanged", async () => {
+    postMock.mockResolvedValue({ data: undefined })
+
+    await setupPassword({
+      token: "token-123",
+      password: "pa55word",
+    })
+
+    expect(postMock).toHaveBeenCalledWith("/auth/setup-password", {
+      token: "token-123",
+      password: "pa55word",
+    })
+  })
+
+  it("posts resend invitation to the user endpoint", async () => {
+    postMock.mockResolvedValue({ data: undefined })
+
+    await resendInvitation(12)
+
+    expect(postMock).toHaveBeenCalledWith("/users/12/resend-invitation")
   })
 })

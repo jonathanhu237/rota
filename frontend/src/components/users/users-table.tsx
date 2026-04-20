@@ -12,7 +12,7 @@ type UsersTableProps = {
   isFetching: boolean
   onEdit: (user: User) => void
   onPageChange: (page: number) => void
-  onResetPassword: (user: User) => void
+  onResendInvitation: (user: User) => void
   onToggleStatus: (user: User) => void
 }
 
@@ -23,7 +23,7 @@ export function UsersTable({
   isFetching,
   onEdit,
   onPageChange,
-  onResetPassword,
+  onResendInvitation,
   onToggleStatus,
 }: UsersTableProps) {
   const { t } = useTranslation()
@@ -89,12 +89,18 @@ export function UsersTable({
                 <td className="px-4 py-3">
                   <Badge
                     variant={
-                      user.status === "active" ? "default" : "destructive"
+                      user.status === "active"
+                        ? "default"
+                        : user.status === "pending"
+                          ? "secondary"
+                          : "destructive"
                     }
                   >
                     {user.status === "active"
                       ? t("common.active")
-                      : t("common.disabled")}
+                      : user.status === "pending"
+                        ? t("users.status.pending")
+                        : t("common.disabled")}
                   </Badge>
                 </td>
                 <td className="px-4 py-3">
@@ -109,20 +115,23 @@ export function UsersTable({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => onResetPassword(user)}
+                      onClick={() => onResendInvitation(user)}
+                      disabled={user.status !== "pending"}
                     >
-                      {t("users.actions.resetPassword")}
+                      {t("users.actions.resendInvitation")}
                     </Button>
                     <Button
                       size="sm"
                       variant={
-                        user.status === "active" ? "destructive" : "secondary"
+                        user.status === "disabled"
+                          ? "secondary"
+                          : "destructive"
                       }
                       onClick={() => onToggleStatus(user)}
                     >
-                      {user.status === "active"
-                        ? t("users.actions.disable")
-                        : t("users.actions.enable")}
+                      {user.status === "disabled"
+                        ? t("users.actions.enable")
+                        : t("users.actions.disable")}
                     </Button>
                   </div>
                 </td>

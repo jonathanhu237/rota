@@ -23,13 +23,59 @@
     "passwordRequired": "请输入密码",
     "submit": "登录",
     "submitting": "登录中...",
+    "forgotPassword": "忘记密码？",
     "unexpectedError": "发生了意外错误",
     "errors": {
       "INVALID_CREDENTIALS": "邮箱或密码错误",
       "INVALID_REQUEST": "请求无效",
       "INTERNAL_ERROR": "服务器内部错误",
       "UNAUTHORIZED": "未授权",
-      "USER_DISABLED": "用户已被禁用"
+      "USER_DISABLED": "用户已被禁用",
+      "USER_PENDING": "您的账号仍在等待邀请邮件，请检查邮箱或联系管理员重新发送。"
+    }
+  },
+  "forgotPassword": {
+    "title": "忘记密码",
+    "description": "请输入邮箱，如果账号存在，我们会发送重置链接。",
+    "email": "邮箱",
+    "emailPlaceholder": "you@example.com",
+    "validation": {
+      "emailRequired": "请输入邮箱",
+      "emailInvalid": "请输入有效的邮箱地址"
+    },
+    "submit": "发送重置链接",
+    "submitting": "发送中...",
+    "success": "如果账号存在，密码重置链接已发送。",
+    "backToLogin": "返回登录"
+  },
+  "setupPassword": {
+    "title": "设置密码",
+    "loading": "正在加载邀请链接...",
+    "invitationDescription": "您已被邀请加入 Rota，请设置密码以激活账号。",
+    "resetDescription": "请为您的账号设置新密码。",
+    "email": "邮箱",
+    "password": "密码",
+    "confirmPassword": "确认密码",
+    "submit": "设置密码",
+    "submitting": "保存中...",
+    "backToLogin": "返回登录",
+    "success": "密码设置成功。",
+    "errorHint": "如果链接已失效或过期，请联系管理员重新发送。",
+    "forgotPasswordLink": "需要改为找回密码？",
+    "unexpectedError": "发生了意外错误",
+    "validation": {
+      "passwordRequired": "请输入密码",
+      "passwordMin": "密码至少需要 8 个字符",
+      "confirmPasswordRequired": "请确认密码",
+      "passwordMismatch": "两次输入的密码不一致"
+    },
+    "errors": {
+      "INVALID_LINK": "该链接缺少令牌。",
+      "INVALID_TOKEN": "该链接无效。",
+      "PASSWORD_TOO_SHORT": "密码至少需要 8 个字符",
+      "TOKEN_EXPIRED": "该链接已过期。",
+      "TOKEN_NOT_FOUND": "该链接已失效。",
+      "TOKEN_USED": "该链接已被使用。"
     }
   },
   "sidebar": {
@@ -55,8 +101,6 @@
     "createUser": "创建用户",
     "name": "姓名",
     "email": "邮箱",
-    "password": "密码",
-    "confirmPassword": "确认密码",
     "isAdmin": "管理员",
     "empty": "暂无用户。",
     "pageSummary": "显示第 {{start}}-{{end}} 条，共 {{total}} 条用户",
@@ -69,7 +113,7 @@
     },
     "actions": {
       "edit": "编辑",
-      "resetPassword": "重置密码",
+      "resendInvitation": "重新发送邀请",
       "disable": "禁用",
       "enable": "启用"
     },
@@ -81,6 +125,7 @@
     "form": {
       "createTitle": "创建用户",
       "createDescription": "为员工或管理员新增一个账号。",
+      "invitationHint": "系统将发送邀请邮件以设置密码。",
       "editTitle": "编辑用户",
       "editDescription": "更新所选用户的资料和角色。",
       "submitCreate": "创建用户",
@@ -88,11 +133,8 @@
       "submittingCreate": "创建中...",
       "submittingEdit": "保存中..."
     },
-    "passwordDialog": {
-      "title": "重置密码",
-      "description": "为 {{name}} 设置一个新密码。",
-      "submit": "重置密码",
-      "submitting": "重置中..."
+    "status": {
+      "pending": "待激活"
     },
     "statusDialog": {
       "disableTitle": "禁用用户",
@@ -106,16 +148,12 @@
     "validation": {
       "nameRequired": "请输入姓名",
       "emailRequired": "请输入邮箱",
-      "emailInvalid": "请输入有效的邮箱地址",
-      "passwordRequired": "请输入密码",
-      "passwordMin": "密码至少需要 8 个字符",
-      "confirmPasswordRequired": "请确认密码",
-      "passwordMismatch": "两次输入的密码不一致"
+      "emailInvalid": "请输入有效的邮箱地址"
     },
     "success": {
-      "created": "用户创建成功。",
+      "created": "用户创建成功，邀请邮件已发送。",
       "updated": "用户更新成功。",
-      "passwordReset": "密码重置成功。",
+      "invitationResent": "邀请已重新发送。",
       "disabled": "用户已禁用。",
       "enabled": "用户已启用。"
     },
@@ -136,10 +174,10 @@
       "FORBIDDEN": "无权限访问",
       "INVALID_REQUEST": "请求无效",
       "INTERNAL_ERROR": "服务器内部错误",
-      "PASSWORD_TOO_SHORT": "密码至少需要 8 个字符",
       "POSITION_NOT_FOUND": "岗位不存在",
       "UNAUTHORIZED": "未授权",
       "USER_DISABLED": "用户已被禁用",
+      "USER_NOT_PENDING": "该用户不是待激活状态",
       "USER_NOT_FOUND": "用户不存在",
       "VERSION_CONFLICT": "该用户已被其他请求更新，请刷新后重试。"
     }

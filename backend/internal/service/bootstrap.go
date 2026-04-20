@@ -49,10 +49,14 @@ func EnsureBootstrapAdmin(ctx context.Context, input BootstrapAdminInput, userRe
 
 	_, err = userRepo.Create(ctx, repository.CreateUserParams{
 		Email:        email,
-		PasswordHash: string(passwordHash),
+		PasswordHash: ptr(string(passwordHash)),
 		Name:         name,
 		IsAdmin:      true,
 		Status:       model.UserStatusActive,
 	})
 	return err
+}
+
+func ptr[T any](value T) *T {
+	return &value
 }

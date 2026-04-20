@@ -11,6 +11,7 @@ import type {
   TemplateDetail,
   TemplateShift,
   Roster,
+  SetupTokenPreview,
   User,
   UserStatus,
 } from "./types"
@@ -23,6 +24,12 @@ export type UsersResponse = {
 export type UserResponse = {
   user: User
 }
+
+export type PasswordResetRequestResponse = {
+  message: string
+}
+
+export type SetupTokenPreviewResponse = SetupTokenPreview
 
 export type PositionsResponse = {
   positions: Position[]
@@ -74,7 +81,6 @@ export type RosterResponse = Roster
 export type CreateUserInput = {
   email: string
   name: string
-  password: string
   is_admin: boolean
 }
 
@@ -85,14 +91,14 @@ export type UpdateUserInput = {
   version: number
 }
 
-export type UpdateUserPasswordInput = {
-  password: string
-  version: number
-}
-
 export type UpdateUserStatusInput = {
   status: UserStatus
   version: number
+}
+
+export type SetupPasswordInput = {
+  token: string
+  password: string
 }
 
 export type CreatePositionInput = {
@@ -357,14 +363,6 @@ export async function updateUser(userID: number, input: UpdateUserInput) {
   return res.data.user
 }
 
-export async function updateUserPassword(
-  userID: number,
-  input: UpdateUserPasswordInput,
-) {
-  const res = await api.patch<UserResponse>(`/users/${userID}/password`, input)
-  return res.data.user
-}
-
 export async function updateUserStatus(
   userID: number,
   input: UpdateUserStatusInput,
@@ -383,6 +381,28 @@ export async function replaceUserPositions(
       position_ids: positionIDs,
     },
   )
+}
+
+export async function requestPasswordReset(email: string) {
+  await api.post<PasswordResetRequestResponse>(
+    "/auth/password-reset-request",
+    { email },
+  )
+}
+
+export async function previewSetupToken(token: string) {
+  const res = await api.get<SetupTokenPreviewResponse>("/auth/setup-token", {
+    params: { token },
+  })
+  return res.data
+}
+
+export async function setupPassword(input: SetupPasswordInput) {
+  await api.post("/auth/setup-password", input)
+}
+
+export async function resendInvitation(userID: number) {
+  await api.post(`/users/${userID}/resend-invitation`)
 }
 
 export async function createPosition(input: CreatePositionInput) {

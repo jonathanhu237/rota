@@ -12,12 +12,12 @@ import (
 )
 
 type stubUserService struct {
-	listUsersFunc          func(ctx context.Context, input service.ListUsersInput) (*service.ListUsersResult, error)
-	createUserFunc         func(ctx context.Context, input service.CreateUserInput) (*model.User, error)
-	getUserByIDFunc        func(ctx context.Context, id int64) (*model.User, error)
-	updateUserFunc         func(ctx context.Context, input service.UpdateUserInput) (*model.User, error)
-	updateUserPasswordFunc func(ctx context.Context, input service.UpdateUserPasswordInput) (*model.User, error)
-	updateUserStatusFunc   func(ctx context.Context, input service.UpdateUserStatusInput) (*model.User, error)
+	listUsersFunc        func(ctx context.Context, input service.ListUsersInput) (*service.ListUsersResult, error)
+	createUserFunc       func(ctx context.Context, input service.CreateUserInput) (*model.User, error)
+	resendInvitationFunc func(ctx context.Context, userID int64) error
+	getUserByIDFunc      func(ctx context.Context, id int64) (*model.User, error)
+	updateUserFunc       func(ctx context.Context, input service.UpdateUserInput) (*model.User, error)
+	updateUserStatusFunc func(ctx context.Context, input service.UpdateUserStatusInput) (*model.User, error)
 }
 
 func (s *stubUserService) ListUsers(ctx context.Context, input service.ListUsersInput) (*service.ListUsersResult, error) {
@@ -28,16 +28,16 @@ func (s *stubUserService) CreateUser(ctx context.Context, input service.CreateUs
 	return s.createUserFunc(ctx, input)
 }
 
+func (s *stubUserService) ResendInvitation(ctx context.Context, userID int64) error {
+	return s.resendInvitationFunc(ctx, userID)
+}
+
 func (s *stubUserService) GetUserByID(ctx context.Context, id int64) (*model.User, error) {
 	return s.getUserByIDFunc(ctx, id)
 }
 
 func (s *stubUserService) UpdateUser(ctx context.Context, input service.UpdateUserInput) (*model.User, error) {
 	return s.updateUserFunc(ctx, input)
-}
-
-func (s *stubUserService) UpdateUserPassword(ctx context.Context, input service.UpdateUserPasswordInput) (*model.User, error) {
-	return s.updateUserPasswordFunc(ctx, input)
 }
 
 func (s *stubUserService) UpdateUserStatus(ctx context.Context, input service.UpdateUserStatusInput) (*model.User, error) {
@@ -80,7 +80,6 @@ func TestUserHandler(t *testing.T) {
 		req := jsonRequest(t, http.MethodPost, "/users", map[string]any{
 			"email":    "worker@example.com",
 			"name":     "Worker",
-			"password": "pa55word",
 			"is_admin": false,
 		})
 
@@ -115,7 +114,6 @@ func TestUserHandler(t *testing.T) {
 		req := jsonRequest(t, http.MethodPost, "/users", map[string]any{
 			"email":    "worker@example.com",
 			"name":     "Worker",
-			"password": "pa55word",
 			"is_admin": false,
 		})
 
@@ -214,42 +212,41 @@ func TestUserHandler(t *testing.T) {
 		assertErrorResponse(t, recorder, http.StatusNotFound, "USER_NOT_FOUND")
 	})
 
-	t.Run("UpdatePassword returns updated user", func(t *testing.T) {
+	t.Run("ResendInvitation returns no content", func(t *testing.T) {
 		t.Parallel()
 
 		handler := NewUserHandler(&stubUserService{
-			updateUserPasswordFunc: func(ctx context.Context, input service.UpdateUserPasswordInput) (*model.User, error) {
-				return sampleUser(), nil
+			resendInvitationFunc: func(ctx context.Context, userID int64) error {
+				if userID != 1 {
+					t.Fatalf("expected user ID 1, got %d", userID)
+				}
+				return nil
 			},
 		})
 		recorder := httptest.NewRecorder()
-		req := requestWithPathValues(jsonRequest(t, http.MethodPatch, "/users/1/password", map[string]any{
-			"password": "pa55word", "version": 1,
-		}), map[string]string{"id": "1"})
+		req := requestWithPathValues(httptest.NewRequest(http.MethodPost, "/users/1/resend-invitation", nil), map[string]string{"id": "1"})
 
-		handler.UpdatePassword(recorder, req)
+		handler.ResendInvitation(recorder, req)
 
-		if recorder.Code != http.StatusOK {
-			t.Fatalf("expected status 200, got %d", recorder.Code)
+		if recorder.Code != http.StatusNoContent {
+			t.Fatalf("expected status 204, got %d", recorder.Code)
 		}
 	})
 
-	t.Run("UpdatePassword maps password too short", func(t *testing.T) {
+	t.Run("ResendInvitation maps ErrUserNotPending", func(t *testing.T) {
 		t.Parallel()
 
 		handler := NewUserHandler(&stubUserService{
-			updateUserPasswordFunc: func(ctx context.Context, input service.UpdateUserPasswordInput) (*model.User, error) {
-				return nil, model.ErrPasswordTooShort
+			resendInvitationFunc: func(ctx context.Context, userID int64) error {
+				return model.ErrUserNotPending
 			},
 		})
 		recorder := httptest.NewRecorder()
-		req := requestWithPathValues(jsonRequest(t, http.MethodPatch, "/users/1/password", map[string]any{
-			"password": "short", "version": 1,
-		}), map[string]string{"id": "1"})
+		req := requestWithPathValues(httptest.NewRequest(http.MethodPost, "/users/1/resend-invitation", nil), map[string]string{"id": "1"})
 
-		handler.UpdatePassword(recorder, req)
+		handler.ResendInvitation(recorder, req)
 
-		assertErrorResponse(t, recorder, http.StatusBadRequest, "PASSWORD_TOO_SHORT")
+		assertErrorResponse(t, recorder, http.StatusConflict, "USER_NOT_PENDING")
 	})
 
 	t.Run("UpdateStatus returns updated user", func(t *testing.T) {

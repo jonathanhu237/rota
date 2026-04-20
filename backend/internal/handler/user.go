@@ -13,9 +13,9 @@ import (
 type userService interface {
 	ListUsers(ctx context.Context, input service.ListUsersInput) (*service.ListUsersResult, error)
 	CreateUser(ctx context.Context, input service.CreateUserInput) (*model.User, error)
+	ResendInvitation(ctx context.Context, userID int64) error
 	GetUserByID(ctx context.Context, id int64) (*model.User, error)
 	UpdateUser(ctx context.Context, input service.UpdateUserInput) (*model.User, error)
-	UpdateUserPassword(ctx context.Context, input service.UpdateUserPasswordInput) (*model.User, error)
 	UpdateUserStatus(ctx context.Context, input service.UpdateUserStatusInput) (*model.User, error)
 }
 
@@ -33,10 +33,9 @@ type userDetailResponse struct {
 }
 
 type createUserRequest struct {
-	Email    string `json:"email"`
-	Name     string `json:"name"`
-	Password string `json:"password"`
-	IsAdmin  bool   `json:"is_admin"`
+	Email   string `json:"email"`
+	Name    string `json:"name"`
+	IsAdmin bool   `json:"is_admin"`
 }
 
 type updateUserRequest struct {
@@ -44,11 +43,6 @@ type updateUserRequest struct {
 	Name    string `json:"name"`
 	IsAdmin bool   `json:"is_admin"`
 	Version int    `json:"version"`
-}
-
-type updateUserPasswordRequest struct {
-	Password string `json:"password"`
-	Version  int    `json:"version"`
 }
 
 type updateUserStatusRequest struct {
@@ -106,10 +100,9 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user, err := h.userService.CreateUser(r.Context(), service.CreateUserInput{
-		Email:    req.Email,
-		Name:     req.Name,
-		Password: req.Password,
-		IsAdmin:  req.IsAdmin,
+		Email:   req.Email,
+		Name:    req.Name,
+		IsAdmin: req.IsAdmin,
 	})
 	if err != nil {
 		h.writeUserServiceError(w, err)
@@ -169,32 +162,19 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *UserHandler) UpdatePassword(w http.ResponseWriter, r *http.Request) {
+func (h *UserHandler) ResendInvitation(w http.ResponseWriter, r *http.Request) {
 	id, err := parsePathID(r, "id")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid user id")
 		return
 	}
 
-	var req updateUserPasswordRequest
-	if err := readJSON(w, r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
-		return
-	}
-
-	user, err := h.userService.UpdateUserPassword(r.Context(), service.UpdateUserPasswordInput{
-		ID:       id,
-		Password: req.Password,
-		Version:  req.Version,
-	})
-	if err != nil {
+	if err := h.userService.ResendInvitation(r.Context(), id); err != nil {
 		h.writeUserServiceError(w, err)
 		return
 	}
 
-	writeData(w, http.StatusOK, userDetailResponse{
-		User: newUserResponse(user),
-	})
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *UserHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
@@ -233,6 +213,8 @@ func (h *UserHandler) writeUserServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, "PASSWORD_TOO_SHORT", "Password must have at least 8 characters")
 	case errors.Is(err, service.ErrEmailAlreadyExists):
 		writeError(w, http.StatusConflict, "EMAIL_ALREADY_EXISTS", "Email already exists")
+	case errors.Is(err, model.ErrUserNotPending):
+		writeError(w, http.StatusConflict, "USER_NOT_PENDING", "User is not pending")
 	case errors.Is(err, service.ErrUserNotFound):
 		writeError(w, http.StatusNotFound, "USER_NOT_FOUND", "User not found")
 	case errors.Is(err, service.ErrVersionConflict):

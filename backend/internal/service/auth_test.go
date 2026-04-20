@@ -208,6 +208,41 @@ func TestAuthServiceLogin(t *testing.T) {
 		}
 	})
 
+	t.Run("pending user returns ErrUserPending", func(t *testing.T) {
+		t.Parallel()
+
+		sessionCreateCalled := false
+		service := NewAuthService(
+			&authUserRepositoryMock{
+				getByEmailFunc: func(ctx context.Context, email string) (*model.User, error) {
+					return &model.User{
+						ID:           10,
+						Email:        email,
+						PasswordHash: "",
+						Status:       model.UserStatusPending,
+					}, nil
+				},
+				getByIDFunc: func(ctx context.Context, id int64) (*model.User, error) {
+					return nil, nil
+				},
+			},
+			&authSessionStoreMock{
+				createFunc: func(ctx context.Context, userID int64) (string, int64, error) {
+					sessionCreateCalled = true
+					return "", 0, nil
+				},
+			},
+		)
+
+		_, err := service.Login(context.Background(), "pending@example.com", "pa55word")
+		if !errors.Is(err, ErrUserPending) {
+			t.Fatalf("expected ErrUserPending, got %v", err)
+		}
+		if sessionCreateCalled {
+			t.Fatalf("session should not be created for a pending user")
+		}
+	})
+
 	t.Run("session creation error is returned", func(t *testing.T) {
 		t.Parallel()
 

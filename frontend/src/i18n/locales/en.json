@@ -23,13 +23,59 @@
     "passwordRequired": "Password is required",
     "submit": "Login",
     "submitting": "Logging in...",
+    "forgotPassword": "Forgot password?",
     "unexpectedError": "An unexpected error occurred",
     "errors": {
       "INVALID_CREDENTIALS": "Invalid email or password",
       "INVALID_REQUEST": "Invalid request",
       "INTERNAL_ERROR": "Internal server error",
       "UNAUTHORIZED": "Unauthorized",
-      "USER_DISABLED": "User is disabled"
+      "USER_DISABLED": "User is disabled",
+      "USER_PENDING": "Your account is waiting for the invitation link. Check your email or ask an admin to resend it."
+    }
+  },
+  "forgotPassword": {
+    "title": "Forgot password",
+    "description": "Enter your email and we'll send a reset link if an account exists.",
+    "email": "Email",
+    "emailPlaceholder": "you@example.com",
+    "validation": {
+      "emailRequired": "Email is required",
+      "emailInvalid": "Please enter a valid email address"
+    },
+    "submit": "Send reset link",
+    "submitting": "Sending...",
+    "success": "If an account exists, a password reset link has been sent.",
+    "backToLogin": "Back to login"
+  },
+  "setupPassword": {
+    "title": "Set password",
+    "loading": "Loading invitation...",
+    "invitationDescription": "You've been invited to Rota. Set your password to activate your account.",
+    "resetDescription": "Set a new password for your account.",
+    "email": "Email",
+    "password": "Password",
+    "confirmPassword": "Confirm password",
+    "submit": "Set password",
+    "submitting": "Saving...",
+    "backToLogin": "Back to login",
+    "success": "Password set successfully.",
+    "errorHint": "If this link is invalid or expired, ask an admin for a new one.",
+    "forgotPasswordLink": "Need a password reset instead?",
+    "unexpectedError": "An unexpected error occurred",
+    "validation": {
+      "passwordRequired": "Password is required",
+      "passwordMin": "Password must be at least 8 characters",
+      "confirmPasswordRequired": "Please confirm the password",
+      "passwordMismatch": "Passwords do not match"
+    },
+    "errors": {
+      "INVALID_LINK": "This link is missing a token.",
+      "INVALID_TOKEN": "This link is invalid.",
+      "PASSWORD_TOO_SHORT": "Password must be at least 8 characters",
+      "TOKEN_EXPIRED": "This link has expired.",
+      "TOKEN_NOT_FOUND": "This link is no longer valid.",
+      "TOKEN_USED": "This link has already been used."
     }
   },
   "sidebar": {
@@ -55,8 +101,6 @@
     "createUser": "Create User",
     "name": "Name",
     "email": "Email",
-    "password": "Password",
-    "confirmPassword": "Confirm Password",
     "isAdmin": "Administrator",
     "empty": "No users found.",
     "pageSummary": "Showing {{start}}-{{end}} of {{total}} users",
@@ -69,7 +113,7 @@
     },
     "actions": {
       "edit": "Edit",
-      "resetPassword": "Reset Password",
+      "resendInvitation": "Resend Invitation",
       "disable": "Disable",
       "enable": "Enable"
     },
@@ -81,6 +125,7 @@
     "form": {
       "createTitle": "Create user",
       "createDescription": "Add a new employee or administrator account.",
+      "invitationHint": "An invitation email will be sent to set the password.",
       "editTitle": "Edit user",
       "editDescription": "Update the selected user's profile and role.",
       "submitCreate": "Create User",
@@ -88,11 +133,8 @@
       "submittingCreate": "Creating...",
       "submittingEdit": "Saving..."
     },
-    "passwordDialog": {
-      "title": "Reset password",
-      "description": "Set a new password for {{name}}.",
-      "submit": "Reset Password",
-      "submitting": "Resetting..."
+    "status": {
+      "pending": "Pending"
     },
     "statusDialog": {
       "disableTitle": "Disable user",
@@ -106,16 +148,12 @@
     "validation": {
       "nameRequired": "Name is required",
       "emailRequired": "Email is required",
-      "emailInvalid": "Please enter a valid email address",
-      "passwordRequired": "Password is required",
-      "passwordMin": "Password must be at least 8 characters",
-      "confirmPasswordRequired": "Please confirm the password",
-      "passwordMismatch": "Passwords do not match"
+      "emailInvalid": "Please enter a valid email address"
     },
     "success": {
-      "created": "User created successfully.",
+      "created": "User created. An invitation email has been sent.",
       "updated": "User updated successfully.",
-      "passwordReset": "Password reset successfully.",
+      "invitationResent": "Invitation resent successfully.",
       "disabled": "User disabled successfully.",
       "enabled": "User enabled successfully."
     },
@@ -137,10 +175,10 @@
       "FORBIDDEN": "Forbidden",
       "INVALID_REQUEST": "Invalid request",
       "INTERNAL_ERROR": "Internal server error",
-      "PASSWORD_TOO_SHORT": "Password must be at least 8 characters",
       "POSITION_NOT_FOUND": "Position not found",
       "UNAUTHORIZED": "Unauthorized",
       "USER_DISABLED": "User is disabled",
+      "USER_NOT_PENDING": "User is not pending",
       "USER_NOT_FOUND": "User not found",
       "VERSION_CONFLICT": "This user was updated elsewhere. Refresh and try again."
     }

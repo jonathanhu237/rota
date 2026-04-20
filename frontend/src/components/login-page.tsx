@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation } from "@tanstack/react-query"
-import { useNavigate } from "@tanstack/react-router"
+import { Link, useNavigate } from "@tanstack/react-router"
 import { useForm } from "react-hook-form"
 import { useTranslation } from "react-i18next"
 import { z } from "zod/v3"
@@ -132,6 +132,12 @@ export function LoginPage() {
                 ? t("login.submitting")
                 : t("login.submit")}
             </Button>
+            <Link
+              className="text-sm font-medium text-primary underline underline-offset-4"
+              to="/forgot-password"
+            >
+              {t("login.forgotPassword")}
+            </Link>
           </form>
         </CardContent>
       </Card>

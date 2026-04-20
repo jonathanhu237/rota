@@ -14,13 +14,28 @@ import (
 )
 
 type stubAuthService struct {
-	loginFunc        func(ctx context.Context, email, password string) (*service.LoginResult, error)
-	authenticateFunc func(ctx context.Context, sessionID string) (*service.AuthenticateResult, error)
-	logoutFunc       func(ctx context.Context, sessionID string) error
+	loginFunc                func(ctx context.Context, email, password string) (*service.LoginResult, error)
+	requestPasswordResetFunc func(ctx context.Context, email string) error
+	previewSetupTokenFunc    func(ctx context.Context, rawToken string) (*service.SetupTokenPreview, error)
+	setupPasswordFunc        func(ctx context.Context, input service.SetupPasswordInput) error
+	authenticateFunc         func(ctx context.Context, sessionID string) (*service.AuthenticateResult, error)
+	logoutFunc               func(ctx context.Context, sessionID string) error
 }
 
 func (s *stubAuthService) Login(ctx context.Context, email, password string) (*service.LoginResult, error) {
 	return s.loginFunc(ctx, email, password)
+}
+
+func (s *stubAuthService) RequestPasswordReset(ctx context.Context, email string) error {
+	return s.requestPasswordResetFunc(ctx, email)
+}
+
+func (s *stubAuthService) PreviewSetupToken(ctx context.Context, rawToken string) (*service.SetupTokenPreview, error) {
+	return s.previewSetupTokenFunc(ctx, rawToken)
+}
+
+func (s *stubAuthService) SetupPassword(ctx context.Context, input service.SetupPasswordInput) error {
+	return s.setupPasswordFunc(ctx, input)
 }
 
 func (s *stubAuthService) Authenticate(ctx context.Context, sessionID string) (*service.AuthenticateResult, error) {
@@ -122,6 +137,25 @@ func TestAuthHandler(t *testing.T) {
 		assertErrorResponse(t, recorder, http.StatusForbidden, "USER_DISABLED")
 	})
 
+	t.Run("Login maps pending user", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewAuthHandler(&stubAuthService{
+			loginFunc: func(ctx context.Context, email, password string) (*service.LoginResult, error) {
+				return nil, service.ErrUserPending
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := jsonRequest(t, http.MethodPost, "/login", map[string]any{
+			"email":    "worker@example.com",
+			"password": "pa55word",
+		})
+
+		handler.Login(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusForbidden, "USER_PENDING")
+	})
+
 	t.Run("Login maps unexpected service error", func(t *testing.T) {
 		t.Parallel()
 
@@ -139,6 +173,169 @@ func TestAuthHandler(t *testing.T) {
 		handler.Login(recorder, req)
 
 		assertErrorResponse(t, recorder, http.StatusInternalServerError, "INTERNAL_ERROR")
+	})
+
+	t.Run("RequestPasswordReset returns a generic success response", func(t *testing.T) {
+		t.Parallel()
+
+		var receivedEmail string
+		handler := NewAuthHandler(&stubAuthService{
+			requestPasswordResetFunc: func(ctx context.Context, email string) error {
+				receivedEmail = email
+				return nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := jsonRequest(t, http.MethodPost, "/auth/password-reset-request", map[string]any{
+			"email": "worker@example.com",
+		})
+
+		handler.RequestPasswordReset(recorder, req)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", recorder.Code)
+		}
+		if receivedEmail != "worker@example.com" {
+			t.Fatalf("expected email %q, got %q", "worker@example.com", receivedEmail)
+		}
+
+		response := decodeJSONResponse[passwordResetRequestResponse](t, recorder)
+		if response.Message == "" {
+			t.Fatalf("expected non-empty success message")
+		}
+	})
+
+	t.Run("PreviewSetupToken returns token preview", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewAuthHandler(&stubAuthService{
+			previewSetupTokenFunc: func(ctx context.Context, rawToken string) (*service.SetupTokenPreview, error) {
+				if rawToken != "opaque-token" {
+					t.Fatalf("expected token %q, got %q", "opaque-token", rawToken)
+				}
+				return &service.SetupTokenPreview{
+					Email:   "worker@example.com",
+					Name:    "Worker",
+					Purpose: model.SetupTokenPurposeInvitation,
+				}, nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/auth/setup-token?token=opaque-token", nil)
+
+		handler.PreviewSetupToken(recorder, req)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", recorder.Code)
+		}
+
+		response := decodeJSONResponse[setupTokenPreviewResponse](t, recorder)
+		if response.Email != "worker@example.com" || response.Name != "Worker" {
+			t.Fatalf("unexpected preview response: %+v", response)
+		}
+		if response.Purpose != model.SetupTokenPurposeInvitation {
+			t.Fatalf("expected invitation purpose, got %q", response.Purpose)
+		}
+	})
+
+	t.Run("PreviewSetupToken maps token errors", func(t *testing.T) {
+		t.Parallel()
+
+		testCases := []struct {
+			name   string
+			err    error
+			status int
+			code   string
+		}{
+			{name: "invalid", err: model.ErrInvalidToken, status: http.StatusBadRequest, code: "INVALID_TOKEN"},
+			{name: "not found", err: model.ErrTokenNotFound, status: http.StatusNotFound, code: "TOKEN_NOT_FOUND"},
+			{name: "expired", err: model.ErrTokenExpired, status: http.StatusGone, code: "TOKEN_EXPIRED"},
+			{name: "used", err: model.ErrTokenUsed, status: http.StatusGone, code: "TOKEN_USED"},
+		}
+
+		for _, tc := range testCases {
+			tc := tc
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				handler := NewAuthHandler(&stubAuthService{
+					previewSetupTokenFunc: func(ctx context.Context, rawToken string) (*service.SetupTokenPreview, error) {
+						return nil, tc.err
+					},
+				})
+				recorder := httptest.NewRecorder()
+				req := httptest.NewRequest(http.MethodGet, "/auth/setup-token?token=opaque-token", nil)
+
+				handler.PreviewSetupToken(recorder, req)
+
+				assertErrorResponse(t, recorder, tc.status, tc.code)
+			})
+		}
+	})
+
+	t.Run("SetupPassword returns no content", func(t *testing.T) {
+		t.Parallel()
+
+		var receivedInput service.SetupPasswordInput
+		handler := NewAuthHandler(&stubAuthService{
+			setupPasswordFunc: func(ctx context.Context, input service.SetupPasswordInput) error {
+				receivedInput = input
+				return nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := jsonRequest(t, http.MethodPost, "/auth/setup-password", map[string]any{
+			"token":    "opaque-token",
+			"password": "pa55word",
+		})
+
+		handler.SetupPassword(recorder, req)
+
+		if recorder.Code != http.StatusNoContent {
+			t.Fatalf("expected status 204, got %d", recorder.Code)
+		}
+		if receivedInput.Token != "opaque-token" || receivedInput.Password != "pa55word" {
+			t.Fatalf("unexpected setup password input: %+v", receivedInput)
+		}
+	})
+
+	t.Run("SetupPassword maps validation and token errors", func(t *testing.T) {
+		t.Parallel()
+
+		testCases := []struct {
+			name   string
+			err    error
+			status int
+			code   string
+		}{
+			{name: "short password", err: model.ErrPasswordTooShort, status: http.StatusBadRequest, code: "PASSWORD_TOO_SHORT"},
+			{name: "invalid token", err: model.ErrInvalidToken, status: http.StatusBadRequest, code: "INVALID_TOKEN"},
+			{name: "not found", err: model.ErrTokenNotFound, status: http.StatusNotFound, code: "TOKEN_NOT_FOUND"},
+			{name: "expired", err: model.ErrTokenExpired, status: http.StatusGone, code: "TOKEN_EXPIRED"},
+			{name: "used", err: model.ErrTokenUsed, status: http.StatusGone, code: "TOKEN_USED"},
+		}
+
+		for _, tc := range testCases {
+			tc := tc
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				handler := NewAuthHandler(&stubAuthService{
+					setupPasswordFunc: func(ctx context.Context, input service.SetupPasswordInput) error {
+						return tc.err
+					},
+				})
+				recorder := httptest.NewRecorder()
+				req := jsonRequest(t, http.MethodPost, "/auth/setup-password", map[string]any{
+					"token":    "opaque-token",
+					"password": "pa55word",
+				})
+
+				handler.SetupPassword(recorder, req)
+
+				assertErrorResponse(t, recorder, tc.status, tc.code)
+			})
+		}
 	})
 
 	t.Run("Logout clears the session cookie after successful logout", func(t *testing.T) {

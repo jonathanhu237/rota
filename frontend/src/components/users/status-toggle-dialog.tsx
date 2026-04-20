@@ -28,7 +28,7 @@ export function StatusToggleDialog({
 }: StatusToggleDialogProps) {
   const { t } = useTranslation()
 
-  const nextStatus = user?.status === "active" ? "disabled" : "active"
+  const nextStatus = user?.status === "disabled" ? "active" : "disabled"
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
