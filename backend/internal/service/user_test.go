@@ -2,9 +2,17 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/jonathanhu237/rota/backend/internal/audit"
+	"github.com/jonathanhu237/rota/backend/internal/audit/audittest"
+	"github.com/jonathanhu237/rota/backend/internal/email"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 )
@@ -172,6 +180,15 @@ func TestUserServiceUpdateUser(t *testing.T) {
 
 		var updateParams repository.UpdateUserParams
 		service := NewUserService(&userRepositoryMock{
+			getByIDFunc: func(ctx context.Context, id int64) (*model.User, error) {
+				return &model.User{
+					ID:      id,
+					Email:   "old@example.com",
+					Name:    "Old Name",
+					IsAdmin: false,
+					Version: 2,
+				}, nil
+			},
 			getByEmailFunc: func(ctx context.Context, email string) (*model.User, error) {
 				return nil, repository.ErrUserNotFound
 			},
@@ -187,7 +204,10 @@ func TestUserServiceUpdateUser(t *testing.T) {
 			},
 		}, &userSessionStoreMock{})
 
-		user, err := service.UpdateUser(context.Background(), UpdateUserInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		user, err := service.UpdateUser(ctx, UpdateUserInput{
 			ID:      5,
 			Email:   " worker@example.com ",
 			Name:    " Worker ",
@@ -203,6 +223,26 @@ func TestUserServiceUpdateUser(t *testing.T) {
 		if user.Version != 3 {
 			t.Fatalf("expected returned version 3, got %d", user.Version)
 		}
+
+		event := stub.FindByAction(audit.ActionUserUpdate)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionUserUpdate, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypeUser {
+			t.Fatalf("unexpected target type: %q", event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != 5 {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		if _, ok := event.Metadata["email"]; !ok {
+			t.Fatalf("expected email change in metadata, got %+v", event.Metadata)
+		}
+		if _, ok := event.Metadata["name"]; !ok {
+			t.Fatalf("expected name change in metadata, got %+v", event.Metadata)
+		}
+		if _, ok := event.Metadata["is_admin"]; !ok {
+			t.Fatalf("expected is_admin change in metadata, got %+v", event.Metadata)
+		}
 	})
 
 	t.Run("invalid email", func(t *testing.T) {
@@ -210,7 +250,9 @@ func TestUserServiceUpdateUser(t *testing.T) {
 
 		service := NewUserService(&userRepositoryMock{}, &userSessionStoreMock{})
 
-		_, err := service.UpdateUser(context.Background(), UpdateUserInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		_, err := service.UpdateUser(ctx, UpdateUserInput{
 			ID:      1,
 			Email:   "invalid-email",
 			Name:    "Worker",
@@ -218,6 +260,9 @@ func TestUserServiceUpdateUser(t *testing.T) {
 		})
 		if !errors.Is(err, ErrInvalidInput) {
 			t.Fatalf("expected ErrInvalidInput, got %v", err)
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
 		}
 	})
 
@@ -235,7 +280,9 @@ func TestUserServiceUpdateUser(t *testing.T) {
 			},
 		}, &userSessionStoreMock{})
 
-		_, err := service.UpdateUser(context.Background(), UpdateUserInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		_, err := service.UpdateUser(ctx, UpdateUserInput{
 			ID:      1,
 			Email:   "duplicate@example.com",
 			Name:    "Worker",
@@ -247,12 +294,18 @@ func TestUserServiceUpdateUser(t *testing.T) {
 		if updateCalled {
 			t.Fatalf("Update should not be called when duplicate email is detected early")
 		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
+		}
 	})
 
 	t.Run("not found", func(t *testing.T) {
 		t.Parallel()
 
 		service := NewUserService(&userRepositoryMock{
+			getByIDFunc: func(ctx context.Context, id int64) (*model.User, error) {
+				return nil, repository.ErrUserNotFound
+			},
 			getByEmailFunc: func(ctx context.Context, email string) (*model.User, error) {
 				return nil, repository.ErrUserNotFound
 			},
@@ -261,7 +314,9 @@ func TestUserServiceUpdateUser(t *testing.T) {
 			},
 		}, &userSessionStoreMock{})
 
-		_, err := service.UpdateUser(context.Background(), UpdateUserInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		_, err := service.UpdateUser(ctx, UpdateUserInput{
 			ID:      1,
 			Email:   "worker@example.com",
 			Name:    "Worker",
@@ -270,12 +325,23 @@ func TestUserServiceUpdateUser(t *testing.T) {
 		if !errors.Is(err, ErrUserNotFound) {
 			t.Fatalf("expected ErrUserNotFound, got %v", err)
 		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
+		}
 	})
 
 	t.Run("version conflict", func(t *testing.T) {
 		t.Parallel()
 
 		service := NewUserService(&userRepositoryMock{
+			getByIDFunc: func(ctx context.Context, id int64) (*model.User, error) {
+				return &model.User{
+					ID:      id,
+					Email:   "worker@example.com",
+					Name:    "Worker",
+					Version: 1,
+				}, nil
+			},
 			getByEmailFunc: func(ctx context.Context, email string) (*model.User, error) {
 				return nil, repository.ErrUserNotFound
 			},
@@ -284,7 +350,9 @@ func TestUserServiceUpdateUser(t *testing.T) {
 			},
 		}, &userSessionStoreMock{})
 
-		_, err := service.UpdateUser(context.Background(), UpdateUserInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		_, err := service.UpdateUser(ctx, UpdateUserInput{
 			ID:      1,
 			Email:   "worker@example.com",
 			Name:    "Worker",
@@ -292,6 +360,9 @@ func TestUserServiceUpdateUser(t *testing.T) {
 		})
 		if !errors.Is(err, ErrVersionConflict) {
 			t.Fatalf("expected ErrVersionConflict, got %v", err)
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
 		}
 	})
 }
@@ -302,6 +373,13 @@ func TestUserServiceUpdateUserStatus(t *testing.T) {
 
 		var deletedUserID int64
 		service := NewUserService(&userRepositoryMock{
+			getByIDFunc: func(ctx context.Context, id int64) (*model.User, error) {
+				return &model.User{
+					ID:      id,
+					Status:  model.UserStatusActive,
+					Version: 2,
+				}, nil
+			},
 			updateStatusFunc: func(ctx context.Context, params repository.UpdateUserStatusParams) (*model.User, error) {
 				return &model.User{
 					ID:      params.ID,
@@ -316,7 +394,9 @@ func TestUserServiceUpdateUserStatus(t *testing.T) {
 			},
 		})
 
-		user, err := service.UpdateUserStatus(context.Background(), UpdateUserStatusInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		user, err := service.UpdateUserStatus(ctx, UpdateUserStatusInput{
 			ID:      1,
 			Status:  model.UserStatusDisabled,
 			Version: 2,
@@ -330,6 +410,20 @@ func TestUserServiceUpdateUserStatus(t *testing.T) {
 		if deletedUserID != 1 {
 			t.Fatalf("expected DeleteUserSessions to be called with user ID 1, got %d", deletedUserID)
 		}
+
+		event := stub.FindByAction(audit.ActionUserStatusDisable)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionUserStatusDisable, stub.Actions())
+		}
+		if event.TargetID == nil || *event.TargetID != 1 {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		if event.Metadata["previous_status"] != string(model.UserStatusActive) {
+			t.Fatalf("expected previous_status=active, got %v", event.Metadata["previous_status"])
+		}
+		if event.Metadata["new_status"] != string(model.UserStatusDisabled) {
+			t.Fatalf("expected new_status=disabled, got %v", event.Metadata["new_status"])
+		}
 	})
 
 	t.Run("enable success does not clear sessions", func(t *testing.T) {
@@ -337,6 +431,13 @@ func TestUserServiceUpdateUserStatus(t *testing.T) {
 
 		deleteCalls := 0
 		service := NewUserService(&userRepositoryMock{
+			getByIDFunc: func(ctx context.Context, id int64) (*model.User, error) {
+				return &model.User{
+					ID:      id,
+					Status:  model.UserStatusDisabled,
+					Version: 2,
+				}, nil
+			},
 			updateStatusFunc: func(ctx context.Context, params repository.UpdateUserStatusParams) (*model.User, error) {
 				return &model.User{
 					ID:      params.ID,
@@ -351,7 +452,9 @@ func TestUserServiceUpdateUserStatus(t *testing.T) {
 			},
 		})
 
-		user, err := service.UpdateUserStatus(context.Background(), UpdateUserStatusInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		user, err := service.UpdateUserStatus(ctx, UpdateUserStatusInput{
 			ID:      1,
 			Status:  model.UserStatusActive,
 			Version: 2,
@@ -365,6 +468,17 @@ func TestUserServiceUpdateUserStatus(t *testing.T) {
 		if deleteCalls != 0 {
 			t.Fatalf("DeleteUserSessions should not be called when enabling a user")
 		}
+
+		event := stub.FindByAction(audit.ActionUserStatusActivate)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionUserStatusActivate, stub.Actions())
+		}
+		if event.Metadata["previous_status"] != string(model.UserStatusDisabled) {
+			t.Fatalf("expected previous_status=disabled, got %v", event.Metadata["previous_status"])
+		}
+		if event.Metadata["new_status"] != string(model.UserStatusActive) {
+			t.Fatalf("expected new_status=active, got %v", event.Metadata["new_status"])
+		}
 	})
 
 	t.Run("invalid status", func(t *testing.T) {
@@ -372,7 +486,9 @@ func TestUserServiceUpdateUserStatus(t *testing.T) {
 
 		service := NewUserService(&userRepositoryMock{}, &userSessionStoreMock{})
 
-		_, err := service.UpdateUserStatus(context.Background(), UpdateUserStatusInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		_, err := service.UpdateUserStatus(ctx, UpdateUserStatusInput{
 			ID:      1,
 			Status:  model.UserStatus("invalid"),
 			Version: 1,
@@ -380,18 +496,26 @@ func TestUserServiceUpdateUserStatus(t *testing.T) {
 		if !errors.Is(err, ErrInvalidInput) {
 			t.Fatalf("expected ErrInvalidInput, got %v", err)
 		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
+		}
 	})
 
 	t.Run("not found", func(t *testing.T) {
 		t.Parallel()
 
 		service := NewUserService(&userRepositoryMock{
+			getByIDFunc: func(ctx context.Context, id int64) (*model.User, error) {
+				return nil, repository.ErrUserNotFound
+			},
 			updateStatusFunc: func(ctx context.Context, params repository.UpdateUserStatusParams) (*model.User, error) {
 				return nil, repository.ErrUserNotFound
 			},
 		}, &userSessionStoreMock{})
 
-		_, err := service.UpdateUserStatus(context.Background(), UpdateUserStatusInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		_, err := service.UpdateUserStatus(ctx, UpdateUserStatusInput{
 			ID:      1,
 			Status:  model.UserStatusActive,
 			Version: 1,
@@ -399,18 +523,30 @@ func TestUserServiceUpdateUserStatus(t *testing.T) {
 		if !errors.Is(err, ErrUserNotFound) {
 			t.Fatalf("expected ErrUserNotFound, got %v", err)
 		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
+		}
 	})
 
 	t.Run("version conflict", func(t *testing.T) {
 		t.Parallel()
 
 		service := NewUserService(&userRepositoryMock{
+			getByIDFunc: func(ctx context.Context, id int64) (*model.User, error) {
+				return &model.User{
+					ID:      id,
+					Status:  model.UserStatusActive,
+					Version: 1,
+				}, nil
+			},
 			updateStatusFunc: func(ctx context.Context, params repository.UpdateUserStatusParams) (*model.User, error) {
 				return nil, repository.ErrVersionConflict
 			},
 		}, &userSessionStoreMock{})
 
-		_, err := service.UpdateUserStatus(context.Background(), UpdateUserStatusInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		_, err := service.UpdateUserStatus(ctx, UpdateUserStatusInput{
 			ID:      1,
 			Status:  model.UserStatusActive,
 			Version: 1,
@@ -418,5 +554,92 @@ func TestUserServiceUpdateUserStatus(t *testing.T) {
 		if !errors.Is(err, ErrVersionConflict) {
 			t.Fatalf("expected ErrVersionConflict, got %v", err)
 		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
+		}
 	})
+}
+
+// TestUserServiceAuditMetadataHasNoSecrets is a belt-and-suspenders guard
+// against future regressions that might accidentally leak secrets into the
+// audit event metadata.
+func TestUserServiceAuditMetadataHasNoSecrets(t *testing.T) {
+	t.Parallel()
+
+	// Use the CreateUser invitation flow so every side effect along the
+	// happy path is exercised and captured by the stub recorder.
+	stub := audittest.New()
+	ctx := stub.ContextWith(context.Background())
+
+	txUserRepo := &setupUserRepositoryMock{
+		createFunc: func(ctx context.Context, params repository.CreateUserParams) (*model.User, error) {
+			return &model.User{
+				ID:      42,
+				Email:   params.Email,
+				Name:    params.Name,
+				IsAdmin: params.IsAdmin,
+				Status:  params.Status,
+			}, nil
+		},
+	}
+	txTokenRepo := &setupTokenRepositoryMock{
+		invalidateUnusedTokensFunc: func(ctx context.Context, userID int64, purpose model.SetupTokenPurpose, usedAt time.Time) error {
+			return nil
+		},
+		createFunc: func(ctx context.Context, params repository.CreateSetupTokenParams) (*model.SetupToken, error) {
+			return &model.SetupToken{ID: 1, UserID: params.UserID, TokenHash: params.TokenHash}, nil
+		},
+	}
+
+	service := NewUserService(
+		&userRepositoryMock{
+			getByEmailFunc: func(ctx context.Context, email string) (*model.User, error) {
+				return nil, repository.ErrUserNotFound
+			},
+		},
+		&userSessionStoreMock{},
+		WithSetupFlows(SetupFlowConfig{
+			TxManager:          &setupTxManagerMock{withinTxFunc: withSetupRepos(txUserRepo, txTokenRepo)},
+			Emailer:            &emailerMock{sendFunc: func(ctx context.Context, msg email.Message) error { return nil }},
+			Logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
+			AppBaseURL:         "http://localhost:5173",
+			InvitationTokenTTL: 72 * time.Hour,
+			Clock:              func() time.Time { return time.Date(2026, 4, 20, 8, 0, 0, 0, time.UTC) },
+			RandomReader:       strings.NewReader(strings.Repeat("z", 32)),
+		}),
+	)
+
+	user, err := service.CreateUser(ctx, CreateUserInput{
+		Email:   "worker@example.com",
+		Name:    "Worker",
+		IsAdmin: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateUser returned error: %v", err)
+	}
+	if user.ID != 42 {
+		t.Fatalf("expected user ID 42, got %d", user.ID)
+	}
+
+	events := stub.Events()
+	if len(events) == 0 {
+		t.Fatalf("expected at least one audit event")
+	}
+
+	forbidden := []string{"password", "password_hash", "token", "session"}
+	for _, event := range events {
+		encoded, err := json.Marshal(event.Metadata)
+		if err != nil {
+			t.Fatalf("marshal metadata for action %q: %v", event.Action, err)
+		}
+		lower := strings.ToLower(string(encoded))
+		for _, needle := range forbidden {
+			if strings.Contains(lower, needle) {
+				t.Fatalf(
+					"audit metadata for action %q contains forbidden substring %q: %s",
+					event.Action, needle, string(encoded),
+				)
+			}
+		}
+	}
 }

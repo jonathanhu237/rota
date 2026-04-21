@@ -7,6 +7,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/jonathanhu237/rota/backend/internal/audit"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 )
@@ -80,6 +81,18 @@ func (s *PublicationService) CreateAssignment(
 		return nil, mapPublicationRepositoryError(err)
 	}
 
+	targetID := assignment.ID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionAssignmentCreate,
+		TargetType: audit.TargetTypeAssignment,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"publication_id":    assignment.PublicationID,
+			"user_id":           assignment.UserID,
+			"template_shift_id": assignment.TemplateShiftID,
+		},
+	})
+
 	return assignment, nil
 }
 
@@ -106,6 +119,16 @@ func (s *PublicationService) DeleteAssignment(
 	}); err != nil {
 		return mapPublicationRepositoryError(err)
 	}
+
+	targetID := input.AssignmentID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionAssignmentDelete,
+		TargetType: audit.TargetTypeAssignment,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"publication_id": input.PublicationID,
+		},
+	})
 
 	return nil
 }
@@ -142,6 +165,16 @@ func (s *PublicationService) ActivatePublication(
 		return nil, mapPublicationRepositoryError(err)
 	}
 
+	targetID := updated.ID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionPublicationActivate,
+		TargetType: audit.TargetTypePublication,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"name": updated.Name,
+		},
+	})
+
 	return publicationWithEffectiveState(updated, now), nil
 }
 
@@ -176,6 +209,16 @@ func (s *PublicationService) EndPublication(
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
+
+	targetID := updated.ID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionPublicationEnd,
+		TargetType: audit.TargetTypePublication,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"name": updated.Name,
+		},
+	})
 
 	return publicationWithEffectiveState(updated, now), nil
 }

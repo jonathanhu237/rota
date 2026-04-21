@@ -81,6 +81,7 @@ func openIntegrationDB(t testing.TB) *sql.DB {
 func resetIntegrationDB(ctx context.Context, db *sql.DB) error {
 	const query = `
 		TRUNCATE TABLE
+			audit_logs,
 			assignments,
 			availability_submissions,
 			publications,

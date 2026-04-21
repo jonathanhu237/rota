@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/jonathanhu237/rota/backend/internal/audit"
 	"github.com/jonathanhu237/rota/backend/internal/config"
 	"github.com/jonathanhu237/rota/backend/internal/email"
 	"github.com/jonathanhu237/rota/backend/internal/handler"
@@ -134,6 +135,8 @@ func main() {
 	publicationService := service.NewPublicationService(publicationRepo, nil)
 	userPositionService := service.NewUserPositionService(userPositionRepo)
 
+	var auditRecorder audit.Recorder = repository.NewAuditRecorder(db, slog.Default())
+
 	// Initialize handlers
 	healthHandler := handler.NewHealthHandler()
 	authHandler := handler.NewAuthHandler(authService)
@@ -216,7 +219,8 @@ func main() {
 	// Start server
 	addr := fmt.Sprintf(":%d", cfg.ServerPort)
 	slog.Info("Server is starting", "addr", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	rootHandler := handler.AuditMiddleware(auditRecorder)(mux)
+	if err := http.ListenAndServe(addr, rootHandler); err != nil {
 		slog.Error("Failed to start server", "error", err)
 		os.Exit(1)
 	}

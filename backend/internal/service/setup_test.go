@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jonathanhu237/rota/backend/internal/audit"
+	"github.com/jonathanhu237/rota/backend/internal/audit/audittest"
 	"github.com/jonathanhu237/rota/backend/internal/email"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
@@ -134,7 +136,9 @@ func TestUserServiceCreateUserInvitationFlow(t *testing.T) {
 			}),
 		)
 
-		user, err := service.CreateUser(context.Background(), CreateUserInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		user, err := service.CreateUser(ctx, CreateUserInput{
 			Email:   " worker@example.com ",
 			Name:    " Worker ",
 			IsAdmin: true,
@@ -150,6 +154,23 @@ func TestUserServiceCreateUserInvitationFlow(t *testing.T) {
 		}
 		if !strings.Contains(sent.Body, "/setup-password?token=") {
 			t.Fatalf("expected invitation email to contain setup link, got %q", sent.Body)
+		}
+
+		event := stub.FindByAction(audit.ActionUserCreate)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionUserCreate, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypeUser {
+			t.Fatalf("unexpected target type: %q", event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != 12 {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		if event.Metadata["email"] != "worker@example.com" {
+			t.Fatalf("expected email metadata worker@example.com, got %v", event.Metadata["email"])
+		}
+		if event.Metadata["is_admin"] != true {
+			t.Fatalf("expected is_admin=true metadata, got %v", event.Metadata["is_admin"])
 		}
 	})
 
@@ -193,7 +214,9 @@ func TestUserServiceCreateUserInvitationFlow(t *testing.T) {
 			}),
 		)
 
-		user, err := service.CreateUser(context.Background(), CreateUserInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		user, err := service.CreateUser(ctx, CreateUserInput{
 			Email: "worker@example.com",
 			Name:  "Worker",
 		})
@@ -202,6 +225,9 @@ func TestUserServiceCreateUserInvitationFlow(t *testing.T) {
 		}
 		if user.Status != model.UserStatusPending {
 			t.Fatalf("expected pending user, got %+v", user)
+		}
+		if stub.FindByAction(audit.ActionUserCreate) == nil {
+			t.Fatalf("expected %q audit event even when email fails, got %v", audit.ActionUserCreate, stub.Actions())
 		}
 	})
 }
@@ -248,11 +274,24 @@ func TestUserServiceResendInvitation(t *testing.T) {
 			}),
 		)
 
-		if err := service.ResendInvitation(context.Background(), 21); err != nil {
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		if err := service.ResendInvitation(ctx, 21); err != nil {
 			t.Fatalf("ResendInvitation returned error: %v", err)
 		}
 		if sendCount != 1 {
 			t.Fatalf("expected one invitation email, got %d", sendCount)
+		}
+
+		event := stub.FindByAction(audit.ActionUserInvitationResend)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionUserInvitationResend, stub.Actions())
+		}
+		if event.TargetID == nil || *event.TargetID != 21 {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		if event.Metadata["email"] != "pending@example.com" {
+			t.Fatalf("expected email metadata pending@example.com, got %v", event.Metadata["email"])
 		}
 	})
 
@@ -283,9 +322,14 @@ func TestUserServiceResendInvitation(t *testing.T) {
 			}),
 		)
 
-		err := service.ResendInvitation(context.Background(), 21)
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		err := service.ResendInvitation(ctx, 21)
 		if !errors.Is(err, model.ErrUserNotPending) {
 			t.Fatalf("expected ErrUserNotPending, got %v", err)
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
 		}
 	})
 }
@@ -335,11 +379,28 @@ func TestAuthServiceSetupFlows(t *testing.T) {
 			}),
 		)
 
-		if err := service.RequestPasswordReset(context.Background(), "worker@example.com"); err != nil {
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		if err := service.RequestPasswordReset(ctx, "worker@example.com"); err != nil {
 			t.Fatalf("RequestPasswordReset returned error: %v", err)
 		}
 		if sendCount != 1 {
 			t.Fatalf("expected one password reset email, got %d", sendCount)
+		}
+
+		event := stub.FindByAction(audit.ActionAuthPasswordResetRequest)
+		if event == nil {
+			t.Fatalf("expected %s audit event, got actions=%v", audit.ActionAuthPasswordResetRequest, stub.Actions())
+		}
+		if event.ActorID != nil {
+			t.Fatalf("expected nil actor for password reset request, got %v", *event.ActorID)
+		}
+		if event.Metadata["email"] != "worker@example.com" {
+			t.Fatalf("expected email metadata %q, got %v", "worker@example.com", event.Metadata["email"])
+		}
+		if event.Metadata["user_found"] != true {
+			t.Fatalf("expected user_found=true, got %v", event.Metadata["user_found"])
 		}
 	})
 
@@ -391,11 +452,22 @@ func TestAuthServiceSetupFlows(t *testing.T) {
 					}),
 				)
 
-				if err := service.RequestPasswordReset(context.Background(), "worker@example.com"); err != nil {
+				stub := audittest.New()
+				ctx := stub.ContextWith(context.Background())
+
+				if err := service.RequestPasswordReset(ctx, "worker@example.com"); err != nil {
 					t.Fatalf("RequestPasswordReset returned error: %v", err)
 				}
 				if createCalled {
 					t.Fatalf("expected %s request to be a no-op", tc.name)
+				}
+
+				event := stub.FindByAction(audit.ActionAuthPasswordResetRequest)
+				if event == nil {
+					t.Fatalf("expected %s audit event, got actions=%v", audit.ActionAuthPasswordResetRequest, stub.Actions())
+				}
+				if event.Metadata["user_found"] != false {
+					t.Fatalf("expected user_found=false for %s, got %v", tc.name, event.Metadata["user_found"])
 				}
 			})
 		}
@@ -439,7 +511,10 @@ func TestAuthServiceSetupFlows(t *testing.T) {
 			}),
 		)
 
-		preview, err := service.PreviewSetupToken(context.Background(), rawToken)
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		preview, err := service.PreviewSetupToken(ctx, rawToken)
 		if err != nil {
 			t.Fatalf("PreviewSetupToken returned error: %v", err)
 		}
@@ -448,6 +523,9 @@ func TestAuthServiceSetupFlows(t *testing.T) {
 		}
 		if preview.Purpose != model.SetupTokenPurposeInvitation {
 			t.Fatalf("unexpected purpose: %q", preview.Purpose)
+		}
+		if events := stub.Events(); len(events) != 0 {
+			t.Fatalf("expected no audit events for read-only preview, got %v", stub.Actions())
 		}
 	})
 
@@ -555,11 +633,34 @@ func TestAuthServiceSetupFlows(t *testing.T) {
 			}),
 		)
 
-		if err := service.SetupPassword(context.Background(), SetupPasswordInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		if err := service.SetupPassword(ctx, SetupPasswordInput{
 			Token:    rawToken,
 			Password: "pa55word",
 		}); err != nil {
 			t.Fatalf("SetupPassword returned error: %v", err)
+		}
+
+		event := stub.FindByAction(audit.ActionAuthPasswordSet)
+		if event == nil {
+			t.Fatalf("expected %s audit event, got actions=%v", audit.ActionAuthPasswordSet, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypeUser {
+			t.Fatalf("expected target type %q, got %q", audit.TargetTypeUser, event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != 51 {
+			t.Fatalf("expected target ID 51, got %v", event.TargetID)
+		}
+		if event.Metadata["purpose"] != "invitation" {
+			t.Fatalf("expected purpose=invitation, got %v", event.Metadata["purpose"])
+		}
+		if _, ok := event.Metadata["token"]; ok {
+			t.Fatalf("metadata must not contain token; got %v", event.Metadata)
+		}
+		if _, ok := event.Metadata["password"]; ok {
+			t.Fatalf("metadata must not contain password; got %v", event.Metadata)
 		}
 	})
 }

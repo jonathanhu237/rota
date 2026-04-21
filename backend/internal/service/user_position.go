@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sort"
 
+	"github.com/jonathanhu237/rota/backend/internal/audit"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 )
@@ -55,6 +56,16 @@ func (s *UserPositionService) ReplaceUserPositions(ctx context.Context, input Re
 	if err := s.userPositionRepo.ReplacePositionsByUserID(ctx, input.UserID, positionIDs); err != nil {
 		return mapUserPositionRepositoryError(err)
 	}
+
+	targetID := input.UserID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionUserQualificationsReplace,
+		TargetType: audit.TargetTypeUser,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"position_ids": positionIDs,
+		},
+	})
 
 	return nil
 }

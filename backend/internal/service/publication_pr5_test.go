@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jonathanhu237/rota/backend/internal/audit"
+	"github.com/jonathanhu237/rota/backend/internal/audit/audittest"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 )
 
@@ -48,7 +50,10 @@ func TestPublicationServiceAutoAssignPublication(t *testing.T) {
 
 		service := NewPublicationService(repo, fixedClock{now: now})
 
-		result, err := service.AutoAssignPublication(context.Background(), 1)
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		result, err := service.AutoAssignPublication(ctx, 1)
 		if err != nil {
 			t.Fatalf("AutoAssignPublication returned error: %v", err)
 		}
@@ -68,6 +73,21 @@ func TestPublicationServiceAutoAssignPublication(t *testing.T) {
 		if len(result.Shifts) != 2 {
 			t.Fatalf("expected 2 board shifts, got %d", len(result.Shifts))
 		}
+
+		event := stub.FindByAction(audit.ActionPublicationAutoAssign)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionPublicationAutoAssign, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypePublication {
+			t.Fatalf("unexpected target type: %q", event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != 1 {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		// The solver is expected to produce exactly the two stored assignments.
+		if event.Metadata["assignments_created"] != len(repo.assignments) {
+			t.Fatalf("expected assignments_created=%d in metadata, got %+v", len(repo.assignments), event.Metadata)
+		}
 	})
 
 	t.Run("rejected outside assigning", func(t *testing.T) {
@@ -78,9 +98,15 @@ func TestPublicationServiceAutoAssignPublication(t *testing.T) {
 		repo.publications[1] = activePublication(now)
 		service := NewPublicationService(repo, fixedClock{now: now})
 
-		_, err := service.AutoAssignPublication(context.Background(), 1)
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.AutoAssignPublication(ctx, 1)
 		if !errors.Is(err, ErrPublicationNotAssigning) {
 			t.Fatalf("expected ErrPublicationNotAssigning, got %v", err)
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events, got %+v", stub.Events())
 		}
 	})
 
@@ -92,7 +118,10 @@ func TestPublicationServiceAutoAssignPublication(t *testing.T) {
 		repo.publications[1] = assigningPublication(now)
 		service := NewPublicationService(repo, fixedClock{now: now})
 
-		result, err := service.AutoAssignPublication(context.Background(), 1)
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		result, err := service.AutoAssignPublication(ctx, 1)
 		if err != nil {
 			t.Fatalf("AutoAssignPublication returned error: %v", err)
 		}
@@ -103,6 +132,17 @@ func TestPublicationServiceAutoAssignPublication(t *testing.T) {
 			if len(shift.Assignments) != 0 {
 				t.Fatalf("expected empty assignments per shift, got %+v", result.Shifts)
 			}
+		}
+
+		event := stub.FindByAction(audit.ActionPublicationAutoAssign)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionPublicationAutoAssign, stub.Actions())
+		}
+		if event.TargetID == nil || *event.TargetID != 1 {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		if event.Metadata["assignments_created"] != 0 {
+			t.Fatalf("expected assignments_created=0 in metadata, got %+v", event.Metadata)
 		}
 	})
 }

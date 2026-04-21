@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/jonathanhu237/rota/backend/internal/audit"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 )
@@ -190,6 +191,20 @@ func (s *PublicationService) CreatePublication(
 		return nil, mapPublicationRepositoryError(err)
 	}
 
+	targetID := publication.ID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionPublicationCreate,
+		TargetType: audit.TargetTypePublication,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"template_id":         publication.TemplateID,
+			"name":                publication.Name,
+			"submission_start_at": publication.SubmissionStartAt.Format(time.RFC3339),
+			"submission_end_at":   publication.SubmissionEndAt.Format(time.RFC3339),
+			"planned_active_from": publication.PlannedActiveFrom.Format(time.RFC3339),
+		},
+	})
+
 	return publicationWithEffectiveState(publication, now), nil
 }
 
@@ -231,12 +246,26 @@ func (s *PublicationService) DeletePublication(ctx context.Context, id int64) er
 	}
 
 	now := s.clock.Now()
-	err := s.publicationRepo.DeletePublication(ctx, repository.DeletePublicationParams{
+	existing, err := s.publicationRepo.GetByID(ctx, id)
+	if err != nil {
+		return mapPublicationRepositoryError(err)
+	}
+
+	err = s.publicationRepo.DeletePublication(ctx, repository.DeletePublicationParams{
 		ID:  id,
 		Now: now,
 	})
 	switch {
 	case err == nil:
+		targetID := id
+		audit.Record(ctx, audit.Event{
+			Action:     audit.ActionPublicationDelete,
+			TargetType: audit.TargetTypePublication,
+			TargetID:   &targetID,
+			Metadata: map[string]any{
+				"name": existing.Name,
+			},
+		})
 		return nil
 	case !errors.Is(err, repository.ErrPublicationNotFound):
 		return mapPublicationRepositoryError(err)
@@ -315,6 +344,17 @@ func (s *PublicationService) CreateAvailabilitySubmission(
 		return nil, mapPublicationRepositoryError(err)
 	}
 
+	targetID := submission.ID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionSubmissionCreate,
+		TargetType: audit.TargetTypeAvailabilitySubmission,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"publication_id":    submission.PublicationID,
+			"template_shift_id": submission.TemplateShiftID,
+		},
+	})
+
 	return submission, nil
 }
 
@@ -346,6 +386,17 @@ func (s *PublicationService) DeleteAvailabilitySubmission(
 	}); err != nil {
 		return mapPublicationRepositoryError(err)
 	}
+
+	targetID := input.TemplateShiftID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionSubmissionDelete,
+		TargetType: audit.TargetTypeAvailabilitySubmission,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"publication_id":    input.PublicationID,
+			"template_shift_id": input.TemplateShiftID,
+		},
+	})
 
 	return nil
 }

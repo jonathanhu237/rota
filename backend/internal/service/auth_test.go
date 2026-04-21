@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/jonathanhu237/rota/backend/internal/audit"
+	"github.com/jonathanhu237/rota/backend/internal/audit/audittest"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 	"github.com/jonathanhu237/rota/backend/internal/session"
@@ -99,7 +101,10 @@ func TestAuthServiceLogin(t *testing.T) {
 			},
 		)
 
-		result, err := service.Login(context.Background(), email, password)
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		result, err := service.Login(ctx, email, password)
 		if err != nil {
 			t.Fatalf("Login returned error: %v", err)
 		}
@@ -114,6 +119,20 @@ func TestAuthServiceLogin(t *testing.T) {
 		}
 		if createdUserID != user.ID {
 			t.Fatalf("expected session to be created for user ID %d, got %d", user.ID, createdUserID)
+		}
+
+		event := stub.FindByAction(audit.ActionAuthLoginSuccess)
+		if event == nil {
+			t.Fatalf("expected %s audit event, got actions=%v", audit.ActionAuthLoginSuccess, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypeUser {
+			t.Fatalf("expected target type %q, got %q", audit.TargetTypeUser, event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != user.ID {
+			t.Fatalf("expected target ID %d, got %v", user.ID, event.TargetID)
+		}
+		if event.Metadata["email"] != email {
+			t.Fatalf("expected email metadata %q, got %v", email, event.Metadata["email"])
 		}
 	})
 
@@ -132,10 +151,14 @@ func TestAuthServiceLogin(t *testing.T) {
 			&authSessionStoreMock{},
 		)
 
-		_, err := service.Login(context.Background(), "missing@example.com", "pa55word")
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.Login(ctx, "missing@example.com", "pa55word")
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 		}
+		assertLoginFailure(t, stub, "missing@example.com", "invalid_credentials")
 	})
 
 	t.Run("wrong password returns invalid credentials", func(t *testing.T) {
@@ -164,13 +187,17 @@ func TestAuthServiceLogin(t *testing.T) {
 			},
 		)
 
-		_, err := service.Login(context.Background(), "worker@example.com", "pa55word")
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.Login(ctx, "worker@example.com", "pa55word")
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 		}
 		if sessionCreateCalled {
 			t.Fatalf("session should not be created when password comparison fails")
 		}
+		assertLoginFailure(t, stub, "worker@example.com", "invalid_credentials")
 	})
 
 	t.Run("disabled user returns ErrUserDisabled", func(t *testing.T) {
@@ -199,13 +226,17 @@ func TestAuthServiceLogin(t *testing.T) {
 			},
 		)
 
-		_, err := service.Login(context.Background(), "disabled@example.com", "pa55word")
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.Login(ctx, "disabled@example.com", "pa55word")
 		if !errors.Is(err, ErrUserDisabled) {
 			t.Fatalf("expected ErrUserDisabled, got %v", err)
 		}
 		if sessionCreateCalled {
 			t.Fatalf("session should not be created for a disabled user")
 		}
+		assertLoginFailure(t, stub, "disabled@example.com", "user_disabled")
 	})
 
 	t.Run("pending user returns ErrUserPending", func(t *testing.T) {
@@ -234,13 +265,17 @@ func TestAuthServiceLogin(t *testing.T) {
 			},
 		)
 
-		_, err := service.Login(context.Background(), "pending@example.com", "pa55word")
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.Login(ctx, "pending@example.com", "pa55word")
 		if !errors.Is(err, ErrUserPending) {
 			t.Fatalf("expected ErrUserPending, got %v", err)
 		}
 		if sessionCreateCalled {
 			t.Fatalf("session should not be created for a pending user")
 		}
+		assertLoginFailure(t, stub, "pending@example.com", "user_pending")
 	})
 
 	t.Run("session creation error is returned", func(t *testing.T) {
@@ -268,9 +303,15 @@ func TestAuthServiceLogin(t *testing.T) {
 			},
 		)
 
-		_, err := service.Login(context.Background(), "worker@example.com", "pa55word")
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.Login(ctx, "worker@example.com", "pa55word")
 		if !errors.Is(err, expectedErr) {
 			t.Fatalf("expected session create error, got %v", err)
+		}
+		if events := stub.Events(); len(events) != 0 {
+			t.Fatalf("expected no audit events for infra failure, got %v", stub.Actions())
 		}
 	})
 }
@@ -445,11 +486,56 @@ func TestAuthServiceLogout(t *testing.T) {
 			},
 		)
 
-		if err := service.Logout(context.Background(), "session-1"); err != nil {
+		stub := audittest.New()
+		ctx := stub.ContextWith(audit.WithActor(context.Background(), 77))
+
+		if err := service.Logout(ctx, "session-1"); err != nil {
 			t.Fatalf("Logout returned error: %v", err)
 		}
 		if deletedSessionID != "session-1" {
 			t.Fatalf("expected deleted session ID %q, got %q", "session-1", deletedSessionID)
+		}
+
+		event := stub.FindByAction(audit.ActionAuthLogout)
+		if event == nil {
+			t.Fatalf("expected %s audit event, got actions=%v", audit.ActionAuthLogout, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypeUser {
+			t.Fatalf("expected target type %q, got %q", audit.TargetTypeUser, event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != 77 {
+			t.Fatalf("expected target ID 77, got %v", event.TargetID)
+		}
+	})
+
+	t.Run("success without actor records only the action", func(t *testing.T) {
+		t.Parallel()
+
+		service := NewAuthService(
+			&authUserRepositoryMock{},
+			&authSessionStoreMock{
+				deleteFunc: func(ctx context.Context, sessionID string) error {
+					return nil
+				},
+			},
+		)
+
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		if err := service.Logout(ctx, "session-3"); err != nil {
+			t.Fatalf("Logout returned error: %v", err)
+		}
+
+		event := stub.FindByAction(audit.ActionAuthLogout)
+		if event == nil {
+			t.Fatalf("expected %s audit event, got actions=%v", audit.ActionAuthLogout, stub.Actions())
+		}
+		if event.TargetType != "" {
+			t.Fatalf("expected empty target type, got %q", event.TargetType)
+		}
+		if event.TargetID != nil {
+			t.Fatalf("expected nil target ID, got %v", *event.TargetID)
 		}
 	})
 
@@ -466,9 +552,34 @@ func TestAuthServiceLogout(t *testing.T) {
 			},
 		)
 
-		err := service.Logout(context.Background(), "session-2")
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		err := service.Logout(ctx, "session-2")
 		if !errors.Is(err, expectedErr) {
 			t.Fatalf("expected delete error, got %v", err)
 		}
+		if events := stub.Events(); len(events) != 0 {
+			t.Fatalf("expected no audit events on delete failure, got %v", stub.Actions())
+		}
 	})
+}
+
+// assertLoginFailure asserts the stub captured a single login-failure event
+// with the expected email and reason metadata, and no other events.
+func assertLoginFailure(t *testing.T, stub *audittest.Stub, email, reason string) {
+	t.Helper()
+	event := stub.FindByAction(audit.ActionAuthLoginFailure)
+	if event == nil {
+		t.Fatalf("expected %s audit event, got actions=%v", audit.ActionAuthLoginFailure, stub.Actions())
+	}
+	if event.ActorID != nil {
+		t.Fatalf("expected nil actor for login failure, got %v", *event.ActorID)
+	}
+	if event.Metadata["email"] != email {
+		t.Fatalf("expected email metadata %q, got %v", email, event.Metadata["email"])
+	}
+	if event.Metadata["reason"] != reason {
+		t.Fatalf("expected reason metadata %q, got %v", reason, event.Metadata["reason"])
+	}
 }

@@ -184,37 +184,37 @@ func (h *setupFlowHelper) activatePassword(
 	userRepo setupUserRepository,
 	tokenRepo setupTokenRepository,
 	input SetupPasswordInput,
-) error {
+) (*model.SetupToken, error) {
 	if err := model.ValidatePassword(input.Password); err != nil {
-		return err
+		return nil, err
 	}
 
 	token, _, err := h.resolveToken(ctx, tokenRepo, input.Token)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	now := h.clock()
 	if err := tokenRepo.MarkUsed(ctx, token.ID, now); err != nil {
-		return err
+		return nil, err
 	}
 	if err := tokenRepo.InvalidateAllUnusedTokens(ctx, token.UserID, now); err != nil {
-		return err
+		return nil, err
 	}
 	if _, err := userRepo.SetPasswordAndStatus(ctx, repository.SetUserPasswordParams{
 		ID:           token.UserID,
 		PasswordHash: string(passwordHash),
 		Status:       model.UserStatusActive,
 	}); err != nil {
-		return mapRepositoryError(err)
+		return nil, mapRepositoryError(err)
 	}
 
-	return nil
+	return token, nil
 }
 
 func generateSetupToken(randomReader io.Reader) (string, string, error) {

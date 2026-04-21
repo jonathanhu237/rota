@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 
+	"github.com/jonathanhu237/rota/backend/internal/audit"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 )
@@ -78,6 +79,16 @@ func (s *PublicationService) AutoAssignPublication(
 	}); err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
+
+	targetID := publicationID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionPublicationAutoAssign,
+		TargetType: audit.TargetTypePublication,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"assignments_created": len(solvedAssignments),
+		},
+	})
 
 	return s.GetAssignmentBoard(ctx, publicationID)
 }

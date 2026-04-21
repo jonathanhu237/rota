@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jonathanhu237/rota/backend/internal/audit"
+	"github.com/jonathanhu237/rota/backend/internal/audit/audittest"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 )
@@ -28,6 +30,9 @@ func (m *templateRepositoryMock) ListPaginated(ctx context.Context, params repos
 }
 
 func (m *templateRepositoryMock) GetByID(ctx context.Context, id int64) (*model.Template, error) {
+	if m.getByIDFunc == nil {
+		return nil, repository.ErrTemplateNotFound
+	}
 	return m.getByIDFunc(ctx, id)
 }
 
@@ -122,7 +127,10 @@ func TestTemplateServiceCreateTemplate(t *testing.T) {
 			&positionLookupRepositoryMock{},
 		)
 
-		template, err := service.CreateTemplate(context.Background(), CreateTemplateInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		template, err := service.CreateTemplate(ctx, CreateTemplateInput{
 			Name:        " Weekday Template ",
 			Description: " Covers the core shifts ",
 		})
@@ -132,6 +140,20 @@ func TestTemplateServiceCreateTemplate(t *testing.T) {
 		if template.Name != "Weekday Template" || template.Description != "Covers the core shifts" {
 			t.Fatalf("unexpected template: %+v", template)
 		}
+
+		event := stub.FindByAction(audit.ActionTemplateCreate)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionTemplateCreate, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypeTemplate {
+			t.Fatalf("unexpected target type: %q", event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != 1 {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		if event.Metadata["name"] != "Weekday Template" {
+			t.Fatalf("expected metadata name=%q, got %+v", "Weekday Template", event.Metadata)
+		}
 	})
 
 	t.Run("empty name returns ErrInvalidInput", func(t *testing.T) {
@@ -139,12 +161,18 @@ func TestTemplateServiceCreateTemplate(t *testing.T) {
 
 		service := NewTemplateService(&templateRepositoryMock{}, &positionLookupRepositoryMock{})
 
-		_, err := service.CreateTemplate(context.Background(), CreateTemplateInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.CreateTemplate(ctx, CreateTemplateInput{
 			Name:        "   ",
 			Description: "",
 		})
 		if !errors.Is(err, ErrInvalidInput) {
 			t.Fatalf("expected ErrInvalidInput, got %v", err)
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
 		}
 	})
 
@@ -153,12 +181,18 @@ func TestTemplateServiceCreateTemplate(t *testing.T) {
 
 		service := NewTemplateService(&templateRepositoryMock{}, &positionLookupRepositoryMock{})
 
-		_, err := service.CreateTemplate(context.Background(), CreateTemplateInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.CreateTemplate(ctx, CreateTemplateInput{
 			Name:        "Weekday",
 			Description: strings.Repeat("a", 501),
 		})
 		if !errors.Is(err, ErrInvalidInput) {
 			t.Fatalf("expected ErrInvalidInput, got %v", err)
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
 		}
 	})
 
@@ -260,7 +294,12 @@ func TestTemplateServiceUpdateTemplate(t *testing.T) {
 		service := NewTemplateService(
 			&templateRepositoryMock{
 				getByIDFunc: func(ctx context.Context, id int64) (*model.Template, error) {
-					return &model.Template{ID: id, IsLocked: false}, nil
+					return &model.Template{
+						ID:          id,
+						Name:        "Old Name",
+						Description: "Old description",
+						IsLocked:    false,
+					}, nil
 				},
 				updateFunc: func(ctx context.Context, params repository.UpdateTemplateParams) (*model.Template, error) {
 					if params.ID != 5 || params.Name != "Weekend" || params.Description != "Updated details" {
@@ -276,7 +315,10 @@ func TestTemplateServiceUpdateTemplate(t *testing.T) {
 			&positionLookupRepositoryMock{},
 		)
 
-		template, err := service.UpdateTemplate(context.Background(), UpdateTemplateInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		template, err := service.UpdateTemplate(ctx, UpdateTemplateInput{
 			ID:          5,
 			Name:        " Weekend ",
 			Description: " Updated details ",
@@ -287,6 +329,23 @@ func TestTemplateServiceUpdateTemplate(t *testing.T) {
 		if template.Name != "Weekend" || template.Description != "Updated details" {
 			t.Fatalf("unexpected template: %+v", template)
 		}
+
+		event := stub.FindByAction(audit.ActionTemplateUpdate)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionTemplateUpdate, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypeTemplate {
+			t.Fatalf("unexpected target type: %q", event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != 5 {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		if _, ok := event.Metadata["name"]; !ok {
+			t.Fatalf("expected name change in metadata, got %+v", event.Metadata)
+		}
+		if _, ok := event.Metadata["description"]; !ok {
+			t.Fatalf("expected description change in metadata, got %+v", event.Metadata)
+		}
 	})
 
 	t.Run("locked template rejects without writes", func(t *testing.T) {
@@ -295,6 +354,9 @@ func TestTemplateServiceUpdateTemplate(t *testing.T) {
 		updateCalled := false
 		service := NewTemplateService(
 			&templateRepositoryMock{
+				getByIDFunc: func(ctx context.Context, id int64) (*model.Template, error) {
+					return &model.Template{ID: id, IsLocked: true}, nil
+				},
 				updateFunc: func(ctx context.Context, params repository.UpdateTemplateParams) (*model.Template, error) {
 					updateCalled = true
 					return nil, repository.ErrTemplateLocked
@@ -303,7 +365,10 @@ func TestTemplateServiceUpdateTemplate(t *testing.T) {
 			&positionLookupRepositoryMock{},
 		)
 
-		_, err := service.UpdateTemplate(context.Background(), UpdateTemplateInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.UpdateTemplate(ctx, UpdateTemplateInput{
 			ID:          3,
 			Name:        "Locked",
 			Description: "",
@@ -313,6 +378,9 @@ func TestTemplateServiceUpdateTemplate(t *testing.T) {
 		}
 		if !updateCalled {
 			t.Fatal("expected update to be attempted so repository lock guard can reject it")
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
 		}
 	})
 }
@@ -325,7 +393,7 @@ func TestTemplateServiceDeleteTemplate(t *testing.T) {
 		service := NewTemplateService(
 			&templateRepositoryMock{
 				getByIDFunc: func(ctx context.Context, id int64) (*model.Template, error) {
-					return &model.Template{ID: id, IsLocked: false}, nil
+					return &model.Template{ID: id, Name: "Weekday Template", IsLocked: false}, nil
 				},
 				deleteFunc: func(ctx context.Context, id int64) error {
 					deletedID = id
@@ -335,11 +403,28 @@ func TestTemplateServiceDeleteTemplate(t *testing.T) {
 			&positionLookupRepositoryMock{},
 		)
 
-		if err := service.DeleteTemplate(context.Background(), 4); err != nil {
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		if err := service.DeleteTemplate(ctx, 4); err != nil {
 			t.Fatalf("DeleteTemplate returned error: %v", err)
 		}
 		if deletedID != 4 {
 			t.Fatalf("expected delete ID 4, got %d", deletedID)
+		}
+
+		event := stub.FindByAction(audit.ActionTemplateDelete)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionTemplateDelete, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypeTemplate {
+			t.Fatalf("unexpected target type: %q", event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != 4 {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		if event.Metadata["name"] != "Weekday Template" {
+			t.Fatalf("expected metadata name=%q, got %+v", "Weekday Template", event.Metadata)
 		}
 	})
 
@@ -349,6 +434,9 @@ func TestTemplateServiceDeleteTemplate(t *testing.T) {
 		deleteCalled := false
 		service := NewTemplateService(
 			&templateRepositoryMock{
+				getByIDFunc: func(ctx context.Context, id int64) (*model.Template, error) {
+					return &model.Template{ID: id, Name: "Locked Template", IsLocked: true}, nil
+				},
 				deleteFunc: func(ctx context.Context, id int64) error {
 					deleteCalled = true
 					return repository.ErrTemplateLocked
@@ -357,12 +445,18 @@ func TestTemplateServiceDeleteTemplate(t *testing.T) {
 			&positionLookupRepositoryMock{},
 		)
 
-		err := service.DeleteTemplate(context.Background(), 4)
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		err := service.DeleteTemplate(ctx, 4)
 		if !errors.Is(err, ErrTemplateLocked) {
 			t.Fatalf("expected ErrTemplateLocked, got %v", err)
 		}
 		if !deleteCalled {
 			t.Fatal("expected delete to be attempted so repository lock guard can reject it")
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
 		}
 	})
 }
@@ -396,7 +490,10 @@ func TestTemplateServiceCloneTemplate(t *testing.T) {
 			&positionLookupRepositoryMock{},
 		)
 
-		clone, err := service.CloneTemplate(context.Background(), 9)
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		clone, err := service.CloneTemplate(ctx, 9)
 		if err != nil {
 			t.Fatalf("CloneTemplate returned error: %v", err)
 		}
@@ -405,6 +502,23 @@ func TestTemplateServiceCloneTemplate(t *testing.T) {
 		}
 		if len(clone.Shifts) != 1 {
 			t.Fatalf("expected shifts to be cloned, got %+v", clone.Shifts)
+		}
+
+		event := stub.FindByAction(audit.ActionTemplateClone)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionTemplateClone, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypeTemplate {
+			t.Fatalf("unexpected target type: %q", event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != 10 {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		if event.Metadata["source_template_id"] != int64(9) {
+			t.Fatalf("expected source_template_id=9, got %+v", event.Metadata)
+		}
+		if event.Metadata["name"] != "Weekday Template (copy)" {
+			t.Fatalf("expected metadata name=%q, got %+v", "Weekday Template (copy)", event.Metadata)
 		}
 	})
 
@@ -538,7 +652,10 @@ func TestTemplateServiceCreateTemplateShift(t *testing.T) {
 			},
 		)
 
-		shift, err := service.CreateTemplateShift(context.Background(), CreateTemplateShiftInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		shift, err := service.CreateTemplateShift(ctx, CreateTemplateShiftInput{
 			TemplateID:        5,
 			Weekday:           2,
 			StartTime:         "09:00",
@@ -552,6 +669,35 @@ func TestTemplateServiceCreateTemplateShift(t *testing.T) {
 		if shift.Weekday != 2 || shift.StartTime != "09:00" || shift.EndTime != "12:00" {
 			t.Fatalf("unexpected shift: %+v", shift)
 		}
+
+		event := stub.FindByAction(audit.ActionTemplateShiftCreate)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionTemplateShiftCreate, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypeTemplateShift {
+			t.Fatalf("unexpected target type: %q", event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != 1 {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		if event.Metadata["template_id"] != int64(5) {
+			t.Fatalf("expected template_id=5, got %+v", event.Metadata)
+		}
+		if event.Metadata["weekday"] != 2 {
+			t.Fatalf("expected weekday=2, got %+v", event.Metadata)
+		}
+		if event.Metadata["start_time"] != "09:00" {
+			t.Fatalf("expected start_time=09:00, got %+v", event.Metadata)
+		}
+		if event.Metadata["end_time"] != "12:00" {
+			t.Fatalf("expected end_time=12:00, got %+v", event.Metadata)
+		}
+		if event.Metadata["position_id"] != int64(7) {
+			t.Fatalf("expected position_id=7, got %+v", event.Metadata)
+		}
+		if event.Metadata["required_headcount"] != 3 {
+			t.Fatalf("expected required_headcount=3, got %+v", event.Metadata)
+		}
 	})
 
 	t.Run("invalid weekday returns ErrInvalidWeekday", func(t *testing.T) {
@@ -559,7 +705,10 @@ func TestTemplateServiceCreateTemplateShift(t *testing.T) {
 
 		service := NewTemplateService(&templateRepositoryMock{}, &positionLookupRepositoryMock{})
 
-		_, err := service.CreateTemplateShift(context.Background(), CreateTemplateShiftInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.CreateTemplateShift(ctx, CreateTemplateShiftInput{
 			TemplateID:        1,
 			Weekday:           8,
 			StartTime:         "09:00",
@@ -570,6 +719,9 @@ func TestTemplateServiceCreateTemplateShift(t *testing.T) {
 		if !errors.Is(err, ErrInvalidWeekday) {
 			t.Fatalf("expected ErrInvalidWeekday, got %v", err)
 		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
+		}
 	})
 
 	t.Run("invalid time range returns ErrInvalidShiftTime", func(t *testing.T) {
@@ -577,7 +729,10 @@ func TestTemplateServiceCreateTemplateShift(t *testing.T) {
 
 		service := NewTemplateService(&templateRepositoryMock{}, &positionLookupRepositoryMock{})
 
-		_, err := service.CreateTemplateShift(context.Background(), CreateTemplateShiftInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.CreateTemplateShift(ctx, CreateTemplateShiftInput{
 			TemplateID:        1,
 			Weekday:           1,
 			StartTime:         "09:00",
@@ -588,6 +743,9 @@ func TestTemplateServiceCreateTemplateShift(t *testing.T) {
 		if !errors.Is(err, ErrInvalidShiftTime) {
 			t.Fatalf("expected ErrInvalidShiftTime, got %v", err)
 		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
+		}
 	})
 
 	t.Run("invalid headcount returns ErrInvalidHeadcount", func(t *testing.T) {
@@ -595,7 +753,10 @@ func TestTemplateServiceCreateTemplateShift(t *testing.T) {
 
 		service := NewTemplateService(&templateRepositoryMock{}, &positionLookupRepositoryMock{})
 
-		_, err := service.CreateTemplateShift(context.Background(), CreateTemplateShiftInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.CreateTemplateShift(ctx, CreateTemplateShiftInput{
 			TemplateID:        1,
 			Weekday:           1,
 			StartTime:         "09:00",
@@ -605,6 +766,9 @@ func TestTemplateServiceCreateTemplateShift(t *testing.T) {
 		})
 		if !errors.Is(err, ErrInvalidHeadcount) {
 			t.Fatalf("expected ErrInvalidHeadcount, got %v", err)
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
 		}
 	})
 
@@ -624,7 +788,10 @@ func TestTemplateServiceCreateTemplateShift(t *testing.T) {
 			},
 		)
 
-		_, err := service.CreateTemplateShift(context.Background(), CreateTemplateShiftInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.CreateTemplateShift(ctx, CreateTemplateShiftInput{
 			TemplateID:        1,
 			Weekday:           1,
 			StartTime:         "09:00",
@@ -634,6 +801,9 @@ func TestTemplateServiceCreateTemplateShift(t *testing.T) {
 		})
 		if !errors.Is(err, ErrPositionNotFound) {
 			t.Fatalf("expected ErrPositionNotFound, got %v", err)
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
 		}
 	})
 
@@ -655,7 +825,10 @@ func TestTemplateServiceCreateTemplateShift(t *testing.T) {
 			},
 		)
 
-		_, err := service.CreateTemplateShift(context.Background(), CreateTemplateShiftInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.CreateTemplateShift(ctx, CreateTemplateShiftInput{
 			TemplateID:        1,
 			Weekday:           1,
 			StartTime:         "09:00",
@@ -669,6 +842,9 @@ func TestTemplateServiceCreateTemplateShift(t *testing.T) {
 		if !createCalled {
 			t.Fatal("expected create shift to be attempted so repository lock guard can reject it")
 		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
+		}
 	})
 }
 
@@ -679,7 +855,21 @@ func TestTemplateServiceUpdateTemplateShift(t *testing.T) {
 		service := NewTemplateService(
 			&templateRepositoryMock{
 				getByIDFunc: func(ctx context.Context, id int64) (*model.Template, error) {
-					return &model.Template{ID: id, IsLocked: false}, nil
+					return &model.Template{
+						ID:       id,
+						IsLocked: false,
+						Shifts: []*model.TemplateShift{
+							{
+								ID:                8,
+								TemplateID:        id,
+								Weekday:           1,
+								StartTime:         "09:00",
+								EndTime:           "12:00",
+								PositionID:        3,
+								RequiredHeadcount: 1,
+							},
+						},
+					}, nil
 				},
 				updateShiftFunc: func(ctx context.Context, params repository.UpdateTemplateShiftParams) (*model.TemplateShift, error) {
 					if params.TemplateID != 4 || params.ShiftID != 8 || params.Weekday != 5 || params.StartTime != "13:00" || params.EndTime != "16:00" || params.PositionID != 7 || params.RequiredHeadcount != 2 {
@@ -703,7 +893,10 @@ func TestTemplateServiceUpdateTemplateShift(t *testing.T) {
 			},
 		)
 
-		shift, err := service.UpdateTemplateShift(context.Background(), UpdateTemplateShiftInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		shift, err := service.UpdateTemplateShift(ctx, UpdateTemplateShiftInput{
 			TemplateID:        4,
 			ShiftID:           8,
 			Weekday:           5,
@@ -717,6 +910,35 @@ func TestTemplateServiceUpdateTemplateShift(t *testing.T) {
 		}
 		if shift.ID != 8 {
 			t.Fatalf("expected updated shift ID 8, got %d", shift.ID)
+		}
+
+		event := stub.FindByAction(audit.ActionTemplateShiftUpdate)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionTemplateShiftUpdate, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypeTemplateShift {
+			t.Fatalf("unexpected target type: %q", event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != 8 {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		if event.Metadata["template_id"] != int64(4) {
+			t.Fatalf("expected template_id=4, got %+v", event.Metadata)
+		}
+		if _, ok := event.Metadata["weekday"]; !ok {
+			t.Fatalf("expected weekday change in metadata, got %+v", event.Metadata)
+		}
+		if _, ok := event.Metadata["start_time"]; !ok {
+			t.Fatalf("expected start_time change in metadata, got %+v", event.Metadata)
+		}
+		if _, ok := event.Metadata["end_time"]; !ok {
+			t.Fatalf("expected end_time change in metadata, got %+v", event.Metadata)
+		}
+		if _, ok := event.Metadata["position_id"]; !ok {
+			t.Fatalf("expected position_id change in metadata, got %+v", event.Metadata)
+		}
+		if _, ok := event.Metadata["required_headcount"]; !ok {
+			t.Fatalf("expected required_headcount change in metadata, got %+v", event.Metadata)
 		}
 	})
 
@@ -738,7 +960,10 @@ func TestTemplateServiceUpdateTemplateShift(t *testing.T) {
 			},
 		)
 
-		_, err := service.UpdateTemplateShift(context.Background(), UpdateTemplateShiftInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.UpdateTemplateShift(ctx, UpdateTemplateShiftInput{
 			TemplateID:        2,
 			ShiftID:           9,
 			Weekday:           1,
@@ -752,6 +977,9 @@ func TestTemplateServiceUpdateTemplateShift(t *testing.T) {
 		}
 		if !updateCalled {
 			t.Fatal("expected update shift to be attempted so repository lock guard can reject it")
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
 		}
 	})
 
@@ -774,7 +1002,10 @@ func TestTemplateServiceUpdateTemplateShift(t *testing.T) {
 			},
 		)
 
-		_, err := service.UpdateTemplateShift(context.Background(), UpdateTemplateShiftInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.UpdateTemplateShift(ctx, UpdateTemplateShiftInput{
 			TemplateID:        2,
 			ShiftID:           99,
 			Weekday:           1,
@@ -785,6 +1016,9 @@ func TestTemplateServiceUpdateTemplateShift(t *testing.T) {
 		})
 		if !errors.Is(err, ErrTemplateShiftNotFound) {
 			t.Fatalf("expected ErrTemplateShiftNotFound, got %v", err)
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
 		}
 	})
 }
@@ -809,11 +1043,28 @@ func TestTemplateServiceDeleteTemplateShift(t *testing.T) {
 			&positionLookupRepositoryMock{},
 		)
 
-		if err := service.DeleteTemplateShift(context.Background(), 6, 12); err != nil {
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		if err := service.DeleteTemplateShift(ctx, 6, 12); err != nil {
 			t.Fatalf("DeleteTemplateShift returned error: %v", err)
 		}
 		if gotTemplateID != 6 || gotShiftID != 12 {
 			t.Fatalf("expected delete shift 12 from template 6, got shift %d template %d", gotShiftID, gotTemplateID)
+		}
+
+		event := stub.FindByAction(audit.ActionTemplateShiftDelete)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionTemplateShiftDelete, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypeTemplateShift {
+			t.Fatalf("unexpected target type: %q", event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != 12 {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		if event.Metadata["template_id"] != int64(6) {
+			t.Fatalf("expected template_id=6, got %+v", event.Metadata)
 		}
 	})
 
@@ -831,12 +1082,18 @@ func TestTemplateServiceDeleteTemplateShift(t *testing.T) {
 			&positionLookupRepositoryMock{},
 		)
 
-		err := service.DeleteTemplateShift(context.Background(), 6, 12)
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		err := service.DeleteTemplateShift(ctx, 6, 12)
 		if !errors.Is(err, ErrTemplateLocked) {
 			t.Fatalf("expected ErrTemplateLocked, got %v", err)
 		}
 		if !deleteCalled {
 			t.Fatal("expected delete shift to be attempted so repository lock guard can reject it")
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
 		}
 	})
 }

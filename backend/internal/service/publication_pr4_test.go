@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jonathanhu237/rota/backend/internal/audit"
+	"github.com/jonathanhu237/rota/backend/internal/audit/audittest"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 )
 
@@ -18,7 +20,10 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		repo.publications[1] = assigningPublication(now)
 		service := NewPublicationService(repo, fixedClock{now: now})
 
-		assignment, err := service.CreateAssignment(context.Background(), CreateAssignmentInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		assignment, err := service.CreateAssignment(ctx, CreateAssignmentInput{
 			PublicationID:   1,
 			UserID:          8,
 			TemplateShiftID: 11,
@@ -28,6 +33,26 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		}
 		if assignment.PublicationID != 1 || assignment.UserID != 8 || assignment.TemplateShiftID != 11 {
 			t.Fatalf("unexpected assignment: %+v", assignment)
+		}
+
+		event := stub.FindByAction(audit.ActionAssignmentCreate)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionAssignmentCreate, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypeAssignment {
+			t.Fatalf("unexpected target type: %q", event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != assignment.ID {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		if event.Metadata["publication_id"] != int64(1) {
+			t.Fatalf("expected publication_id=1 in metadata, got %+v", event.Metadata)
+		}
+		if event.Metadata["user_id"] != int64(8) {
+			t.Fatalf("expected user_id=8 in metadata, got %+v", event.Metadata)
+		}
+		if event.Metadata["template_shift_id"] != int64(11) {
+			t.Fatalf("expected template_shift_id=11 in metadata, got %+v", event.Metadata)
 		}
 	})
 
@@ -150,13 +175,19 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		repo.publications[1] = assigningPublication(now)
 		service := NewPublicationService(repo, fixedClock{now: now})
 
-		_, err := service.CreateAssignment(context.Background(), CreateAssignmentInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.CreateAssignment(ctx, CreateAssignmentInput{
 			PublicationID:   1,
 			UserID:          9,
 			TemplateShiftID: 11,
 		})
 		if !errors.Is(err, ErrUserDisabled) {
 			t.Fatalf("expected ErrUserDisabled, got %v", err)
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events, got %+v", stub.Events())
 		}
 	})
 
@@ -196,7 +227,10 @@ func TestPublicationServiceDeleteAssignment(t *testing.T) {
 		}
 		service := NewPublicationService(repo, fixedClock{now: now})
 
-		err := service.DeleteAssignment(context.Background(), DeleteAssignmentInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		err := service.DeleteAssignment(ctx, DeleteAssignmentInput{
 			PublicationID: 1,
 			AssignmentID:  1,
 		})
@@ -205,6 +239,20 @@ func TestPublicationServiceDeleteAssignment(t *testing.T) {
 		}
 		if len(repo.assignments) != 0 {
 			t.Fatalf("expected assignments to be empty, got %d", len(repo.assignments))
+		}
+
+		event := stub.FindByAction(audit.ActionAssignmentDelete)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionAssignmentDelete, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypeAssignment {
+			t.Fatalf("unexpected target type: %q", event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != 1 {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		if event.Metadata["publication_id"] != int64(1) {
+			t.Fatalf("expected publication_id=1 in metadata, got %+v", event.Metadata)
 		}
 	})
 
@@ -246,12 +294,18 @@ func TestPublicationServiceDeleteAssignment(t *testing.T) {
 				repo.publications[1] = tc.publication
 				service := NewPublicationService(repo, fixedClock{now: now})
 
-				err := service.DeleteAssignment(context.Background(), DeleteAssignmentInput{
+				stub := audittest.New()
+				ctx := stub.ContextWith(context.Background())
+
+				err := service.DeleteAssignment(ctx, DeleteAssignmentInput{
 					PublicationID: 1,
 					AssignmentID:  1,
 				})
 				if !errors.Is(err, ErrPublicationNotAssigning) {
 					t.Fatalf("expected ErrPublicationNotAssigning, got %v", err)
+				}
+				if len(stub.Events()) != 0 {
+					t.Fatalf("expected no audit events, got %+v", stub.Events())
 				}
 			})
 		}
@@ -278,7 +332,10 @@ func TestPublicationServiceActivatePublication(t *testing.T) {
 		}
 		service := NewPublicationService(repo, fixedClock{now: now})
 
-		publication, err := service.ActivatePublication(context.Background(), 1)
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		publication, err := service.ActivatePublication(ctx, 1)
 		if err != nil {
 			t.Fatalf("ActivatePublication returned error: %v", err)
 		}
@@ -287,6 +344,20 @@ func TestPublicationServiceActivatePublication(t *testing.T) {
 		}
 		if publication.ActivatedAt == nil || !publication.ActivatedAt.Equal(now) {
 			t.Fatalf("expected activated_at %v, got %+v", now, publication.ActivatedAt)
+		}
+
+		event := stub.FindByAction(audit.ActionPublicationActivate)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionPublicationActivate, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypePublication {
+			t.Fatalf("unexpected target type: %q", event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != 1 {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		if event.Metadata["name"] != "April Coverage" {
+			t.Fatalf("expected name=April Coverage in metadata, got %+v", event.Metadata)
 		}
 	})
 
@@ -348,9 +419,15 @@ func TestPublicationServiceActivatePublication(t *testing.T) {
 			now: time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC),
 		})
 
-		_, err := service.ActivatePublication(context.Background(), 1)
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.ActivatePublication(ctx, 1)
 		if !errors.Is(err, ErrPublicationNotFound) {
 			t.Fatalf("expected ErrPublicationNotFound, got %v", err)
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events, got %+v", stub.Events())
 		}
 	})
 }
@@ -364,7 +441,10 @@ func TestPublicationServiceEndPublication(t *testing.T) {
 		repo.publications[1] = activePublication(now)
 		service := NewPublicationService(repo, fixedClock{now: now})
 
-		publication, err := service.EndPublication(context.Background(), 1)
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		publication, err := service.EndPublication(ctx, 1)
 		if err != nil {
 			t.Fatalf("EndPublication returned error: %v", err)
 		}
@@ -373,6 +453,20 @@ func TestPublicationServiceEndPublication(t *testing.T) {
 		}
 		if publication.EndedAt == nil || !publication.EndedAt.Equal(now) {
 			t.Fatalf("expected ended_at %v, got %+v", now, publication.EndedAt)
+		}
+
+		event := stub.FindByAction(audit.ActionPublicationEnd)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionPublicationEnd, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypePublication {
+			t.Fatalf("unexpected target type: %q", event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != 1 {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		if event.Metadata["name"] != "Active" {
+			t.Fatalf("expected name=Active in metadata, got %+v", event.Metadata)
 		}
 	})
 

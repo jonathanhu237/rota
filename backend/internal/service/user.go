@@ -6,6 +6,7 @@ import (
 	"net/mail"
 	"strings"
 
+	"github.com/jonathanhu237/rota/backend/internal/audit"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 )
@@ -174,6 +175,18 @@ func (s *UserService) CreateUser(ctx context.Context, input CreateUserInput) (*m
 	}
 
 	s.setupFlows.sendInvitation(ctx, createdUser, rawToken)
+
+	targetID := createdUser.ID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionUserCreate,
+		TargetType: audit.TargetTypeUser,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"email":    createdUser.Email,
+			"is_admin": createdUser.IsAdmin,
+		},
+	})
+
 	return createdUser, nil
 }
 
@@ -212,6 +225,17 @@ func (s *UserService) ResendInvitation(ctx context.Context, userID int64) error 
 	}
 
 	s.setupFlows.sendInvitation(ctx, user, rawToken)
+
+	targetID := user.ID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionUserInvitationResend,
+		TargetType: audit.TargetTypeUser,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"email": user.Email,
+		},
+	})
+
 	return nil
 }
 
@@ -239,6 +263,12 @@ func (s *UserService) UpdateUser(ctx context.Context, input UpdateUserInput) (*m
 		return nil, err
 	}
 
+	// Capture the previous state so the audit event reflects only changed fields.
+	previous, err := s.userRepo.GetByID(ctx, input.ID)
+	if err != nil {
+		return nil, mapRepositoryError(err)
+	}
+
 	user, err := s.userRepo.Update(ctx, repository.UpdateUserParams{
 		ID:      input.ID,
 		Email:   email,
@@ -250,6 +280,25 @@ func (s *UserService) UpdateUser(ctx context.Context, input UpdateUserInput) (*m
 		return nil, mapRepositoryError(err)
 	}
 
+	changes := map[string]any{}
+	if previous.Email != user.Email {
+		changes["email"] = map[string]any{"from": previous.Email, "to": user.Email}
+	}
+	if previous.Name != user.Name {
+		changes["name"] = map[string]any{"from": previous.Name, "to": user.Name}
+	}
+	if previous.IsAdmin != user.IsAdmin {
+		changes["is_admin"] = map[string]any{"from": previous.IsAdmin, "to": user.IsAdmin}
+	}
+
+	targetID := user.ID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionUserUpdate,
+		TargetType: audit.TargetTypeUser,
+		TargetID:   &targetID,
+		Metadata:   changes,
+	})
+
 	return user, nil
 }
 
@@ -259,6 +308,12 @@ func (s *UserService) UpdateUserStatus(ctx context.Context, input UpdateUserStat
 	}
 	if input.Status != model.UserStatusActive && input.Status != model.UserStatusDisabled {
 		return nil, ErrInvalidInput
+	}
+
+	// Capture the previous status to report the transition in the audit metadata.
+	previous, err := s.userRepo.GetByID(ctx, input.ID)
+	if err != nil {
+		return nil, mapRepositoryError(err)
 	}
 
 	user, err := s.userRepo.UpdateStatus(ctx, repository.UpdateUserStatusParams{
@@ -275,6 +330,22 @@ func (s *UserService) UpdateUserStatus(ctx context.Context, input UpdateUserStat
 			return nil, err
 		}
 	}
+
+	action := audit.ActionUserStatusActivate
+	if user.Status == model.UserStatusDisabled {
+		action = audit.ActionUserStatusDisable
+	}
+
+	targetID := user.ID
+	audit.Record(ctx, audit.Event{
+		Action:     action,
+		TargetType: audit.TargetTypeUser,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"previous_status": string(previous.Status),
+			"new_status":      string(user.Status),
+		},
+	})
 
 	return user, nil
 }

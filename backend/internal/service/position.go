@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/jonathanhu237/rota/backend/internal/audit"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 )
@@ -112,6 +113,16 @@ func (s *PositionService) CreatePosition(ctx context.Context, input CreatePositi
 		return nil, err
 	}
 
+	targetID := position.ID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionPositionCreate,
+		TargetType: audit.TargetTypePosition,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"name": position.Name,
+		},
+	})
+
 	return position, nil
 }
 
@@ -125,6 +136,12 @@ func (s *PositionService) UpdatePosition(ctx context.Context, input UpdatePositi
 		return nil, err
 	}
 
+	// Capture the previous state so the audit event reflects only changed fields.
+	previous, err := s.positionRepo.GetByID(ctx, input.ID)
+	if err != nil {
+		return nil, mapPositionRepositoryError(err)
+	}
+
 	position, err := s.positionRepo.Update(ctx, repository.UpdatePositionParams{
 		ID:          input.ID,
 		Name:        name,
@@ -134,6 +151,22 @@ func (s *PositionService) UpdatePosition(ctx context.Context, input UpdatePositi
 		return nil, mapPositionRepositoryError(err)
 	}
 
+	changes := map[string]any{}
+	if previous.Name != position.Name {
+		changes["name"] = map[string]any{"from": previous.Name, "to": position.Name}
+	}
+	if previous.Description != position.Description {
+		changes["description"] = map[string]any{"from": previous.Description, "to": position.Description}
+	}
+
+	targetID := position.ID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionPositionUpdate,
+		TargetType: audit.TargetTypePosition,
+		TargetID:   &targetID,
+		Metadata:   changes,
+	})
+
 	return position, nil
 }
 
@@ -142,9 +175,25 @@ func (s *PositionService) DeletePosition(ctx context.Context, id int64) error {
 		return ErrInvalidInput
 	}
 
+	// Load the row before deletion so the audit metadata can include the name.
+	existing, err := s.positionRepo.GetByID(ctx, id)
+	if err != nil {
+		return mapPositionRepositoryError(err)
+	}
+
 	if err := s.positionRepo.Delete(ctx, id); err != nil {
 		return mapPositionRepositoryError(err)
 	}
+
+	targetID := id
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionPositionDelete,
+		TargetType: audit.TargetTypePosition,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"name": existing.Name,
+		},
+	})
 
 	return nil
 }

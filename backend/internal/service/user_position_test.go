@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jonathanhu237/rota/backend/internal/audit"
+	"github.com/jonathanhu237/rota/backend/internal/audit/audittest"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 )
@@ -118,7 +120,9 @@ func TestUserPositionServiceReplaceUserPositions(t *testing.T) {
 		repo := newUserPositionRepositoryStatefulMock()
 		service := NewUserPositionService(repo)
 
-		err := service.ReplaceUserPositions(context.Background(), ReplaceUserPositionsInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		err := service.ReplaceUserPositions(ctx, ReplaceUserPositionsInput{
 			UserID:      1,
 			PositionIDs: []int64{1, 2},
 		})
@@ -127,6 +131,7 @@ func TestUserPositionServiceReplaceUserPositions(t *testing.T) {
 		}
 
 		assertUserPositionIDs(t, repo.positionsByUser[1], []int64{1, 2})
+		assertQualificationsAudit(t, stub, 1, []int64{1, 2})
 	})
 
 	t.Run("replaces non-empty set with smaller set", func(t *testing.T) {
@@ -136,7 +141,9 @@ func TestUserPositionServiceReplaceUserPositions(t *testing.T) {
 		repo.positionsByUser[1] = []int64{1, 2, 3}
 		service := NewUserPositionService(repo)
 
-		err := service.ReplaceUserPositions(context.Background(), ReplaceUserPositionsInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		err := service.ReplaceUserPositions(ctx, ReplaceUserPositionsInput{
 			UserID:      1,
 			PositionIDs: []int64{2},
 		})
@@ -145,6 +152,7 @@ func TestUserPositionServiceReplaceUserPositions(t *testing.T) {
 		}
 
 		assertUserPositionIDs(t, repo.positionsByUser[1], []int64{2})
+		assertQualificationsAudit(t, stub, 1, []int64{2})
 	})
 
 	t.Run("replaces non-empty set with larger overlapping set", func(t *testing.T) {
@@ -154,7 +162,9 @@ func TestUserPositionServiceReplaceUserPositions(t *testing.T) {
 		repo.positionsByUser[1] = []int64{1, 2}
 		service := NewUserPositionService(repo)
 
-		err := service.ReplaceUserPositions(context.Background(), ReplaceUserPositionsInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		err := service.ReplaceUserPositions(ctx, ReplaceUserPositionsInput{
 			UserID:      1,
 			PositionIDs: []int64{2, 3, 4},
 		})
@@ -163,6 +173,7 @@ func TestUserPositionServiceReplaceUserPositions(t *testing.T) {
 		}
 
 		assertUserPositionIDs(t, repo.positionsByUser[1], []int64{2, 3, 4})
+		assertQualificationsAudit(t, stub, 1, []int64{2, 3, 4})
 	})
 
 	t.Run("replaces non-empty set with empty set", func(t *testing.T) {
@@ -172,7 +183,9 @@ func TestUserPositionServiceReplaceUserPositions(t *testing.T) {
 		repo.positionsByUser[1] = []int64{1, 2}
 		service := NewUserPositionService(repo)
 
-		err := service.ReplaceUserPositions(context.Background(), ReplaceUserPositionsInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		err := service.ReplaceUserPositions(ctx, ReplaceUserPositionsInput{
 			UserID:      1,
 			PositionIDs: []int64{},
 		})
@@ -181,6 +194,7 @@ func TestUserPositionServiceReplaceUserPositions(t *testing.T) {
 		}
 
 		assertUserPositionIDs(t, repo.positionsByUser[1], []int64{})
+		assertQualificationsAudit(t, stub, 1, []int64{})
 	})
 
 	t.Run("dedupes duplicate position IDs", func(t *testing.T) {
@@ -189,7 +203,9 @@ func TestUserPositionServiceReplaceUserPositions(t *testing.T) {
 		repo := newUserPositionRepositoryStatefulMock()
 		service := NewUserPositionService(repo)
 
-		err := service.ReplaceUserPositions(context.Background(), ReplaceUserPositionsInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		err := service.ReplaceUserPositions(ctx, ReplaceUserPositionsInput{
 			UserID:      1,
 			PositionIDs: []int64{2, 1, 2, 1},
 		})
@@ -198,6 +214,7 @@ func TestUserPositionServiceReplaceUserPositions(t *testing.T) {
 		}
 
 		assertUserPositionIDs(t, repo.positionsByUser[1], []int64{1, 2})
+		assertQualificationsAudit(t, stub, 1, []int64{1, 2})
 	})
 
 	t.Run("returns ErrPositionNotFound without partial write when any position is missing", func(t *testing.T) {
@@ -207,7 +224,9 @@ func TestUserPositionServiceReplaceUserPositions(t *testing.T) {
 		repo.positionsByUser[1] = []int64{1, 2}
 		service := NewUserPositionService(repo)
 
-		err := service.ReplaceUserPositions(context.Background(), ReplaceUserPositionsInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		err := service.ReplaceUserPositions(ctx, ReplaceUserPositionsInput{
 			UserID:      1,
 			PositionIDs: []int64{2, 999},
 		})
@@ -216,6 +235,9 @@ func TestUserPositionServiceReplaceUserPositions(t *testing.T) {
 		}
 
 		assertUserPositionIDs(t, repo.positionsByUser[1], []int64{1, 2})
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
+		}
 	})
 
 	t.Run("returns ErrUserNotFound for nonexistent user", func(t *testing.T) {
@@ -223,14 +245,48 @@ func TestUserPositionServiceReplaceUserPositions(t *testing.T) {
 
 		service := NewUserPositionService(newUserPositionRepositoryStatefulMock())
 
-		err := service.ReplaceUserPositions(context.Background(), ReplaceUserPositionsInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		err := service.ReplaceUserPositions(ctx, ReplaceUserPositionsInput{
 			UserID:      999,
 			PositionIDs: []int64{1},
 		})
 		if !errors.Is(err, ErrUserNotFound) {
 			t.Fatalf("expected ErrUserNotFound, got %v", err)
 		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
+		}
 	})
+}
+
+// assertQualificationsAudit checks the user.qualifications.replace audit event
+// was recorded with the expected target user and final sorted position IDs.
+func assertQualificationsAudit(t *testing.T, stub *audittest.Stub, userID int64, wantPositionIDs []int64) {
+	t.Helper()
+
+	event := stub.FindByAction(audit.ActionUserQualificationsReplace)
+	if event == nil {
+		t.Fatalf("expected %q audit event, got %v", audit.ActionUserQualificationsReplace, stub.Actions())
+	}
+	if event.TargetType != audit.TargetTypeUser {
+		t.Fatalf("unexpected target type: %q", event.TargetType)
+	}
+	if event.TargetID == nil || *event.TargetID != userID {
+		t.Fatalf("unexpected target id: %v", event.TargetID)
+	}
+	got, ok := event.Metadata["position_ids"].([]int64)
+	if !ok {
+		t.Fatalf("expected position_ids metadata to be []int64, got %T", event.Metadata["position_ids"])
+	}
+	if len(got) != len(wantPositionIDs) {
+		t.Fatalf("expected position_ids %v, got %v", wantPositionIDs, got)
+	}
+	for i := range wantPositionIDs {
+		if got[i] != wantPositionIDs[i] {
+			t.Fatalf("expected position_ids %v, got %v", wantPositionIDs, got)
+		}
+	}
 }
 
 func newUserPositionRepositoryStatefulMock() *userPositionRepositoryStatefulMock {

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/jonathanhu237/rota/backend/internal/audit"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/service"
 )
@@ -214,7 +215,9 @@ func (h *AuthHandler) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 		// Refresh the cookie so the browser expiry stays in sync with the Redis TTL.
 		setSessionCookie(w, r, cookie.Value, result.ExpiresIn)
 
-		next(w, r.WithContext(context.WithValue(r.Context(), currentUserContextKey{}, result.User)))
+		ctx := context.WithValue(r.Context(), currentUserContextKey{}, result.User)
+		ctx = audit.WithActor(ctx, result.User.ID)
+		next(w, r.WithContext(ctx))
 	}
 }
 

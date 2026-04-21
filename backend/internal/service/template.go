@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/jonathanhu237/rota/backend/internal/audit"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 )
@@ -142,6 +143,16 @@ func (s *TemplateService) CreateTemplate(ctx context.Context, input CreateTempla
 		return nil, mapTemplateRepositoryError(err)
 	}
 
+	targetID := template.ID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionTemplateCreate,
+		TargetType: audit.TargetTypeTemplate,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"name": template.Name,
+		},
+	})
+
 	return template, nil
 }
 
@@ -169,6 +180,14 @@ func (s *TemplateService) UpdateTemplate(ctx context.Context, input UpdateTempla
 		return nil, err
 	}
 
+	// Best-effort capture of the previous state so the audit event can report
+	// changed fields. If the lookup fails we still allow the update to proceed
+	// and emit an event with a partial diff.
+	var previous *model.Template
+	if prev, prevErr := s.templateRepo.GetByID(ctx, input.ID); prevErr == nil {
+		previous = prev
+	}
+
 	template, err := s.templateRepo.Update(ctx, repository.UpdateTemplateParams{
 		ID:          input.ID,
 		Name:        name,
@@ -178,6 +197,24 @@ func (s *TemplateService) UpdateTemplate(ctx context.Context, input UpdateTempla
 		return nil, mapTemplateRepositoryError(err)
 	}
 
+	changes := map[string]any{}
+	if previous != nil {
+		if previous.Name != template.Name {
+			changes["name"] = map[string]any{"from": previous.Name, "to": template.Name}
+		}
+		if previous.Description != template.Description {
+			changes["description"] = map[string]any{"from": previous.Description, "to": template.Description}
+		}
+	}
+
+	targetID := template.ID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionTemplateUpdate,
+		TargetType: audit.TargetTypeTemplate,
+		TargetID:   &targetID,
+		Metadata:   changes,
+	})
+
 	return template, nil
 }
 
@@ -186,9 +223,30 @@ func (s *TemplateService) DeleteTemplate(ctx context.Context, id int64) error {
 		return ErrInvalidInput
 	}
 
+	// Best-effort load of the row before deletion so the audit metadata can
+	// include the template name. We tolerate lookup errors because the
+	// repository Delete call is the authoritative guard for existence/locking.
+	var existingName string
+	if existing, lookupErr := s.templateRepo.GetByID(ctx, id); lookupErr == nil {
+		existingName = existing.Name
+	}
+
 	if err := s.templateRepo.Delete(ctx, id); err != nil {
 		return mapTemplateRepositoryError(err)
 	}
+
+	metadata := map[string]any{}
+	if existingName != "" {
+		metadata["name"] = existingName
+	}
+
+	targetID := id
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionTemplateDelete,
+		TargetType: audit.TargetTypeTemplate,
+		TargetID:   &targetID,
+		Metadata:   metadata,
+	})
 
 	return nil
 }
@@ -209,6 +267,18 @@ func (s *TemplateService) CloneTemplate(ctx context.Context, id int64) (*model.T
 	}
 
 	sortTemplateShifts(clone.Shifts)
+
+	targetID := clone.ID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionTemplateClone,
+		TargetType: audit.TargetTypeTemplate,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"source_template_id": id,
+			"name":               clone.Name,
+		},
+	})
+
 	return clone, nil
 }
 
@@ -243,6 +313,21 @@ func (s *TemplateService) CreateTemplateShift(ctx context.Context, input CreateT
 		return nil, mapTemplateRepositoryError(err)
 	}
 
+	targetID := shift.ID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionTemplateShiftCreate,
+		TargetType: audit.TargetTypeTemplateShift,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"template_id":        shift.TemplateID,
+			"weekday":            shift.Weekday,
+			"start_time":         shift.StartTime,
+			"end_time":           shift.EndTime,
+			"position_id":        shift.PositionID,
+			"required_headcount": shift.RequiredHeadcount,
+		},
+	})
+
 	return shift, nil
 }
 
@@ -265,6 +350,19 @@ func (s *TemplateService) UpdateTemplateShift(ctx context.Context, input UpdateT
 		return nil, err
 	}
 
+	// Best-effort capture of the previous shift state so the audit event can
+	// include a field-level diff. If the lookup fails we still allow the
+	// update to proceed; the repository call is the authoritative check.
+	var previous *model.TemplateShift
+	if prev, prevErr := s.templateRepo.GetByID(ctx, input.TemplateID); prevErr == nil {
+		for _, candidate := range prev.Shifts {
+			if candidate.ID == input.ShiftID {
+				previous = candidate
+				break
+			}
+		}
+	}
+
 	shift, err := s.templateRepo.UpdateShift(ctx, repository.UpdateTemplateShiftParams{
 		TemplateID:        input.TemplateID,
 		ShiftID:           input.ShiftID,
@@ -278,6 +376,38 @@ func (s *TemplateService) UpdateTemplateShift(ctx context.Context, input UpdateT
 		return nil, mapTemplateRepositoryError(err)
 	}
 
+	changes := map[string]any{
+		"template_id": shift.TemplateID,
+	}
+	if previous != nil {
+		if previous.Weekday != shift.Weekday {
+			changes["weekday"] = map[string]any{"from": previous.Weekday, "to": shift.Weekday}
+		}
+		if previous.StartTime != shift.StartTime {
+			changes["start_time"] = map[string]any{"from": previous.StartTime, "to": shift.StartTime}
+		}
+		if previous.EndTime != shift.EndTime {
+			changes["end_time"] = map[string]any{"from": previous.EndTime, "to": shift.EndTime}
+		}
+		if previous.PositionID != shift.PositionID {
+			changes["position_id"] = map[string]any{"from": previous.PositionID, "to": shift.PositionID}
+		}
+		if previous.RequiredHeadcount != shift.RequiredHeadcount {
+			changes["required_headcount"] = map[string]any{
+				"from": previous.RequiredHeadcount,
+				"to":   shift.RequiredHeadcount,
+			}
+		}
+	}
+
+	targetID := shift.ID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionTemplateShiftUpdate,
+		TargetType: audit.TargetTypeTemplateShift,
+		TargetID:   &targetID,
+		Metadata:   changes,
+	})
+
 	return shift, nil
 }
 
@@ -289,6 +419,16 @@ func (s *TemplateService) DeleteTemplateShift(ctx context.Context, templateID, s
 	if err := s.templateRepo.DeleteShift(ctx, templateID, shiftID); err != nil {
 		return mapTemplateRepositoryError(err)
 	}
+
+	targetID := shiftID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionTemplateShiftDelete,
+		TargetType: audit.TargetTypeTemplateShift,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"template_id": templateID,
+		},
+	})
 
 	return nil
 }

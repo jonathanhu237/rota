@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/jonathanhu237/rota/backend/internal/audit"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 	"github.com/jonathanhu237/rota/backend/internal/session"
@@ -66,6 +67,7 @@ func NewAuthService(userRepo authUserRepository, sessionStore sessionStore, opts
 func (s *AuthService) Login(ctx context.Context, email, password string) (*LoginResult, error) {
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if errors.Is(err, repository.ErrUserNotFound) {
+		recordLoginFailure(ctx, email, "invalid_credentials")
 		return nil, ErrInvalidCredentials
 	}
 	if err != nil {
@@ -73,13 +75,16 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (*Login
 	}
 
 	if user.Status == model.UserStatusDisabled {
+		recordLoginFailure(ctx, email, "user_disabled")
 		return nil, ErrUserDisabled
 	}
 	if user.Status == model.UserStatusPending {
+		recordLoginFailure(ctx, email, "user_pending")
 		return nil, ErrUserPending
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		recordLoginFailure(ctx, email, "invalid_credentials")
 		return nil, ErrInvalidCredentials
 	}
 
@@ -88,11 +93,34 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (*Login
 		return nil, err
 	}
 
+	targetID := user.ID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionAuthLoginSuccess,
+		TargetType: audit.TargetTypeUser,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"email": user.Email,
+		},
+	})
+
 	return &LoginResult{
 		SessionID: sessionID,
 		ExpiresIn: expiresIn,
 		User:      user,
 	}, nil
+}
+
+// recordLoginFailure emits an audit event for a failed login attempt. The
+// actor is intentionally unauthenticated: login failures are captured before
+// any session is established.
+func recordLoginFailure(ctx context.Context, email, reason string) {
+	audit.Record(ctx, audit.Event{
+		Action: audit.ActionAuthLoginFailure,
+		Metadata: map[string]any{
+			"email":  email,
+			"reason": reason,
+		},
+	})
 }
 
 func (s *AuthService) RequestPasswordReset(ctx context.Context, emailAddress string) error {
@@ -136,11 +164,21 @@ func (s *AuthService) RequestPasswordReset(ctx context.Context, emailAddress str
 	if err != nil {
 		return err
 	}
-	if user == nil || rawToken == "" {
-		return nil
+
+	if user != nil && rawToken != "" {
+		s.setupFlows.sendPasswordReset(ctx, user, rawToken)
 	}
 
-	s.setupFlows.sendPasswordReset(ctx, user, rawToken)
+	// user_found reflects whether an eligible (active) user exists for the
+	// email. It stays server-side — admins with DB access already have this
+	// information, and it is essential for detecting probing behaviour.
+	audit.Record(ctx, audit.Event{
+		Action: audit.ActionAuthPasswordResetRequest,
+		Metadata: map[string]any{
+			"email":      normalizedEmail,
+			"user_found": rawToken != "",
+		},
+	})
 	return nil
 }
 
@@ -171,13 +209,36 @@ func (s *AuthService) SetupPassword(ctx context.Context, input SetupPasswordInpu
 		return ErrInvalidInput
 	}
 
-	return s.setupFlows.txManager.WithinTx(ctx, func(
+	var activatedToken *model.SetupToken
+	if err := s.setupFlows.txManager.WithinTx(ctx, func(
 		ctx context.Context,
 		txUserRepo repository.SetupUserRepository,
 		txTokenRepo repository.SetupTokenRepositoryWriter,
 	) error {
-		return s.setupFlows.activatePassword(ctx, txUserRepo, txTokenRepo, input)
+		token, err := s.setupFlows.activatePassword(ctx, txUserRepo, txTokenRepo, input)
+		if err != nil {
+			return err
+		}
+		activatedToken = token
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	purpose := "invitation"
+	if activatedToken.Purpose == model.SetupTokenPurposePasswordReset {
+		purpose = "password_reset"
+	}
+	targetID := activatedToken.UserID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionAuthPasswordSet,
+		TargetType: audit.TargetTypeUser,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"purpose": purpose,
+		},
 	})
+	return nil
 }
 
 // AuthenticateResult holds the authenticated user and the refreshed session TTL.
@@ -222,5 +283,17 @@ func (s *AuthService) Authenticate(ctx context.Context, sessionID string) (*Auth
 }
 
 func (s *AuthService) Logout(ctx context.Context, sessionID string) error {
-	return s.sessionStore.Delete(ctx, sessionID)
+	if err := s.sessionStore.Delete(ctx, sessionID); err != nil {
+		return err
+	}
+
+	event := audit.Event{
+		Action: audit.ActionAuthLogout,
+	}
+	if actorID, ok := audit.ActorFromContext(ctx); ok {
+		event.TargetType = audit.TargetTypeUser
+		event.TargetID = &actorID
+	}
+	audit.Record(ctx, event)
+	return nil
 }

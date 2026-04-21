@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jonathanhu237/rota/backend/internal/audit"
+	"github.com/jonathanhu237/rota/backend/internal/audit/audittest"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 )
@@ -612,7 +614,10 @@ func TestPublicationServiceCreatePublication(t *testing.T) {
 		now := time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC)
 		service := NewPublicationService(repo, fixedClock{now: now})
 
-		publication, err := service.CreatePublication(context.Background(), CreatePublicationInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		publication, err := service.CreatePublication(ctx, CreatePublicationInput{
 			TemplateID:        1,
 			Name:              "May availability",
 			SubmissionStartAt: now.Add(2 * time.Hour),
@@ -628,6 +633,28 @@ func TestPublicationServiceCreatePublication(t *testing.T) {
 		}
 		if !repo.templates[1].IsLocked {
 			t.Fatal("expected template to be locked")
+		}
+
+		event := stub.FindByAction(audit.ActionPublicationCreate)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionPublicationCreate, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypePublication {
+			t.Fatalf("unexpected target type: %q", event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != publication.ID {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		if event.Metadata["template_id"] != int64(1) {
+			t.Fatalf("expected template_id=1 in metadata, got %+v", event.Metadata)
+		}
+		if event.Metadata["name"] != "May availability" {
+			t.Fatalf("expected name in metadata, got %+v", event.Metadata)
+		}
+		for _, key := range []string{"submission_start_at", "submission_end_at", "planned_active_from"} {
+			if _, ok := event.Metadata[key]; !ok {
+				t.Fatalf("expected %q in metadata, got %+v", key, event.Metadata)
+			}
 		}
 	})
 
@@ -705,7 +732,10 @@ func TestPublicationServiceCreatePublication(t *testing.T) {
 		now := time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC)
 		service := NewPublicationService(repo, fixedClock{now: now})
 
-		_, err := service.CreatePublication(context.Background(), CreatePublicationInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.CreatePublication(ctx, CreatePublicationInput{
 			TemplateID:        1,
 			Name:              "Invalid",
 			SubmissionStartAt: now.Add(3 * time.Hour),
@@ -714,6 +744,9 @@ func TestPublicationServiceCreatePublication(t *testing.T) {
 		})
 		if !errors.Is(err, ErrInvalidPublicationWindow) {
 			t.Fatalf("expected ErrInvalidPublicationWindow, got %v", err)
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events, got %+v", stub.Events())
 		}
 	})
 
@@ -957,7 +990,10 @@ func TestPublicationServiceDeletePublication(t *testing.T) {
 		}
 		service := NewPublicationService(repo, fixedClock{now: now})
 
-		if err := service.DeletePublication(context.Background(), 1); err != nil {
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		if err := service.DeletePublication(ctx, 1); err != nil {
 			t.Fatalf("DeletePublication returned error: %v", err)
 		}
 		if _, ok := repo.publications[1]; ok {
@@ -965,6 +1001,20 @@ func TestPublicationServiceDeletePublication(t *testing.T) {
 		}
 		if len(repo.submissions) != 0 {
 			t.Fatalf("expected submissions to be cascaded, got %d", len(repo.submissions))
+		}
+
+		event := stub.FindByAction(audit.ActionPublicationDelete)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionPublicationDelete, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypePublication {
+			t.Fatalf("unexpected target type: %q", event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != 1 {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		if event.Metadata["name"] != "Draft" {
+			t.Fatalf("expected name=Draft in metadata, got %+v", event.Metadata)
 		}
 	})
 
@@ -987,9 +1037,15 @@ func TestPublicationServiceDeletePublication(t *testing.T) {
 		}
 		service := NewPublicationService(repo, fixedClock{now: now})
 
-		err := service.DeletePublication(context.Background(), 1)
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		err := service.DeletePublication(ctx, 1)
 		if !errors.Is(err, ErrPublicationNotDeletable) {
 			t.Fatalf("expected ErrPublicationNotDeletable, got %v", err)
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events, got %+v", stub.Events())
 		}
 	})
 
@@ -1121,7 +1177,10 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		repo.publications[1] = collectingPublication(now)
 		service := NewPublicationService(repo, fixedClock{now: now})
 
-		submission, err := service.CreateAvailabilitySubmission(context.Background(), CreateAvailabilitySubmissionInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		submission, err := service.CreateAvailabilitySubmission(ctx, CreateAvailabilitySubmissionInput{
 			PublicationID:   1,
 			UserID:          7,
 			TemplateShiftID: 11,
@@ -1131,6 +1190,23 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		}
 		if submission.PublicationID != 1 || submission.UserID != 7 || submission.TemplateShiftID != 11 {
 			t.Fatalf("unexpected submission: %+v", submission)
+		}
+
+		event := stub.FindByAction(audit.ActionSubmissionCreate)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionSubmissionCreate, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypeAvailabilitySubmission {
+			t.Fatalf("unexpected target type: %q", event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != submission.ID {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		if event.Metadata["publication_id"] != int64(1) {
+			t.Fatalf("expected publication_id=1 in metadata, got %+v", event.Metadata)
+		}
+		if event.Metadata["template_shift_id"] != int64(11) {
+			t.Fatalf("expected template_shift_id=11 in metadata, got %+v", event.Metadata)
 		}
 	})
 
@@ -1281,13 +1357,19 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		repo.publications[1] = collectingPublication(now)
 		service := NewPublicationService(repo, fixedClock{now: now})
 
-		_, err := service.CreateAvailabilitySubmission(context.Background(), CreateAvailabilitySubmissionInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.CreateAvailabilitySubmission(ctx, CreateAvailabilitySubmissionInput{
 			PublicationID:   1,
 			UserID:          7,
 			TemplateShiftID: 12,
 		})
 		if !errors.Is(err, ErrNotQualified) {
 			t.Fatalf("expected ErrNotQualified, got %v", err)
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events, got %+v", stub.Events())
 		}
 	})
 
@@ -1327,7 +1409,10 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 		}
 		service := NewPublicationService(repo, fixedClock{now: now})
 
-		err := service.DeleteAvailabilitySubmission(context.Background(), DeleteAvailabilitySubmissionInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		err := service.DeleteAvailabilitySubmission(ctx, DeleteAvailabilitySubmissionInput{
 			PublicationID:   1,
 			UserID:          7,
 			TemplateShiftID: 11,
@@ -1337,6 +1422,23 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 		}
 		if len(repo.submissions) != 0 {
 			t.Fatalf("expected submission to be deleted, got %d", len(repo.submissions))
+		}
+
+		event := stub.FindByAction(audit.ActionSubmissionDelete)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionSubmissionDelete, stub.Actions())
+		}
+		if event.TargetType != audit.TargetTypeAvailabilitySubmission {
+			t.Fatalf("unexpected target type: %q", event.TargetType)
+		}
+		if event.TargetID == nil || *event.TargetID != 11 {
+			t.Fatalf("unexpected target id: %v", event.TargetID)
+		}
+		if event.Metadata["publication_id"] != int64(1) {
+			t.Fatalf("expected publication_id=1 in metadata, got %+v", event.Metadata)
+		}
+		if event.Metadata["template_shift_id"] != int64(11) {
+			t.Fatalf("expected template_shift_id=11 in metadata, got %+v", event.Metadata)
 		}
 	})
 
@@ -1406,13 +1508,19 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 		}
 		service := NewPublicationService(repo, fixedClock{now: now})
 
-		err := service.DeleteAvailabilitySubmission(context.Background(), DeleteAvailabilitySubmissionInput{
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		err := service.DeleteAvailabilitySubmission(ctx, DeleteAvailabilitySubmissionInput{
 			PublicationID:   1,
 			UserID:          7,
 			TemplateShiftID: 11,
 		})
 		if !errors.Is(err, ErrPublicationNotCollecting) {
 			t.Fatalf("expected ErrPublicationNotCollecting, got %v", err)
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events, got %+v", stub.Events())
 		}
 	})
 }
