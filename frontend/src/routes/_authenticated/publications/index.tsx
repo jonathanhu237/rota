@@ -8,6 +8,7 @@ import { ActivatePublicationDialog } from "@/components/publications/activate-pu
 import { CreatePublicationDialog } from "@/components/publications/create-publication-dialog"
 import { EndPublicationDialog } from "@/components/publications/end-publication-dialog"
 import { PublicationsTable } from "@/components/publications/publications-table"
+import { PublishPublicationDialog } from "@/components/publications/publish-publication-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -29,6 +30,7 @@ import {
   currentUserQueryOptions,
   endPublication,
   publicationsQueryOptions,
+  publishPublication,
 } from "@/lib/queries"
 import type { Publication } from "@/lib/types"
 
@@ -52,6 +54,7 @@ function PublicationsPage() {
 
   const [page, setPage] = useState(1)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [publishTarget, setPublishTarget] = useState<Publication | null>(null)
   const [activationTarget, setActivationTarget] = useState<Publication | null>(
     null,
   )
@@ -142,6 +145,29 @@ function PublicationsPage() {
     ])
   }
 
+  const publishPublicationMutation = useMutation({
+    mutationFn: (publicationID: number) => publishPublication(publicationID),
+    onSuccess: async (_, publicationID) => {
+      setPublishTarget(null)
+      await invalidatePublicationState(publicationID)
+      toast({
+        variant: "default",
+        description: t("publications.success.published"),
+      })
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        description: getTranslatedApiError(
+          t,
+          error,
+          "publications.errors",
+          "publications.errors.INTERNAL_ERROR",
+        ),
+      })
+    },
+  })
+
   const activatePublicationMutation = useMutation({
     mutationFn: (publicationID: number) => activatePublication(publicationID),
     onSuccess: async (_, publicationID) => {
@@ -226,6 +252,11 @@ function PublicationsPage() {
               isFetching={publicationsQuery.isFetching}
               onOpen={openPublication}
               onLifecycleAction={(publication, action) => {
+                if (action === "publish") {
+                  setPublishTarget(publication)
+                  return
+                }
+
                 if (action === "activate") {
                   setActivationTarget(publication)
                   return
@@ -245,6 +276,23 @@ function PublicationsPage() {
         isTemplatesLoading={templatesQuery.isLoading}
         onOpenChange={setIsCreateDialogOpen}
         onSubmit={(values) => createPublicationMutation.mutate(values)}
+      />
+      <PublishPublicationDialog
+        open={publishTarget !== null}
+        publication={publishTarget}
+        isPending={publishPublicationMutation.isPending}
+        onConfirm={() => {
+          if (!publishTarget) {
+            return
+          }
+
+          publishPublicationMutation.mutate(publishTarget.id)
+        }}
+        onOpenChange={(open: boolean) => {
+          if (!open) {
+            setPublishTarget(null)
+          }
+        }}
       />
       <ActivatePublicationDialog
         open={activationTarget !== null}

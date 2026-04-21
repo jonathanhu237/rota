@@ -11,8 +11,15 @@ const variantByState: Record<
   DRAFT: "secondary",
   COLLECTING: "default",
   ASSIGNING: "outline",
+  PUBLISHED: "default",
   ACTIVE: "default",
   ENDED: "destructive",
+}
+
+// PUBLISHED uses a distinct blue tone to differentiate it from ACTIVE while still
+// conveying that the roster is visible to employees.
+const classNameByState: Partial<Record<PublicationState, string>> = {
+  PUBLISHED: "bg-blue-500 text-white hover:bg-blue-500/90",
 }
 
 type PublicationStateBadgeProps = {
@@ -25,7 +32,7 @@ export function PublicationStateBadge({
   const { t } = useTranslation()
 
   return (
-    <Badge variant={variantByState[state]}>
+    <Badge variant={variantByState[state]} className={classNameByState[state]}>
       {t(getPublicationStateTranslationKey(state))}
     </Badge>
   )

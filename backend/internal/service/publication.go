@@ -22,6 +22,7 @@ var (
 	ErrPublicationNotDeletable  = model.ErrPublicationNotDeletable
 	ErrPublicationNotCollecting = model.ErrPublicationNotCollecting
 	ErrPublicationNotAssigning  = model.ErrPublicationNotAssigning
+	ErrPublicationNotPublished  = model.ErrPublicationNotPublished
 	ErrPublicationNotActive     = model.ErrPublicationNotActive
 	ErrNotQualified             = model.ErrNotQualified
 )
@@ -52,7 +53,8 @@ type publicationRepository interface {
 	CreateAssignment(ctx context.Context, params repository.CreateAssignmentParams) (*model.Assignment, error)
 	DeleteAssignment(ctx context.Context, params repository.DeleteAssignmentParams) error
 	ReplaceAssignments(ctx context.Context, params repository.ReplaceAssignmentsParams) error
-	ActivatePublication(ctx context.Context, params repository.ActivatePublicationParams) (*model.Publication, error)
+	ActivatePublication(ctx context.Context, params repository.ActivatePublicationParams) (*repository.ActivatePublicationResult, error)
+	PublishPublication(ctx context.Context, params repository.PublishPublicationParams) (*model.Publication, error)
 	EndPublication(ctx context.Context, params repository.EndPublicationParams) (*model.Publication, error)
 	ListPublicationShifts(ctx context.Context, publicationID int64) ([]*model.PublicationShift, error)
 	ListAssignmentCandidates(ctx context.Context, publicationID int64) ([]*model.AssignmentCandidate, error)

@@ -145,6 +145,16 @@ func main() {
 	templateHandler := handler.NewTemplateHandler(templateService)
 	publicationHandler := handler.NewPublicationHandler(publicationService)
 	userPositionHandler := handler.NewUserPositionHandler(userPositionService)
+	shiftChangeRepo := repository.NewShiftChangeRepository(db)
+	shiftChangeService := service.NewShiftChangeService(
+		shiftChangeRepo,
+		publicationRepo,
+		emailer,
+		cfg.AppBaseURL,
+		nil,
+		slog.Default(),
+	)
+	shiftChangeHandler := handler.NewShiftChangeHandler(shiftChangeService)
 	loginRateLimitByIP := handler.NewRateLimitMiddleware(
 		handler.ClientIPRateLimitKey,
 		rate.Every(time.Minute/5),
@@ -206,6 +216,7 @@ func main() {
 	mux.HandleFunc("POST /publications/{id}/auto-assign", authHandler.RequireAdmin(publicationHandler.AutoAssign))
 	mux.HandleFunc("POST /publications/{id}/assignments", authHandler.RequireAdmin(publicationHandler.CreateAssignment))
 	mux.HandleFunc("DELETE /publications/{id}/assignments/{assignment_id}", authHandler.RequireAdmin(publicationHandler.DeleteAssignment))
+	mux.HandleFunc("POST /publications/{id}/publish", authHandler.RequireAdmin(publicationHandler.Publish))
 	mux.HandleFunc("POST /publications/{id}/activate", authHandler.RequireAdmin(publicationHandler.Activate))
 	mux.HandleFunc("POST /publications/{id}/end", authHandler.RequireAdmin(publicationHandler.End))
 	mux.HandleFunc("GET /publications/{id}/roster", authHandler.RequireAuth(publicationHandler.GetRoster))
@@ -215,6 +226,14 @@ func main() {
 	mux.HandleFunc("POST /publications/{id}/submissions", authHandler.RequireAuth(publicationHandler.CreateSubmission))
 	mux.HandleFunc("DELETE /publications/{id}/submissions/{shift_id}", authHandler.RequireAuth(publicationHandler.DeleteSubmission))
 	mux.HandleFunc("GET /publications/{id}/shifts/me", authHandler.RequireAuth(publicationHandler.ListMyQualifiedShifts))
+	mux.HandleFunc("POST /publications/{id}/shift-changes", authHandler.RequireAuth(shiftChangeHandler.Create))
+	mux.HandleFunc("GET /publications/{id}/shift-changes", authHandler.RequireAuth(shiftChangeHandler.List))
+	mux.HandleFunc("GET /publications/{id}/shift-changes/{request_id}", authHandler.RequireAuth(shiftChangeHandler.GetByID))
+	mux.HandleFunc("POST /publications/{id}/shift-changes/{request_id}/approve", authHandler.RequireAuth(shiftChangeHandler.Approve))
+	mux.HandleFunc("POST /publications/{id}/shift-changes/{request_id}/reject", authHandler.RequireAuth(shiftChangeHandler.Reject))
+	mux.HandleFunc("POST /publications/{id}/shift-changes/{request_id}/cancel", authHandler.RequireAuth(shiftChangeHandler.Cancel))
+	mux.HandleFunc("GET /publications/{id}/members", authHandler.RequireAuth(shiftChangeHandler.ListMembers))
+	mux.HandleFunc("GET /users/me/notifications/unread-count", authHandler.RequireAuth(shiftChangeHandler.UnreadCount))
 
 	// Start server
 	addr := fmt.Sprintf(":%d", cfg.ServerPort)

@@ -2,7 +2,10 @@ import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { getPublicationLifecycleAction } from "@/lib/publications"
+import {
+  getPublicationLifecycleAction,
+  type PublicationLifecycleAction,
+} from "@/lib/publications"
 import type { Pagination, Publication } from "@/lib/types"
 
 import { PublicationStateBadge } from "./publication-state-badge"
@@ -15,7 +18,7 @@ type PublicationsTableProps = {
   onOpen: (publication: Publication) => void
   onLifecycleAction: (
     publication: Publication,
-    action: "activate" | "end",
+    action: PublicationLifecycleAction,
   ) => void
   onPageChange: (page: number) => void
 }
@@ -135,7 +138,13 @@ export function PublicationsTable({
                     return (
                       <Button
                         size="sm"
-                        variant={action === "activate" ? "secondary" : "destructive"}
+                        variant={
+                          action === "end"
+                            ? "destructive"
+                            : action === "publish"
+                              ? "default"
+                              : "secondary"
+                        }
                         onClick={(event) => {
                           event.stopPropagation()
                           onLifecycleAction(publication, action)

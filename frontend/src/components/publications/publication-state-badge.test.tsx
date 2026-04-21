@@ -9,6 +9,7 @@ describe("PublicationStateBadge", () => {
     ["DRAFT", "publications.state.draft"],
     ["COLLECTING", "publications.state.collecting"],
     ["ASSIGNING", "publications.state.assigning"],
+    ["PUBLISHED", "publications.state.published"],
     ["ACTIVE", "publications.state.active"],
     ["ENDED", "publications.state.ended"],
   ] as const)("renders %s with %s", (state, translationKey) => {

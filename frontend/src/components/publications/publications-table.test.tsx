@@ -66,10 +66,10 @@ describe("PublicationsTable", () => {
     expect(getByText("publications.state.active")).toBeInTheDocument()
 
     await user.click(getByText("Week 17"))
-    await user.click(getAllByRole("button", { name: "publications.actions.activate" })[0])
+    await user.click(getAllByRole("button", { name: "publications.actions.publish" })[0])
 
     expect(onOpen).toHaveBeenCalledWith(publications[0])
-    expect(onLifecycleAction).toHaveBeenCalledWith(publications[0], "activate")
+    expect(onLifecycleAction).toHaveBeenCalledWith(publications[0], "publish")
   })
 
   it("enables pagination buttons when there are more pages", () => {

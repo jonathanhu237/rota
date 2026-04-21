@@ -103,13 +103,13 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		}
 	})
 
-	t.Run("ActivatePublication only succeeds for mutable states", func(t *testing.T) {
+	t.Run("ActivatePublication only succeeds from PUBLISHED", func(t *testing.T) {
 		db := openIntegrationDB(t)
 		repo := NewPublicationRepository(db)
 		template, _, _ := seedPublicationPrerequisites(t, db)
-		draft := seedPublication(t, db, publicationSeed{
+		published := seedPublication(t, db, publicationSeed{
 			TemplateID:        template.ID,
-			State:             model.PublicationStateDraft,
+			State:             model.PublicationStatePublished,
 			SubmissionStartAt: testTime().Add(1 * time.Hour),
 			SubmissionEndAt:   testTime().Add(2 * time.Hour),
 			PlannedActiveFrom: testTime().Add(3 * time.Hour),
@@ -117,20 +117,26 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		})
 
 		activated, err := repo.ActivatePublication(ctx, ActivatePublicationParams{
-			ID:  draft.ID,
+			ID:  published.ID,
 			Now: testTime().Add(4 * time.Hour),
 		})
 		if err != nil {
 			t.Fatalf("activate publication: %v", err)
 		}
-		if activated.State != model.PublicationStateActive {
-			t.Fatalf("expected ACTIVE state, got %q", activated.State)
+		if activated.Publication.State != model.PublicationStateActive {
+			t.Fatalf("expected ACTIVE state, got %q", activated.Publication.State)
 		}
 
-		endedTemplate, _, _ := seedPublicationPrerequisites(t, db)
-		ended := seedPublication(t, db, publicationSeed{
-			TemplateID:        endedTemplate.ID,
-			State:             model.PublicationStateEnded,
+		// End the now-active publication so we can seed a second one without
+		// tripping the single-non-ENDED invariant.
+		if _, err := db.ExecContext(ctx, `UPDATE publications SET state = 'ENDED', ended_at = NOW() WHERE id = $1;`, published.ID); err != nil {
+			t.Fatalf("end first publication: %v", err)
+		}
+
+		assigningTemplate, _, _ := seedPublicationPrerequisites(t, db)
+		assigning := seedPublication(t, db, publicationSeed{
+			TemplateID:        assigningTemplate.ID,
+			State:             model.PublicationStateAssigning,
 			SubmissionStartAt: testTime().Add(-3 * time.Hour),
 			SubmissionEndAt:   testTime().Add(-2 * time.Hour),
 			PlannedActiveFrom: testTime().Add(-1 * time.Hour),
@@ -138,11 +144,11 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		})
 
 		_, err = repo.ActivatePublication(ctx, ActivatePublicationParams{
-			ID:  ended.ID,
+			ID:  assigning.ID,
 			Now: testTime(),
 		})
 		if !errors.Is(err, sql.ErrNoRows) {
-			t.Fatalf("expected sql.ErrNoRows for ended publication, got %v", err)
+			t.Fatalf("expected sql.ErrNoRows for assigning publication, got %v", err)
 		}
 	})
 

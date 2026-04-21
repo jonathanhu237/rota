@@ -9,6 +9,8 @@ import (
 	"github.com/jonathanhu237/rota/backend/internal/model"
 )
 
+var ErrAssignmentNotFound = errors.New("assignment not found")
+
 type CreateAssignmentParams struct {
 	PublicationID   int64
 	UserID          int64
@@ -33,6 +35,11 @@ type ReplaceAssignmentsParams struct {
 }
 
 type ActivatePublicationParams struct {
+	ID  int64
+	Now time.Time
+}
+
+type PublishPublicationParams struct {
 	ID  int64
 	Now time.Time
 }
@@ -164,13 +171,96 @@ func (r *PublicationRepository) ReplaceAssignments(
 	return tx.Commit()
 }
 
+// ActivatePublicationResult captures the updated publication plus the number
+// of pending shift-change requests that were bulk-expired in the same
+// transaction as the state flip.
+type ActivatePublicationResult struct {
+	Publication       *model.Publication
+	ExpiredRequestIDs []int64
+}
+
 func (r *PublicationRepository) ActivatePublication(
 	ctx context.Context,
 	params ActivatePublicationParams,
+) (*ActivatePublicationResult, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	const updateQuery = `
+		UPDATE publications p
+		SET state = 'ACTIVE', activated_at = $2, updated_at = $2
+		FROM templates t
+		WHERE p.id = $1
+			AND p.template_id = t.id
+			AND p.state = 'PUBLISHED'
+		RETURNING
+			p.id,
+			p.template_id,
+			t.name,
+			p.name,
+			p.state,
+			p.submission_start_at,
+			p.submission_end_at,
+			p.planned_active_from,
+			p.activated_at,
+			p.ended_at,
+			p.created_at,
+			p.updated_at;
+	`
+
+	publication, err := scanPublication(tx.QueryRowContext(ctx, updateQuery, params.ID, params.Now))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, sql.ErrNoRows
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	const expireQuery = `
+		UPDATE shift_change_requests
+		SET state = 'expired', decided_at = $2
+		WHERE publication_id = $1 AND state = 'pending'
+		RETURNING id;
+	`
+
+	rows, err := tx.QueryContext(ctx, expireQuery, params.ID, params.Now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	expiredIDs := make([]int64, 0)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		expiredIDs = append(expiredIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return &ActivatePublicationResult{
+		Publication:       publication,
+		ExpiredRequestIDs: expiredIDs,
+	}, nil
+}
+
+func (r *PublicationRepository) PublishPublication(
+	ctx context.Context,
+	params PublishPublicationParams,
 ) (*model.Publication, error) {
 	const query = `
 		UPDATE publications p
-		SET state = 'ACTIVE', activated_at = $2, updated_at = $2
+		SET state = 'PUBLISHED', updated_at = $2
 		FROM templates t
 		WHERE p.id = $1
 			AND p.template_id = t.id
@@ -333,6 +423,35 @@ func (r *PublicationRepository) ListAssignmentCandidates(
 	}
 
 	return candidates, nil
+}
+
+// GetAssignment loads one assignment by id, returning ErrAssignmentNotFound
+// when the row no longer exists.
+func (r *PublicationRepository) GetAssignment(
+	ctx context.Context,
+	id int64,
+) (*model.Assignment, error) {
+	const query = `
+		SELECT id, publication_id, user_id, template_shift_id, created_at
+		FROM assignments
+		WHERE id = $1;
+	`
+
+	assignment := &model.Assignment{}
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&assignment.ID,
+		&assignment.PublicationID,
+		&assignment.UserID,
+		&assignment.TemplateShiftID,
+		&assignment.CreatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrAssignmentNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return assignment, nil
 }
 
 func (r *PublicationRepository) ListPublicationAssignments(

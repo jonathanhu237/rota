@@ -1,8 +1,16 @@
+import { MoreHorizontal } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
-import type { RosterWeekday } from "@/lib/types"
+import type { Publication, RosterShift, RosterWeekday } from "@/lib/types"
 
 const weekdayKeys = {
   1: "templates.weekday.mon",
@@ -14,18 +22,38 @@ const weekdayKeys = {
   7: "templates.weekday.sun",
 } as const
 
+export type WeeklyRosterShiftAction =
+  | { type: "swap" }
+  | { type: "give_direct" }
+  | { type: "give_pool" }
+
+export type WeeklyRosterOwnShift = {
+  assignmentID: number
+  weekday: number
+  shift: RosterShift["shift"]
+}
+
 type WeeklyRosterProps = {
   weekdays: RosterWeekday[]
   currentUserID?: number
+  publication?: Publication | null
+  onShiftAction?: (shift: WeeklyRosterOwnShift, action: WeeklyRosterShiftAction) => void
 }
 
 export function WeeklyRoster({
   weekdays,
   currentUserID,
+  publication,
+  onShiftAction,
 }: WeeklyRosterProps) {
   const { t } = useTranslation()
   const today = new Date().getDay()
   const currentWeekday = today === 0 ? 7 : today
+
+  const canPropose =
+    publication?.state === "PUBLISHED" &&
+    typeof currentUserID === "number" &&
+    typeof onShiftAction === "function"
 
   return (
     <div className="overflow-x-auto">
@@ -71,18 +99,87 @@ export function WeeklyRoster({
                       </p>
                     ) : (
                       <div className="grid gap-2">
-                        {shift.assignments.map((assignment) => (
-                          <div
-                            key={`${shift.shift.id}-${assignment.user_id}`}
-                            className={cn(
-                              "rounded-lg border px-3 py-2 text-sm",
-                              assignment.user_id === currentUserID &&
-                                "border-primary/40 bg-primary/10 text-primary",
-                            )}
-                          >
-                            {assignment.name}
-                          </div>
-                        ))}
+                        {shift.assignments.map((assignment) => {
+                          const isMine =
+                            typeof currentUserID === "number" &&
+                            assignment.user_id === currentUserID
+                          const showActions = canPropose && isMine
+
+                          return (
+                            <div
+                              key={`${shift.shift.id}-${assignment.user_id}`}
+                              className={cn(
+                                "flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm",
+                                isMine &&
+                                  "border-primary/40 bg-primary/10 text-primary",
+                              )}
+                            >
+                              <span>{assignment.name}</span>
+                              {showActions && (
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger
+                                    render={
+                                      <Button
+                                        size="icon-xs"
+                                        variant="ghost"
+                                        aria-label={t("requests.actions.openMenu")}
+                                      />
+                                    }
+                                  >
+                                    <MoreHorizontal />
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        onShiftAction!(
+                                          {
+                                            assignmentID:
+                                              assignment.assignment_id,
+                                            weekday: weekday.weekday,
+                                            shift: shift.shift,
+                                          },
+                                          { type: "swap" },
+                                        )
+                                      }
+                                    >
+                                      {t("requests.actions.proposeSwap")}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        onShiftAction!(
+                                          {
+                                            assignmentID:
+                                              assignment.assignment_id,
+                                            weekday: weekday.weekday,
+                                            shift: shift.shift,
+                                          },
+                                          { type: "give_direct" },
+                                        )
+                                      }
+                                    >
+                                      {t("requests.actions.giveDirect")}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        onShiftAction!(
+                                          {
+                                            assignmentID:
+                                              assignment.assignment_id,
+                                            weekday: weekday.weekday,
+                                            shift: shift.shift,
+                                          },
+                                          { type: "give_pool" },
+                                        )
+                                      }
+                                    >
+                                      {t("requests.actions.givePool")}
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
                   </article>

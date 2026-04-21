@@ -146,11 +146,72 @@ func (s *PublicationService) ActivatePublication(
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
+	if model.ResolvePublicationState(publication, now) != model.PublicationStatePublished {
+		return nil, ErrPublicationNotPublished
+	}
+
+	result, err := s.publicationRepo.ActivatePublication(ctx, repository.ActivatePublicationParams{
+		ID:  publicationID,
+		Now: now,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		_, reloadErr := s.publicationRepo.GetByID(ctx, publicationID)
+		if reloadErr != nil {
+			return nil, mapPublicationRepositoryError(reloadErr)
+		}
+		return nil, ErrPublicationNotPublished
+	}
+	if err != nil {
+		return nil, mapPublicationRepositoryError(err)
+	}
+
+	updated := result.Publication
+	targetID := updated.ID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionPublicationActivate,
+		TargetType: audit.TargetTypePublication,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"name": updated.Name,
+		},
+	})
+
+	if len(result.ExpiredRequestIDs) > 0 {
+		audit.Record(ctx, audit.Event{
+			Action:     audit.ActionShiftChangeExpireBulk,
+			TargetType: audit.TargetTypePublication,
+			TargetID:   &targetID,
+			Metadata: map[string]any{
+				"expired_count":    len(result.ExpiredRequestIDs),
+				"publication_id":   targetID,
+			},
+		})
+	}
+
+	return publicationWithEffectiveState(updated, now), nil
+}
+
+// PublishPublication transitions an ASSIGNING publication to PUBLISHED.
+// After publishing, employees can see the roster and create shift-change
+// requests, but the assignments remain editable by the admin.
+func (s *PublicationService) PublishPublication(
+	ctx context.Context,
+	publicationID int64,
+) (*model.Publication, error) {
+	if publicationID <= 0 {
+		return nil, ErrInvalidInput
+	}
+
+	now := s.clock.Now()
+	publication, err := s.publicationRepo.GetByID(ctx, publicationID)
+	if err != nil {
+		return nil, mapPublicationRepositoryError(err)
+	}
 	if model.ResolvePublicationState(publication, now) != model.PublicationStateAssigning {
 		return nil, ErrPublicationNotAssigning
 	}
 
-	updated, err := s.publicationRepo.ActivatePublication(ctx, repository.ActivatePublicationParams{
+	updated, err := s.publicationRepo.PublishPublication(ctx, repository.PublishPublicationParams{
 		ID:  publicationID,
 		Now: now,
 	})
@@ -167,7 +228,7 @@ func (s *PublicationService) ActivatePublication(
 
 	targetID := updated.ID
 	audit.Record(ctx, audit.Event{
-		Action:     audit.ActionPublicationActivate,
+		Action:     audit.ActionPublicationPublish,
 		TargetType: audit.TargetTypePublication,
 		TargetID:   &targetID,
 		Metadata: map[string]any{
@@ -292,7 +353,8 @@ func (s *PublicationService) GetPublicationRoster(
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
-	if model.ResolvePublicationState(publication, now) != model.PublicationStateActive {
+	effective := model.ResolvePublicationState(publication, now)
+	if effective != model.PublicationStatePublished && effective != model.PublicationStateActive {
 		return nil, ErrPublicationNotActive
 	}
 
@@ -305,7 +367,14 @@ func (s *PublicationService) GetCurrentRoster(ctx context.Context) (*RosterResul
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
-	if publication == nil || model.ResolvePublicationState(publication, now) != model.PublicationStateActive {
+	if publication == nil {
+		return &RosterResult{
+			Publication: nil,
+			Weekdays:    make([]*RosterWeekdayResult, 0),
+		}, nil
+	}
+	effective := model.ResolvePublicationState(publication, now)
+	if effective != model.PublicationStatePublished && effective != model.PublicationStateActive {
 		return &RosterResult{
 			Publication: nil,
 			Weekdays:    make([]*RosterWeekdayResult, 0),

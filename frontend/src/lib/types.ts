@@ -62,6 +62,7 @@ export type PublicationState =
   | "DRAFT"
   | "COLLECTING"
   | "ASSIGNING"
+  | "PUBLISHED"
   | "ACTIVE"
   | "ENDED"
 
@@ -115,6 +116,7 @@ export type AssignmentBoard = {
 }
 
 export type RosterAssignment = {
+  assignment_id: number
   user_id: number
   name: string
 }
@@ -132,4 +134,34 @@ export type RosterWeekday = {
 export type Roster = {
   publication: Publication | null
   weekdays: RosterWeekday[]
+}
+
+export type ShiftChangeType = "swap" | "give_direct" | "give_pool"
+
+export type ShiftChangeState =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "cancelled"
+  | "expired"
+  | "invalidated"
+
+export type ShiftChangeRequest = {
+  id: number
+  publication_id: number
+  type: ShiftChangeType
+  requester_user_id: number
+  requester_assignment_id: number
+  counterpart_user_id: number | null
+  counterpart_assignment_id: number | null
+  state: ShiftChangeState
+  decided_by_user_id: number | null
+  created_at: string
+  decided_at: string | null
+  expires_at: string
+}
+
+export type PublicationMember = {
+  user_id: number
+  name: string
 }

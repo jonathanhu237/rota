@@ -27,6 +27,7 @@ type stubPublicationService struct {
 	createAssignmentFunc               func(ctx context.Context, input service.CreateAssignmentInput) (*model.Assignment, error)
 	deleteAssignmentFunc               func(ctx context.Context, input service.DeleteAssignmentInput) error
 	activatePublicationFunc            func(ctx context.Context, publicationID int64) (*model.Publication, error)
+	publishPublicationFunc             func(ctx context.Context, publicationID int64) (*model.Publication, error)
 	endPublicationFunc                 func(ctx context.Context, publicationID int64) (*model.Publication, error)
 	getPublicationRosterFunc           func(ctx context.Context, publicationID int64) (*service.RosterResult, error)
 	getCurrentRosterFunc               func(ctx context.Context) (*service.RosterResult, error)
@@ -90,6 +91,10 @@ func (s *stubPublicationService) ActivatePublication(ctx context.Context, public
 
 func (s *stubPublicationService) EndPublication(ctx context.Context, publicationID int64) (*model.Publication, error) {
 	return s.endPublicationFunc(ctx, publicationID)
+}
+
+func (s *stubPublicationService) PublishPublication(ctx context.Context, publicationID int64) (*model.Publication, error) {
+	return s.publishPublicationFunc(ctx, publicationID)
 }
 
 func (s *stubPublicationService) GetPublicationRoster(ctx context.Context, publicationID int64) (*service.RosterResult, error) {

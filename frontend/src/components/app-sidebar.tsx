@@ -9,6 +9,7 @@ import {
   FileText,
   Globe,
   Home,
+  Inbox,
   LogOut,
   Users,
 } from "lucide-react"
@@ -37,7 +38,10 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 import api from "@/lib/axios"
-import { currentUserQueryOptions } from "@/lib/queries"
+import {
+  currentUserQueryOptions,
+  unreadNotificationsQueryOptions,
+} from "@/lib/queries"
 
 export function AppSidebar() {
   const { t, i18n } = useTranslation()
@@ -46,6 +50,9 @@ export function AppSidebar() {
   const routerState = useRouterState()
 
   const { data: user } = useQuery(currentUserQueryOptions)
+  const unreadCountQuery = useQuery(unreadNotificationsQueryOptions)
+  const unreadCount = unreadCountQuery.data ?? 0
+  const showUnreadBadge = !unreadCountQuery.isLoading && unreadCount > 0
 
   const logoutMutation = useMutation({
     mutationFn: () => api.post("/auth/logout"),
@@ -59,7 +66,14 @@ export function AppSidebar() {
     void i18n.changeLanguage(i18n.resolvedLanguage === "zh" ? "en" : "zh")
   }
 
-  const navItems = [
+  type NavItem = {
+    title: string
+    url: string
+    icon: typeof Home
+    badge?: number
+  }
+
+  const navItems: NavItem[] = [
     {
       title: t("sidebar.dashboard"),
       url: "/",
@@ -74,6 +88,12 @@ export function AppSidebar() {
       title: t("sidebar.availability"),
       url: "/availability",
       icon: CalendarCheck,
+    },
+    {
+      title: t("sidebar.requests"),
+      url: "/requests",
+      icon: Inbox,
+      badge: showUnreadBadge ? unreadCount : undefined,
     },
   ]
 
@@ -144,6 +164,14 @@ export function AppSidebar() {
                   >
                     <item.icon />
                     <span>{item.title}</span>
+                    {item.badge !== undefined && item.badge > 0 && (
+                      <span
+                        data-testid={`sidebar-badge-${item.url}`}
+                        className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground"
+                      >
+                        {item.badge}
+                      </span>
+                    )}
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}

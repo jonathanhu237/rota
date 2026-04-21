@@ -11,6 +11,7 @@ describe("getPublicationStateTranslationKey", () => {
     ["DRAFT", "publications.state.draft"],
     ["COLLECTING", "publications.state.collecting"],
     ["ASSIGNING", "publications.state.assigning"],
+    ["PUBLISHED", "publications.state.published"],
     ["ACTIVE", "publications.state.active"],
     ["ENDED", "publications.state.ended"],
   ] satisfies [PublicationState, string][])(
@@ -25,7 +26,8 @@ describe("getPublicationLifecycleAction", () => {
   it.each([
     ["DRAFT", null],
     ["COLLECTING", null],
-    ["ASSIGNING", "activate"],
+    ["ASSIGNING", "publish"],
+    ["PUBLISHED", "activate"],
     ["ACTIVE", "end"],
     ["ENDED", null],
   ] satisfies [PublicationState, string | null][])(

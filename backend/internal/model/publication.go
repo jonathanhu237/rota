@@ -12,6 +12,7 @@ var (
 	ErrPublicationNotDeletable  = errors.New("publication not deletable")
 	ErrPublicationNotCollecting = errors.New("publication not collecting")
 	ErrPublicationNotAssigning  = errors.New("publication not assigning")
+	ErrPublicationNotPublished  = errors.New("publication not published")
 	ErrPublicationNotActive     = errors.New("publication not active")
 	ErrNotQualified             = errors.New("not qualified")
 )
@@ -22,6 +23,7 @@ const (
 	PublicationStateDraft      PublicationState = "DRAFT"
 	PublicationStateCollecting PublicationState = "COLLECTING"
 	PublicationStateAssigning  PublicationState = "ASSIGNING"
+	PublicationStatePublished  PublicationState = "PUBLISHED"
 	PublicationStateActive     PublicationState = "ACTIVE"
 	PublicationStateEnded      PublicationState = "ENDED"
 )
@@ -55,7 +57,7 @@ func ResolvePublicationState(publication *Publication, now time.Time) Publicatio
 	}
 
 	switch publication.State {
-	case PublicationStateActive, PublicationStateEnded:
+	case PublicationStatePublished, PublicationStateActive, PublicationStateEnded:
 		return publication.State
 	case "":
 		return PublicationStateDraft

@@ -313,23 +313,14 @@ func TestPublicationServiceDeleteAssignment(t *testing.T) {
 }
 
 func TestPublicationServiceActivatePublication(t *testing.T) {
-	t.Run("activates assigning publication and sets activated_at", func(t *testing.T) {
+	t.Run("activates published publication and sets activated_at", func(t *testing.T) {
 		t.Parallel()
 
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
 		repo := newPublicationRepositoryStatefulMock()
-		repo.publications[1] = &model.Publication{
-			ID:                1,
-			TemplateID:        1,
-			TemplateName:      "Core Week",
-			Name:              "April Coverage",
-			State:             model.PublicationStateAssigning,
-			SubmissionStartAt: now.Add(-72 * time.Hour),
-			SubmissionEndAt:   now.Add(-48 * time.Hour),
-			PlannedActiveFrom: now.Add(-24 * time.Hour),
-			CreatedAt:         now.Add(-96 * time.Hour),
-			UpdatedAt:         now.Add(-48 * time.Hour),
-		}
+		pub := publishedPublication(now)
+		pub.Name = "April Coverage"
+		repo.publications[1] = pub
 		service := NewPublicationService(repo, fixedClock{now: now})
 
 		stub := audittest.New()
@@ -361,27 +352,7 @@ func TestPublicationServiceActivatePublication(t *testing.T) {
 		}
 	})
 
-	t.Run("works when stored state lags behind effective assigning", func(t *testing.T) {
-		t.Parallel()
-
-		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
-		repo := newPublicationRepositoryStatefulMock()
-		repo.publications[1] = assigningPublication(now)
-		service := NewPublicationService(repo, fixedClock{now: now})
-
-		publication, err := service.ActivatePublication(context.Background(), 1)
-		if err != nil {
-			t.Fatalf("ActivatePublication returned error: %v", err)
-		}
-		if publication.State != model.PublicationStateActive {
-			t.Fatalf("expected active state, got %s", publication.State)
-		}
-		if repo.publications[1].State != model.PublicationStateActive {
-			t.Fatalf("expected stored state to become active, got %s", repo.publications[1].State)
-		}
-	})
-
-	t.Run("rejects non-assigning effective states", func(t *testing.T) {
+	t.Run("rejects non-published effective states", func(t *testing.T) {
 		t.Parallel()
 
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
@@ -391,6 +362,7 @@ func TestPublicationServiceActivatePublication(t *testing.T) {
 		}{
 			{name: "draft", publication: draftPublication(now)},
 			{name: "collecting", publication: collectingPublication(now)},
+			{name: "assigning", publication: assigningPublication(now)},
 			{name: "active", publication: activePublication(now)},
 			{name: "ended", publication: endedPublication(now)},
 		}
@@ -403,10 +375,60 @@ func TestPublicationServiceActivatePublication(t *testing.T) {
 				service := NewPublicationService(repo, fixedClock{now: now})
 
 				_, err := service.ActivatePublication(context.Background(), 1)
-				if !errors.Is(err, ErrPublicationNotAssigning) {
-					t.Fatalf("expected ErrPublicationNotAssigning, got %v", err)
+				if !errors.Is(err, ErrPublicationNotPublished) {
+					t.Fatalf("expected ErrPublicationNotPublished, got %v", err)
 				}
 			})
+		}
+	})
+
+	t.Run("expires pending shift-change requests and emits aggregate audit event", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+		repo := newPublicationRepositoryStatefulMock()
+		repo.publications[1] = publishedPublication(now)
+		decidedAt := now.Add(-time.Hour)
+		repo.shiftChangeRequests[10] = &model.ShiftChangeRequest{
+			ID:                    10,
+			PublicationID:         1,
+			Type:                  model.ShiftChangeTypeSwap,
+			RequesterUserID:       7,
+			RequesterAssignmentID: 11,
+			State:                 model.ShiftChangeStatePending,
+			ExpiresAt:             now.Add(24 * time.Hour),
+		}
+		repo.shiftChangeRequests[11] = &model.ShiftChangeRequest{
+			ID:                    11,
+			PublicationID:         1,
+			Type:                  model.ShiftChangeTypeGivePool,
+			RequesterUserID:       7,
+			RequesterAssignmentID: 12,
+			State:                 model.ShiftChangeStateApproved,
+			ExpiresAt:             now.Add(24 * time.Hour),
+			DecidedAt:             &decidedAt,
+		}
+		service := NewPublicationService(repo, fixedClock{now: now})
+
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		if _, err := service.ActivatePublication(ctx, 1); err != nil {
+			t.Fatalf("ActivatePublication returned error: %v", err)
+		}
+		if repo.shiftChangeRequests[10].State != model.ShiftChangeStateExpired {
+			t.Fatalf("expected pending request to expire, got %s", repo.shiftChangeRequests[10].State)
+		}
+		if repo.shiftChangeRequests[11].State != model.ShiftChangeStateApproved {
+			t.Fatalf("expected already-decided request to stay approved, got %s", repo.shiftChangeRequests[11].State)
+		}
+
+		event := stub.FindByAction(audit.ActionShiftChangeExpireBulk)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionShiftChangeExpireBulk, stub.Actions())
+		}
+		if got := event.Metadata["expired_count"]; got != 1 {
+			t.Fatalf("expected expired_count=1, got %v", got)
 		}
 	})
 
@@ -661,6 +683,21 @@ func assigningPublication(now time.Time) *model.Publication {
 		PlannedActiveFrom: now.Add(24 * time.Hour),
 		CreatedAt:         now.Add(-96 * time.Hour),
 		UpdatedAt:         now.Add(-48 * time.Hour),
+	}
+}
+
+func publishedPublication(now time.Time) *model.Publication {
+	return &model.Publication{
+		ID:                1,
+		TemplateID:        1,
+		TemplateName:      "Core Week",
+		Name:              "Published",
+		State:             model.PublicationStatePublished,
+		SubmissionStartAt: now.Add(-72 * time.Hour),
+		SubmissionEndAt:   now.Add(-48 * time.Hour),
+		PlannedActiveFrom: now.Add(24 * time.Hour),
+		CreatedAt:         now.Add(-96 * time.Hour),
+		UpdatedAt:         now.Add(-2 * time.Hour),
 	}
 }
 

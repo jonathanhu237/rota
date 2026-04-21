@@ -15,6 +15,7 @@ import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedRosterRouteImport } from './routes/_authenticated/roster'
+import { Route as AuthenticatedRequestsRouteImport } from './routes/_authenticated/requests'
 import { Route as AuthenticatedAvailabilityRouteImport } from './routes/_authenticated/availability'
 import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
 import { Route as AuthenticatedTemplatesIndexRouteImport } from './routes/_authenticated/templates/index'
@@ -22,6 +23,7 @@ import { Route as AuthenticatedPublicationsIndexRouteImport } from './routes/_au
 import { Route as AuthenticatedPositionsIndexRouteImport } from './routes/_authenticated/positions/index'
 import { Route as AuthenticatedTemplatesTemplateIdRouteImport } from './routes/_authenticated/templates/$templateId'
 import { Route as AuthenticatedPublicationsPublicationIdRouteImport } from './routes/_authenticated/publications/$publicationId'
+import { Route as AuthenticatedPublicationsPublicationIdShiftChangesRouteImport } from './routes/_authenticated/publications/$publicationId/shift-changes'
 import { Route as AuthenticatedPublicationsPublicationIdAssignmentsRouteImport } from './routes/_authenticated/publications/$publicationId/assignments'
 
 const SetupPasswordRoute = SetupPasswordRouteImport.update({
@@ -51,6 +53,11 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
 const AuthenticatedRosterRoute = AuthenticatedRosterRouteImport.update({
   id: '/roster',
   path: '/roster',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedRequestsRoute = AuthenticatedRequestsRouteImport.update({
+  id: '/requests',
+  path: '/requests',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedAvailabilityRoute =
@@ -94,6 +101,12 @@ const AuthenticatedPublicationsPublicationIdRoute =
     path: '/publications/$publicationId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedPublicationsPublicationIdShiftChangesRoute =
+  AuthenticatedPublicationsPublicationIdShiftChangesRouteImport.update({
+    id: '/shift-changes',
+    path: '/shift-changes',
+    getParentRoute: () => AuthenticatedPublicationsPublicationIdRoute,
+  } as any)
 const AuthenticatedPublicationsPublicationIdAssignmentsRoute =
   AuthenticatedPublicationsPublicationIdAssignmentsRouteImport.update({
     id: '/assignments',
@@ -107,6 +120,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/setup-password': typeof SetupPasswordRoute
   '/availability': typeof AuthenticatedAvailabilityRoute
+  '/requests': typeof AuthenticatedRequestsRoute
   '/roster': typeof AuthenticatedRosterRoute
   '/publications/$publicationId': typeof AuthenticatedPublicationsPublicationIdRouteWithChildren
   '/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRoute
@@ -115,12 +129,14 @@ export interface FileRoutesByFullPath {
   '/templates/': typeof AuthenticatedTemplatesIndexRoute
   '/users/': typeof AuthenticatedUsersIndexRoute
   '/publications/$publicationId/assignments': typeof AuthenticatedPublicationsPublicationIdAssignmentsRoute
+  '/publications/$publicationId/shift-changes': typeof AuthenticatedPublicationsPublicationIdShiftChangesRoute
 }
 export interface FileRoutesByTo {
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/setup-password': typeof SetupPasswordRoute
   '/availability': typeof AuthenticatedAvailabilityRoute
+  '/requests': typeof AuthenticatedRequestsRoute
   '/roster': typeof AuthenticatedRosterRoute
   '/': typeof AuthenticatedIndexRoute
   '/publications/$publicationId': typeof AuthenticatedPublicationsPublicationIdRouteWithChildren
@@ -130,6 +146,7 @@ export interface FileRoutesByTo {
   '/templates': typeof AuthenticatedTemplatesIndexRoute
   '/users': typeof AuthenticatedUsersIndexRoute
   '/publications/$publicationId/assignments': typeof AuthenticatedPublicationsPublicationIdAssignmentsRoute
+  '/publications/$publicationId/shift-changes': typeof AuthenticatedPublicationsPublicationIdShiftChangesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -138,6 +155,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/setup-password': typeof SetupPasswordRoute
   '/_authenticated/availability': typeof AuthenticatedAvailabilityRoute
+  '/_authenticated/requests': typeof AuthenticatedRequestsRoute
   '/_authenticated/roster': typeof AuthenticatedRosterRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/publications/$publicationId': typeof AuthenticatedPublicationsPublicationIdRouteWithChildren
@@ -147,6 +165,7 @@ export interface FileRoutesById {
   '/_authenticated/templates/': typeof AuthenticatedTemplatesIndexRoute
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
   '/_authenticated/publications/$publicationId/assignments': typeof AuthenticatedPublicationsPublicationIdAssignmentsRoute
+  '/_authenticated/publications/$publicationId/shift-changes': typeof AuthenticatedPublicationsPublicationIdShiftChangesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -156,6 +175,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup-password'
     | '/availability'
+    | '/requests'
     | '/roster'
     | '/publications/$publicationId'
     | '/templates/$templateId'
@@ -164,12 +184,14 @@ export interface FileRouteTypes {
     | '/templates/'
     | '/users/'
     | '/publications/$publicationId/assignments'
+    | '/publications/$publicationId/shift-changes'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/forgot-password'
     | '/login'
     | '/setup-password'
     | '/availability'
+    | '/requests'
     | '/roster'
     | '/'
     | '/publications/$publicationId'
@@ -179,6 +201,7 @@ export interface FileRouteTypes {
     | '/templates'
     | '/users'
     | '/publications/$publicationId/assignments'
+    | '/publications/$publicationId/shift-changes'
   id:
     | '__root__'
     | '/_authenticated'
@@ -186,6 +209,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup-password'
     | '/_authenticated/availability'
+    | '/_authenticated/requests'
     | '/_authenticated/roster'
     | '/_authenticated/'
     | '/_authenticated/publications/$publicationId'
@@ -195,6 +219,7 @@ export interface FileRouteTypes {
     | '/_authenticated/templates/'
     | '/_authenticated/users/'
     | '/_authenticated/publications/$publicationId/assignments'
+    | '/_authenticated/publications/$publicationId/shift-changes'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -248,6 +273,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRosterRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/requests': {
+      id: '/_authenticated/requests'
+      path: '/requests'
+      fullPath: '/requests'
+      preLoaderRoute: typeof AuthenticatedRequestsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/availability': {
       id: '/_authenticated/availability'
       path: '/availability'
@@ -297,6 +329,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPublicationsPublicationIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/publications/$publicationId/shift-changes': {
+      id: '/_authenticated/publications/$publicationId/shift-changes'
+      path: '/shift-changes'
+      fullPath: '/publications/$publicationId/shift-changes'
+      preLoaderRoute: typeof AuthenticatedPublicationsPublicationIdShiftChangesRouteImport
+      parentRoute: typeof AuthenticatedPublicationsPublicationIdRoute
+    }
     '/_authenticated/publications/$publicationId/assignments': {
       id: '/_authenticated/publications/$publicationId/assignments'
       path: '/assignments'
@@ -309,12 +348,15 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedPublicationsPublicationIdRouteChildren {
   AuthenticatedPublicationsPublicationIdAssignmentsRoute: typeof AuthenticatedPublicationsPublicationIdAssignmentsRoute
+  AuthenticatedPublicationsPublicationIdShiftChangesRoute: typeof AuthenticatedPublicationsPublicationIdShiftChangesRoute
 }
 
 const AuthenticatedPublicationsPublicationIdRouteChildren: AuthenticatedPublicationsPublicationIdRouteChildren =
   {
     AuthenticatedPublicationsPublicationIdAssignmentsRoute:
       AuthenticatedPublicationsPublicationIdAssignmentsRoute,
+    AuthenticatedPublicationsPublicationIdShiftChangesRoute:
+      AuthenticatedPublicationsPublicationIdShiftChangesRoute,
   }
 
 const AuthenticatedPublicationsPublicationIdRouteWithChildren =
@@ -324,6 +366,7 @@ const AuthenticatedPublicationsPublicationIdRouteWithChildren =
 
 interface AuthenticatedRouteChildren {
   AuthenticatedAvailabilityRoute: typeof AuthenticatedAvailabilityRoute
+  AuthenticatedRequestsRoute: typeof AuthenticatedRequestsRoute
   AuthenticatedRosterRoute: typeof AuthenticatedRosterRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedPublicationsPublicationIdRoute: typeof AuthenticatedPublicationsPublicationIdRouteWithChildren
@@ -336,6 +379,7 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAvailabilityRoute: AuthenticatedAvailabilityRoute,
+  AuthenticatedRequestsRoute: AuthenticatedRequestsRoute,
   AuthenticatedRosterRoute: AuthenticatedRosterRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedPublicationsPublicationIdRoute:

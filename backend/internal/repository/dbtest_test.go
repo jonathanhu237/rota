@@ -82,6 +82,7 @@ func resetIntegrationDB(ctx context.Context, db *sql.DB) error {
 	const query = `
 		TRUNCATE TABLE
 			audit_logs,
+			shift_change_requests,
 			assignments,
 			availability_submissions,
 			publications,

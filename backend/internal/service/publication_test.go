@@ -35,6 +35,7 @@ type publicationRepositoryStatefulMock struct {
 	submissions           map[string]*model.AvailabilitySubmission
 	assignments           map[string]*model.Assignment
 	qualifiedByUser       map[int64]map[int64]struct{}
+	shiftChangeRequests   map[int64]*model.ShiftChangeRequest
 }
 
 func newPublicationRepositoryStatefulMock() *publicationRepositoryStatefulMock {
@@ -98,6 +99,7 @@ func newPublicationRepositoryStatefulMock() *publicationRepositoryStatefulMock {
 				101: {},
 			},
 		},
+		shiftChangeRequests: make(map[int64]*model.ShiftChangeRequest),
 	}
 }
 
@@ -452,17 +454,49 @@ func (m *publicationRepositoryStatefulMock) ReplaceAssignments(
 func (m *publicationRepositoryStatefulMock) ActivatePublication(
 	ctx context.Context,
 	params repository.ActivatePublicationParams,
-) (*model.Publication, error) {
+) (*repository.ActivatePublicationResult, error) {
 	publication, ok := m.publications[params.ID]
 	if !ok {
 		return nil, repository.ErrPublicationNotFound
 	}
-	if publication.State == model.PublicationStateActive || publication.State == model.PublicationStateEnded {
+	if publication.State != model.PublicationStatePublished {
 		return nil, sql.ErrNoRows
 	}
 
 	publication.State = model.PublicationStateActive
 	publication.ActivatedAt = &params.Now
+	publication.UpdatedAt = params.Now
+
+	expiredIDs := make([]int64, 0)
+	for id, req := range m.shiftChangeRequests {
+		if req.PublicationID == params.ID && req.State == model.ShiftChangeStatePending {
+			req.State = model.ShiftChangeStateExpired
+			req.DecidedAt = &params.Now
+			expiredIDs = append(expiredIDs, id)
+		}
+	}
+
+	return &repository.ActivatePublicationResult{
+		Publication:       clonePublication(publication),
+		ExpiredRequestIDs: expiredIDs,
+	}, nil
+}
+
+func (m *publicationRepositoryStatefulMock) PublishPublication(
+	ctx context.Context,
+	params repository.PublishPublicationParams,
+) (*model.Publication, error) {
+	publication, ok := m.publications[params.ID]
+	if !ok {
+		return nil, repository.ErrPublicationNotFound
+	}
+	if publication.State == model.PublicationStatePublished ||
+		publication.State == model.PublicationStateActive ||
+		publication.State == model.PublicationStateEnded {
+		return nil, sql.ErrNoRows
+	}
+
+	publication.State = model.PublicationStatePublished
 	publication.UpdatedAt = params.Now
 
 	return clonePublication(publication), nil

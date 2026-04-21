@@ -25,6 +25,7 @@ type publicationService interface {
 	CreateAssignment(ctx context.Context, input service.CreateAssignmentInput) (*model.Assignment, error)
 	DeleteAssignment(ctx context.Context, input service.DeleteAssignmentInput) error
 	ActivatePublication(ctx context.Context, publicationID int64) (*model.Publication, error)
+	PublishPublication(ctx context.Context, publicationID int64) (*model.Publication, error)
 	EndPublication(ctx context.Context, publicationID int64) (*model.Publication, error)
 	GetPublicationRoster(ctx context.Context, publicationID int64) (*service.RosterResult, error)
 	GetCurrentRoster(ctx context.Context) (*service.RosterResult, error)
@@ -405,6 +406,24 @@ func (h *PublicationHandler) Activate(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *PublicationHandler) Publish(w http.ResponseWriter, r *http.Request) {
+	publicationID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	publication, err := h.publicationService.PublishPublication(r.Context(), publicationID)
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, publicationDetailResponse{
+		Publication: newPublicationResponse(publication),
+	})
+}
+
 func (h *PublicationHandler) End(w http.ResponseWriter, r *http.Request) {
 	publicationID, err := parsePathID(r, "id")
 	if err != nil {
@@ -538,6 +557,8 @@ func (h *PublicationHandler) writePublicationServiceError(w http.ResponseWriter,
 		writeError(w, http.StatusConflict, "PUBLICATION_NOT_COLLECTING", "Publication is not collecting submissions")
 	case errors.Is(err, service.ErrPublicationNotAssigning):
 		writeError(w, http.StatusConflict, "PUBLICATION_NOT_ASSIGNING", "Publication is not assigning")
+	case errors.Is(err, service.ErrPublicationNotPublished):
+		writeError(w, http.StatusConflict, "PUBLICATION_NOT_PUBLISHED", "Publication is not published")
 	case errors.Is(err, service.ErrPublicationNotActive):
 		writeError(w, http.StatusConflict, "PUBLICATION_NOT_ACTIVE", "Publication is not active")
 	case errors.Is(err, service.ErrTemplateNotFound):

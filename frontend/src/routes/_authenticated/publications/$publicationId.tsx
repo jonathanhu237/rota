@@ -8,6 +8,7 @@ import { ActivatePublicationDialog } from "@/components/publications/activate-pu
 import { DeletePublicationDialog } from "@/components/publications/delete-publication-dialog"
 import { EndPublicationDialog } from "@/components/publications/end-publication-dialog"
 import { PublicationStateBadge } from "@/components/publications/publication-state-badge"
+import { PublishPublicationDialog } from "@/components/publications/publish-publication-dialog"
 import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Card,
@@ -26,6 +27,7 @@ import {
   deletePublication,
   endPublication,
   publicationQueryOptions,
+  publishPublication,
 } from "@/lib/queries"
 
 export const Route = createFileRoute("/_authenticated/publications/$publicationId")({
@@ -48,6 +50,7 @@ function PublicationDetailPage() {
   const { toast } = useToast()
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false)
   const [isActivateDialogOpen, setIsActivateDialogOpen] = useState(false)
   const [isEndDialogOpen, setIsEndDialogOpen] = useState(false)
 
@@ -113,6 +116,29 @@ function PublicationDetailPage() {
     ])
   }
 
+  const publishPublicationMutation = useMutation({
+    mutationFn: () => publishPublication(numericPublicationID),
+    onSuccess: async () => {
+      setIsPublishDialogOpen(false)
+      await invalidatePublicationState()
+      toast({
+        variant: "default",
+        description: t("publications.success.published"),
+      })
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        description: getTranslatedApiError(
+          t,
+          error,
+          "publications.errors",
+          "publications.errors.INTERNAL_ERROR",
+        ),
+      })
+    },
+  })
+
   const activatePublicationMutation = useMutation({
     mutationFn: () => activatePublication(numericPublicationID),
     onSuccess: async () => {
@@ -175,6 +201,8 @@ function PublicationDetailPage() {
         })
       case "ASSIGNING":
         return t("publications.detail.stateDescription.assigning")
+      case "PUBLISHED":
+        return t("publications.detail.stateDescription.published")
       case "ACTIVE":
         return t("publications.detail.stateDescription.active", {
           time: formatTimestamp(publication.activated_at),
@@ -223,6 +251,7 @@ function PublicationDetailPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               {(publication.state === "ASSIGNING" ||
+                publication.state === "PUBLISHED" ||
                 publication.state === "ACTIVE") && (
                 <Link
                   className={buttonVariants({ variant: "outline" })}
@@ -231,6 +260,21 @@ function PublicationDetailPage() {
                 >
                   {t("publications.actions.openAssignmentBoard")}
                 </Link>
+              )}
+              {(publication.state === "PUBLISHED" ||
+                publication.state === "ACTIVE") && (
+                <Link
+                  className={buttonVariants({ variant: "outline" })}
+                  params={{ publicationId: String(publication.id) }}
+                  to="/publications/$publicationId/shift-changes"
+                >
+                  {t("publications.actions.viewShiftChanges")}
+                </Link>
+              )}
+              {lifecycleAction === "publish" && (
+                <Button onClick={() => setIsPublishDialogOpen(true)}>
+                  {t("publications.actions.publish")}
+                </Button>
               )}
               {lifecycleAction === "activate" && (
                 <Button onClick={() => setIsActivateDialogOpen(true)}>
@@ -318,6 +362,13 @@ function PublicationDetailPage() {
         isPending={deletePublicationMutation.isPending}
         onConfirm={() => deletePublicationMutation.mutate()}
         onOpenChange={setIsDeleteDialogOpen}
+      />
+      <PublishPublicationDialog
+        open={isPublishDialogOpen}
+        publication={publication}
+        isPending={publishPublicationMutation.isPending}
+        onConfirm={() => publishPublicationMutation.mutate()}
+        onOpenChange={setIsPublishDialogOpen}
       />
       <ActivatePublicationDialog
         open={isActivateDialogOpen}

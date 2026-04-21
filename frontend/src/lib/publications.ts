@@ -8,6 +8,8 @@ export function getPublicationStateTranslationKey(state: PublicationState) {
       return "publications.state.collecting"
     case "ASSIGNING":
       return "publications.state.assigning"
+    case "PUBLISHED":
+      return "publications.state.published"
     case "ACTIVE":
       return "publications.state.active"
     case "ENDED":
@@ -15,13 +17,15 @@ export function getPublicationStateTranslationKey(state: PublicationState) {
   }
 }
 
-export type PublicationLifecycleAction = "activate" | "end"
+export type PublicationLifecycleAction = "publish" | "activate" | "end"
 
 export function getPublicationLifecycleAction(
   state: PublicationState,
 ): PublicationLifecycleAction | null {
   switch (state) {
     case "ASSIGNING":
+      return "publish"
+    case "PUBLISHED":
       return "activate"
     case "ACTIVE":
       return "end"

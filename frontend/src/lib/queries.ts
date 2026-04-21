@@ -7,6 +7,9 @@ import type {
   Pagination,
   Position,
   Publication,
+  PublicationMember,
+  ShiftChangeRequest,
+  ShiftChangeType,
   Template,
   TemplateDetail,
   TemplateShift,
@@ -480,6 +483,10 @@ export async function activatePublication(publicationID: number) {
   await api.post(`/publications/${publicationID}/activate`)
 }
 
+export async function publishPublication(publicationID: number) {
+  await api.post(`/publications/${publicationID}/publish`)
+}
+
 export async function endPublication(publicationID: number) {
   await api.post(`/publications/${publicationID}/end`)
 }
@@ -523,4 +530,99 @@ export async function deleteAvailabilitySubmission(
   shiftID: number,
 ) {
   await api.delete(`/publications/${publicationID}/submissions/${shiftID}`)
+}
+
+export type ShiftChangeRequestResponse = {
+  request: ShiftChangeRequest
+}
+
+export type ShiftChangeRequestListResponse = {
+  requests: ShiftChangeRequest[]
+}
+
+export type PublicationMembersResponse = {
+  members: PublicationMember[]
+}
+
+export type UnreadCountResponse = {
+  count: number
+}
+
+export type CreateShiftChangeInput = {
+  type: ShiftChangeType
+  requester_assignment_id: number
+  counterpart_user_id?: number | null
+  counterpart_assignment_id?: number | null
+}
+
+export const shiftChangeRequestsQueryOptions = (publicationID: number) =>
+  queryOptions({
+    queryKey: ["publications", publicationID, "shift-changes"] as const,
+    queryFn: async () => {
+      const res = await api.get<ShiftChangeRequestListResponse>(
+        `/publications/${publicationID}/shift-changes`,
+      )
+      return res.data.requests
+    },
+    enabled: publicationID > 0,
+  })
+
+export const publicationMembersQueryOptions = (publicationID: number) =>
+  queryOptions({
+    queryKey: ["publications", publicationID, "members"] as const,
+    queryFn: async () => {
+      const res = await api.get<PublicationMembersResponse>(
+        `/publications/${publicationID}/members`,
+      )
+      return res.data.members
+    },
+    enabled: publicationID > 0,
+  })
+
+export const unreadNotificationsQueryOptions = queryOptions({
+  queryKey: ["me", "notifications", "unread-count"] as const,
+  queryFn: async () => {
+    const res = await api.get<UnreadCountResponse>(
+      "/users/me/notifications/unread-count",
+    )
+    return res.data.count
+  },
+})
+
+export async function createShiftChangeRequest(
+  publicationID: number,
+  input: CreateShiftChangeInput,
+) {
+  const res = await api.post<ShiftChangeRequestResponse>(
+    `/publications/${publicationID}/shift-changes`,
+    input,
+  )
+  return res.data.request
+}
+
+export async function approveShiftChangeRequest(
+  publicationID: number,
+  requestID: number,
+) {
+  await api.post(
+    `/publications/${publicationID}/shift-changes/${requestID}/approve`,
+  )
+}
+
+export async function rejectShiftChangeRequest(
+  publicationID: number,
+  requestID: number,
+) {
+  await api.post(
+    `/publications/${publicationID}/shift-changes/${requestID}/reject`,
+  )
+}
+
+export async function cancelShiftChangeRequest(
+  publicationID: number,
+  requestID: number,
+) {
+  await api.post(
+    `/publications/${publicationID}/shift-changes/${requestID}/cancel`,
+  )
 }

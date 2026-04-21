@@ -35,9 +35,16 @@ const (
 
 	ActionPublicationCreate     = "publication.create"
 	ActionPublicationDelete     = "publication.delete"
+	ActionPublicationPublish    = "publication.publish"
 	ActionPublicationActivate   = "publication.activate"
 	ActionPublicationEnd        = "publication.end"
 	ActionPublicationAutoAssign = "publication.auto_assign"
+
+	ActionShiftChangeCreate      = "shift_change.create"
+	ActionShiftChangeApprove     = "shift_change.approve"
+	ActionShiftChangeReject      = "shift_change.reject"
+	ActionShiftChangeCancel      = "shift_change.cancel"
+	ActionShiftChangeExpireBulk  = "shift_change.expire.bulk"
 
 	ActionSubmissionCreate = "submission.create"
 	ActionSubmissionDelete = "submission.delete"
@@ -61,6 +68,7 @@ const (
 	TargetTypePublication            = "publication"
 	TargetTypeAvailabilitySubmission = "availability_submission"
 	TargetTypeAssignment             = "assignment"
+	TargetTypeShiftChangeRequest     = "shift_change_request"
 )
 
 // Event captures a single audit record. Actor and ActorIP are taken from

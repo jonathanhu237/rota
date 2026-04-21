@@ -89,6 +89,7 @@
     "dashboard": "Dashboard",
     "roster": "Roster",
     "availability": "Availability",
+    "requests": "Requests",
     "users": "Users",
     "positions": "Positions",
     "templates": "Templates",
@@ -400,6 +401,7 @@
       "draft": "Draft",
       "collecting": "Collecting",
       "assigning": "Assigning",
+      "published": "Published",
       "active": "Active",
       "ended": "Ended"
     },
@@ -429,20 +431,30 @@
         "draft": "Submissions open at {{time}}.",
         "collecting": "Submissions remain open until {{time}}.",
         "assigning": "Submissions are closed. Review candidates and assign the weekly roster.",
+        "published": "The roster is visible to employees. They can propose shift changes until you activate.",
         "active": "This publication became active at {{time}}.",
         "ended": "This publication ended at {{time}}."
       }
     },
     "actions": {
       "delete": "Delete Publication",
+      "publish": "Publish",
       "activate": "Activate",
       "end": "End",
       "openAssignmentBoard": "Open Assignment Board",
+      "viewShiftChanges": "View Shift Changes",
       "viewExisting": "View it"
+    },
+    "publishDialog": {
+      "title": "Publish publication",
+      "description": "Publishing makes the schedule visible to employees and lets them propose shift changes. Continue?",
+      "confirm": "Publish Publication",
+      "cancel": "Cancel",
+      "submitting": "Publishing..."
     },
     "activateDialog": {
       "title": "Activate publication",
-      "description": "Activate {{name}} now? Assignment changes will be locked after activation.",
+      "description": "Activating will lock the schedule. Any pending shift-change requests will expire. Continue?",
       "confirm": "Activate Publication",
       "submitting": "Activating..."
     },
@@ -458,6 +470,41 @@
       "confirm": "Delete Publication",
       "submitting": "Deleting..."
     },
+    "shiftChanges": {
+      "title": "Shift Change Requests",
+      "description": "Admin read-only view of shift change requests for {{name}}.",
+      "backToPublication": "Back to publication",
+      "loadError": "The shift change requests could not be loaded right now.",
+      "empty": "No shift change requests to show.",
+      "filter": {
+        "label": "State:",
+        "all": "All",
+        "pending": "Pending",
+        "decided": "Decided"
+      },
+      "table": {
+        "id": "ID",
+        "type": "Type",
+        "requester": "Requester",
+        "counterpart": "Counterpart",
+        "state": "State",
+        "createdAt": "Created",
+        "decidedAt": "Decided"
+      },
+      "requestType": {
+        "swap": "Swap",
+        "give_direct": "Give (direct)",
+        "give_pool": "Give (pool)"
+      },
+      "state": {
+        "pending": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "cancelled": "Cancelled",
+        "expired": "Expired",
+        "invalidated": "Invalidated"
+      }
+    },
     "validation": {
       "templateRequired": "Template is required",
       "nameRequired": "Name is required",
@@ -470,6 +517,7 @@
     "success": {
       "created": "Publication created successfully.",
       "deleted": "Publication deleted successfully.",
+      "published": "Publication published successfully.",
       "activated": "Publication activated successfully.",
       "ended": "Publication ended successfully."
     },
@@ -483,6 +531,7 @@
       "PUBLICATION_NOT_ASSIGNING": "This publication is not accepting assignment changes right now.",
       "PUBLICATION_NOT_COLLECTING": "This publication is not collecting availability right now.",
       "PUBLICATION_NOT_DELETABLE": "Only draft publications can be deleted.",
+      "PUBLICATION_NOT_PUBLISHED": "This publication is not published right now.",
       "PUBLICATION_NOT_FOUND": "Publication not found",
       "TEMPLATE_NOT_FOUND": "Template not found",
       "TEMPLATE_SHIFT_NOT_FOUND": "Template shift not found",
@@ -556,6 +605,108 @@
       "PUBLICATION_NOT_COLLECTING": "Availability can only be changed while submissions are open.",
       "PUBLICATION_NOT_FOUND": "Publication not found",
       "TEMPLATE_SHIFT_NOT_FOUND": "Template shift not found",
+      "UNAUTHORIZED": "Unauthorized"
+    }
+  },
+  "requests": {
+    "title": "Shift Change Requests",
+    "description": "Review swap, give, and release requests for the current published roster.",
+    "descriptionWithPublication": "Requests for {{name}}.",
+    "empty": "No requests available right now.",
+    "unknownUser": "User #{{id}}",
+    "sections": {
+      "waiting": "Waiting for my response",
+      "sent": "Sent by me",
+      "pool": "Open pool",
+      "history": "History",
+      "emptyWaiting": "No requests are waiting for your response.",
+      "emptySent": "You have not sent any requests.",
+      "emptyPool": "No shifts are available in the open pool.",
+      "emptyHistory": "No past requests yet."
+    },
+    "type": {
+      "swap": "Swap",
+      "give_direct": "Give (direct)",
+      "give_pool": "Give (pool)"
+    },
+    "state": {
+      "pending": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "cancelled": "Cancelled",
+      "expired": "Expired",
+      "invalidated": "Invalidated"
+    },
+    "actions": {
+      "approve": "Approve",
+      "reject": "Reject",
+      "cancel": "Cancel",
+      "claim": "Claim",
+      "openMenu": "Shift actions",
+      "proposeSwap": "Propose swap...",
+      "giveDirect": "Give to...",
+      "givePool": "Release to pool"
+    },
+    "swapDialog": {
+      "title": "Propose shift swap",
+      "description": "Ask a colleague to swap one of their shifts with yours.",
+      "myShiftLabel": "Your shift",
+      "shiftSummary": "{{startTime}}-{{endTime}}",
+      "counterpartLabel": "Swap with",
+      "selectCounterpart": "Select a colleague",
+      "counterpartShiftLabel": "Their shift to take",
+      "selectCounterpartShift": "Select a shift",
+      "noCounterpartShifts": "This colleague has no shifts in the current roster.",
+      "submit": "Send swap request",
+      "submitting": "Sending...",
+      "success": "Swap request sent."
+    },
+    "giveDirectDialog": {
+      "title": "Give this shift",
+      "description": "Offer this shift to a specific colleague. They will need to accept it.",
+      "counterpartLabel": "Give to",
+      "selectCounterpart": "Select a colleague",
+      "submit": "Send offer",
+      "submitting": "Sending...",
+      "success": "Offer sent."
+    },
+    "givePoolDialog": {
+      "title": "Release to pool",
+      "description": "Release this shift to the open pool so any qualified colleague can pick it up.",
+      "submit": "Release shift",
+      "submitting": "Releasing...",
+      "success": "Shift released to the pool."
+    },
+    "validation": {
+      "counterpartUserRequired": "Please choose a colleague",
+      "counterpartShiftRequired": "Please choose one of their shifts"
+    },
+    "card": {
+      "shift": "Shift #{{id}}",
+      "swapSummary": "{{requesterShift}} ↔ {{counterpartShift}}",
+      "metadata": "Requested by {{requester}} · {{createdAt}}"
+    },
+    "toast": {
+      "approved": "Request approved.",
+      "rejected": "Request rejected.",
+      "cancelled": "Request cancelled.",
+      "claimed": "Shift claimed successfully."
+    },
+    "errors": {
+      "FORBIDDEN": "Forbidden",
+      "INVALID_REQUEST": "Invalid request",
+      "INTERNAL_ERROR": "Something went wrong. Please try again.",
+      "PUBLICATION_NOT_FOUND": "Publication not found",
+      "PUBLICATION_NOT_PUBLISHED": "This publication is not published.",
+      "SHIFT_CHANGE_EXPIRED": "This request has expired.",
+      "SHIFT_CHANGE_INVALIDATED": "This request is no longer valid.",
+      "SHIFT_CHANGE_INVALID_TYPE": "Invalid request type.",
+      "SHIFT_CHANGE_NOT_FOUND": "Request not found",
+      "SHIFT_CHANGE_NOT_OWNER": "You are not allowed to act on this request.",
+      "SHIFT_CHANGE_NOT_PENDING": "This request is no longer pending.",
+      "SHIFT_CHANGE_NOT_QUALIFIED": "You are not qualified for this shift.",
+      "SHIFT_CHANGE_SELF": "You cannot act on your own request.",
+      "SHIFT_CHANGE_TIME_CONFLICT": "This change conflicts with another shift you already have.",
       "UNAUTHORIZED": "Unauthorized"
     }
   }

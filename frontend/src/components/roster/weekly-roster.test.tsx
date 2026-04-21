@@ -37,8 +37,8 @@ describe("WeeklyRoster", () => {
             required_headcount: 2,
           },
           assignments: [
-            { user_id: 7, name: "Alice" },
-            { user_id: 8, name: "Bob" },
+            { assignment_id: 71, user_id: 7, name: "Alice" },
+            { assignment_id: 81, user_id: 8, name: "Bob" },
           ],
         },
       ],
@@ -51,7 +51,7 @@ describe("WeeklyRoster", () => {
     expect(container.querySelectorAll("section")).toHaveLength(7)
     expect(getByText("roster.today")).toBeInTheDocument()
     expect(getAllByText("roster.emptyWeekday")).toHaveLength(6)
-    expect(getByText("Alice")).toHaveClass(
+    expect(getByText("Alice").closest("div")).toHaveClass(
       "border-primary/40",
       "bg-primary/10",
       "text-primary",
