@@ -1,11 +1,11 @@
 ## Development Workflow
 
-This project uses a structured Claude + Codex collaboration loop. All participants must follow this workflow.
+This project uses **OpenSpec** for spec-driven development. All change proposals, designs, tasks, and specs live under `openspec/` and are tracked in git.
 
 ### Roles
 
-- **Claude:** planning, code review, committing
-- **Codex:** implementation, execution summary
+- **Claude:** exploring, proposing, reviewing, committing
+- **Codex:** implementing tasks, reporting outcomes
 
 ### Parallelism
 
@@ -14,24 +14,22 @@ Both Claude and Codex should maximize use of parallel agents whenever tasks are 
 ### Loop
 
 ```
-Claude → PLAN.md → Codex → SUMMARY.md → Claude → REVIEW.md → Codex (fix) → Claude (verify) → commit
+/opsx:explore (optional) → /opsx:propose → /opsx:apply → review → /opsx:archive → commit
 ```
 
 ### Step-by-step
 
-1. **Claude writes `PLAN.md`** to the project root before any implementation begins.
-   - Must include: context, goal, file-level change list, verification steps.
-   - Describe **intent and constraints**, not implementation details. Do not paste code snippets into the plan — let Codex decide how to implement. Overly prescriptive plans cause Codex to copy-paste rather than reason.
+1. **Explore (optional):** `/opsx:explore` for thinking-partner mode — investigate the codebase, compare options, sketch designs. No code is written here.
 
-2. **Codex implements** according to `PLAN.md`, then writes `SUMMARY.md` to the project root.
-   - `SUMMARY.md` must cover: what was done, what was verified, any blockers or deviations from the plan.
+2. **Propose:** `/opsx:propose <change-name>` scaffolds `openspec/changes/<name>/` with `proposal.md` (what & why), `design.md` (how), `tasks.md` (steps), and any delta `specs/`.
 
-3. **Claude reviews** the implementation against `PLAN.md` and `SUMMARY.md`, then writes `REVIEW.md` to the project root.
-   - `REVIEW.md` must include: verdict (LGTM / issues found), what Codex did well, and each issue with file + line reference and a concrete fix.
+3. **Apply:** `/opsx:apply` reads the artifacts and works through `tasks.md`, ticking each `- [ ]` to `- [x]` as it completes. Codex usually drives this step.
 
-4. **If issues exist:** Codex reads `REVIEW.md` and fixes all items. Return to step 3.
+4. **Review:** Claude verifies the implementation against the change artifacts. Issues are fixed by re-running `/opsx:apply` or by direct edits.
 
-5. **If LGTM:** Claude verifies the final state, deletes `PLAN.md`, `REVIEW.md`, and `SUMMARY.md`, then creates a conventional commit.
+5. **Archive:** `/opsx:archive` moves the change to `openspec/changes/archive/YYYY-MM-DD-<name>/` and syncs delta specs into `openspec/specs/`. Commit the result.
+
+Detailed step-by-step instructions live in `.claude/skills/openspec-*/SKILL.md` (and the mirror under `.codex/skills/`).
 
 ### Commit convention
 
@@ -41,7 +39,7 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 - `chore:` tooling, config, dependencies
 - `docs:` documentation only
 
-Do not commit intermediate files (`PLAN.md`, `REVIEW.md`, `SUMMARY.md`).
+The archived change directory under `openspec/changes/archive/` is part of the commit — that's the durable record of what was built and why.
 
 ---
 
@@ -115,8 +113,8 @@ The system allows employees to submit their available time slots, and administra
 - Backend: use Go's standard `testing` package. Place test files alongside the code they test (e.g., `user_test.go` next to `user.go`).
 - Frontend: use Vitest for unit tests.
 - Tests should cover the main success path and key error cases. Do not skip tests just because the feature "seems simple."
-- The `SUMMARY.md` from Codex must report which tests were added and whether they pass.
-- Claude's `REVIEW.md` must flag missing or insufficient test coverage as an issue.
+- When applying a change, the implementer must report which tests were added and whether they pass.
+- Reviewers must flag missing or insufficient test coverage as an issue before archiving.
 
 ---
 
