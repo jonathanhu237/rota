@@ -1,20 +1,34 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  Rota — a web-based shift scheduling app for a ~100-person department.
+  Go backend + PostgreSQL + Redis; React + Vite frontend; Docker Compose
+  behind Caddy. Full execution rules are in `AGENTS.md`.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  Load-bearing invariants — any change must respect these:
+  - Publication state machine: DRAFT → COLLECTING → ASSIGNING → PUBLISHED → ACTIVE → ENDED.
+  - D2: at most one publication with `state != 'ENDED'` at any time (enforced by partial unique index).
+  - D1/E1: templates are immutable once any publication references them; cloning is the escape hatch.
+  - Shift-change approval uses optimistic locking (`SELECT ... FOR UPDATE`); admin edits to assignments cascade-invalidate referencing pending requests.
+
+  Specs in `openspec/specs/` are the source of truth. Reference sections rather than restating.
+
+rules:
+  proposal:
+    - Lead with the user-visible problem, not a technical itch.
+    - Include a "Non-goals" section with at least three explicit exclusions.
+    - Do not propose any of these (already ruled out): multi-timezone, multi-tenancy, 2FA, OAuth / SSO, CSRF tokens, CSP headers, WebSocket / push / SMS, date-specific roster navigation, multi-language email bodies.
+
+  design:
+    - Schema changes include goose Up AND Down SQL.
+    - New state transitions include a text state-machine diagram.
+    - Every new or reused error code listed with its HTTP status.
+    - Name a rejected alternative for any new dependency.
+
+  tasks:
+    - Each task states a runnable verification command.
+    - Behavior tasks pair with a test task.
+
+  specs:
+    - Extend existing specs; create a new file only for a genuinely new subsystem.
+    - Mark deprecated behavior with "Superseded by …" rather than deleting.
