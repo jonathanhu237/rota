@@ -318,6 +318,44 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 			t.Fatalf("expected time formatting 09:00-12:00, got %s-%s", qualified[0].StartTime, qualified[0].EndTime)
 		}
 	})
+
+	t.Run("ListQualifiedUsersForPositions groups active qualified users by position", func(t *testing.T) {
+		db := openIntegrationDB(t)
+		repo := NewPublicationRepository(db)
+		firstPosition := seedPosition(t, db, positionSeed{Name: "Front Desk"})
+		secondPosition := seedPosition(t, db, positionSeed{Name: "Kitchen"})
+		firstUser := seedUser(t, db, userSeed{Name: "Alice", Email: "alice@example.com"})
+		secondUser := seedUser(t, db, userSeed{Name: "Bob", Email: "bob@example.com"})
+		disabledUser := seedUser(t, db, userSeed{
+			Name:   "Disabled",
+			Email:  "disabled@example.com",
+			Status: model.UserStatusDisabled,
+		})
+
+		seedUserPosition(t, db, firstUser.ID, firstPosition.ID)
+		seedUserPosition(t, db, secondUser.ID, firstPosition.ID)
+		seedUserPosition(t, db, secondUser.ID, secondPosition.ID)
+		seedUserPosition(t, db, disabledUser.ID, firstPosition.ID)
+
+		qualified, err := repo.ListQualifiedUsersForPositions(ctx, []int64{
+			secondPosition.ID,
+			firstPosition.ID,
+			firstPosition.ID,
+		})
+		if err != nil {
+			t.Fatalf("list qualified users for positions: %v", err)
+		}
+
+		if len(qualified[firstPosition.ID]) != 2 {
+			t.Fatalf("expected 2 active qualified users for first position, got %+v", qualified[firstPosition.ID])
+		}
+		if qualified[firstPosition.ID][0].UserID != firstUser.ID || qualified[firstPosition.ID][1].UserID != secondUser.ID {
+			t.Fatalf("unexpected first-position users: %+v", qualified[firstPosition.ID])
+		}
+		if len(qualified[secondPosition.ID]) != 1 || qualified[secondPosition.ID][0].UserID != secondUser.ID {
+			t.Fatalf("unexpected second-position users: %+v", qualified[secondPosition.ID])
+		}
+	})
 }
 
 func seedPublicationPrerequisites(

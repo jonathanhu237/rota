@@ -221,6 +221,10 @@ export function RequestsList({
       approveMutation.isPending ||
       rejectMutation.isPending ||
       cancelMutation.isPending
+    const historyReason =
+      bucket === "history" && request.state === "invalidated"
+        ? t("requests.history.invalidatedReason")
+        : null
 
     return (
       <Card key={request.id}>
@@ -239,48 +243,53 @@ export function RequestsList({
             })}
           </CardDescription>
         </CardHeader>
-        {bucket !== "history" && (
+        {(bucket !== "history" || historyReason) && (
           <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {bucket === "sent" && (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  disabled={isBusy}
-                  onClick={() => cancelMutation.mutate(request.id)}
-                >
-                  {t("requests.actions.cancel")}
-                </Button>
-              )}
-              {bucket === "waiting" && (
-                <>
+            {bucket !== "history" && (
+              <div className="flex flex-wrap gap-2">
+                {bucket === "sent" && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    disabled={isBusy}
+                    onClick={() => cancelMutation.mutate(request.id)}
+                  >
+                    {t("requests.actions.cancel")}
+                  </Button>
+                )}
+                {bucket === "waiting" && (
+                  <>
+                    <Button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => approveMutation.mutate(request.id)}
+                    >
+                      {t("requests.actions.approve")}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={isBusy}
+                      onClick={() => rejectMutation.mutate(request.id)}
+                    >
+                      {t("requests.actions.reject")}
+                    </Button>
+                  </>
+                )}
+                {bucket === "pool" && (
                   <Button
                     type="button"
                     disabled={isBusy}
                     onClick={() => approveMutation.mutate(request.id)}
                   >
-                    {t("requests.actions.approve")}
+                    {t("requests.actions.claim")}
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={isBusy}
-                    onClick={() => rejectMutation.mutate(request.id)}
-                  >
-                    {t("requests.actions.reject")}
-                  </Button>
-                </>
-              )}
-              {bucket === "pool" && (
-                <Button
-                  type="button"
-                  disabled={isBusy}
-                  onClick={() => approveMutation.mutate(request.id)}
-                >
-                  {t("requests.actions.claim")}
-                </Button>
-              )}
-            </div>
+                )}
+              </div>
+            )}
+            {historyReason && (
+              <p className="text-sm text-muted-foreground">{historyReason}</p>
+            )}
           </CardContent>
         )}
       </Card>

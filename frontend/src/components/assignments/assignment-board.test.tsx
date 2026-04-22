@@ -20,6 +20,9 @@ const shifts: AssignmentBoardShift[] = [
     candidates: [
       { user_id: 10, name: "Alice", email: "alice@example.com" },
     ],
+    non_candidate_qualified: [
+      { user_id: 12, name: "Dana", email: "dana@example.com" },
+    ],
     assignments: [
       { assignment_id: 20, user_id: 11, name: "Bob", email: "bob@example.com" },
     ],
@@ -32,7 +35,7 @@ describe("AssignmentBoard", () => {
     const onAssign = vi.fn()
     const onUnassign = vi.fn()
 
-    const { container, getByText } = renderWithProviders(
+    const { container, getByRole, getByText, queryByText } = renderWithProviders(
       <AssignmentBoard
         isPending={false}
         isReadOnly={false}
@@ -53,11 +56,26 @@ describe("AssignmentBoard", () => {
 
     expect(aliceButton).toBeTruthy()
     expect(bobButton).toBeTruthy()
+    expect(queryByText("Dana")).not.toBeInTheDocument()
 
     await user.click(aliceButton as HTMLElement)
     await user.click(bobButton as HTMLElement)
+    await user.click(
+      getByRole("switch", {
+        name: "publications.assignmentBoard.showAllQualified",
+      }),
+    )
+
+    const danaButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("Dana"),
+    )
+
+    expect(danaButton).toBeTruthy()
+
+    await user.click(danaButton as HTMLElement)
 
     expect(onAssign).toHaveBeenCalledWith(10, 1)
+    expect(onAssign).toHaveBeenCalledWith(12, 1)
     expect(onUnassign).toHaveBeenCalledWith(20)
   })
 

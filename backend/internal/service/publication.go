@@ -3,12 +3,14 @@ package service
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/jonathanhu237/rota/backend/internal/audit"
+	"github.com/jonathanhu237/rota/backend/internal/email"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 )
@@ -21,6 +23,7 @@ var (
 	ErrPublicationNotFound      = model.ErrPublicationNotFound
 	ErrPublicationNotDeletable  = model.ErrPublicationNotDeletable
 	ErrPublicationNotCollecting = model.ErrPublicationNotCollecting
+	ErrPublicationNotMutable    = model.ErrPublicationNotMutable
 	ErrPublicationNotAssigning  = model.ErrPublicationNotAssigning
 	ErrPublicationNotPublished  = model.ErrPublicationNotPublished
 	ErrPublicationNotActive     = model.ErrPublicationNotActive
@@ -52,19 +55,32 @@ type publicationRepository interface {
 	ListQualifiedShifts(ctx context.Context, publicationID, userID int64) ([]*model.TemplateShift, error)
 	CreateAssignment(ctx context.Context, params repository.CreateAssignmentParams) (*model.Assignment, error)
 	DeleteAssignment(ctx context.Context, params repository.DeleteAssignmentParams) error
+	GetAssignment(ctx context.Context, id int64) (*model.Assignment, error)
 	ReplaceAssignments(ctx context.Context, params repository.ReplaceAssignmentsParams) error
 	ActivatePublication(ctx context.Context, params repository.ActivatePublicationParams) (*repository.ActivatePublicationResult, error)
 	PublishPublication(ctx context.Context, params repository.PublishPublicationParams) (*model.Publication, error)
 	EndPublication(ctx context.Context, params repository.EndPublicationParams) (*model.Publication, error)
 	ListPublicationShifts(ctx context.Context, publicationID int64) ([]*model.PublicationShift, error)
 	ListAssignmentCandidates(ctx context.Context, publicationID int64) ([]*model.AssignmentCandidate, error)
+	ListQualifiedUsersForPositions(ctx context.Context, positionIDs []int64) (map[int64][]*model.AssignmentCandidate, error)
 	ListPublicationAssignments(ctx context.Context, publicationID int64) ([]*model.AssignmentParticipant, error)
+}
+
+type publicationShiftChangeRepository interface {
+	GetByID(ctx context.Context, id int64) (*model.ShiftChangeRequest, error)
+	InvalidateRequestsForAssignment(ctx context.Context, assignmentID int64, now time.Time) ([]int64, error)
 }
 
 type PublicationService struct {
 	publicationRepo publicationRepository
+	shiftChangeRepo publicationShiftChangeRepository
+	emailer         email.Emailer
+	logger          *slog.Logger
 	clock           Clock
+	appBaseURL      string
 }
+
+type PublicationServiceOption func(*PublicationService)
 
 type ListPublicationsInput struct {
 	Page     int
@@ -110,15 +126,42 @@ type DeleteAssignmentInput struct {
 	AssignmentID  int64
 }
 
-func NewPublicationService(publicationRepo publicationRepository, clock Clock) *PublicationService {
+func WithPublicationShiftChangeNotifications(
+	shiftChangeRepo publicationShiftChangeRepository,
+	emailer email.Emailer,
+	appBaseURL string,
+	logger *slog.Logger,
+) PublicationServiceOption {
+	return func(service *PublicationService) {
+		service.shiftChangeRepo = shiftChangeRepo
+		service.emailer = emailer
+		service.appBaseURL = appBaseURL
+		if logger != nil {
+			service.logger = logger
+		}
+	}
+}
+
+func NewPublicationService(
+	publicationRepo publicationRepository,
+	clock Clock,
+	opts ...PublicationServiceOption,
+) *PublicationService {
 	if clock == nil {
 		clock = realClock{}
 	}
 
-	return &PublicationService{
+	service := &PublicationService{
 		publicationRepo: publicationRepo,
 		clock:           clock,
+		logger:          slog.Default(),
 	}
+
+	for _, opt := range opts {
+		opt(service)
+	}
+
+	return service
 }
 
 func (s *PublicationService) ListPublications(

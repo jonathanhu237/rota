@@ -605,6 +605,47 @@ func (m *publicationRepositoryStatefulMock) ListAssignmentCandidates(
 	return candidates, nil
 }
 
+func (m *publicationRepositoryStatefulMock) ListQualifiedUsersForPositions(
+	ctx context.Context,
+	positionIDs []int64,
+) (map[int64][]*model.AssignmentCandidate, error) {
+	qualifiedByPosition := make(map[int64][]*model.AssignmentCandidate)
+	requestedPositions := make(map[int64]struct{}, len(positionIDs))
+	for _, positionID := range positionIDs {
+		requestedPositions[positionID] = struct{}{}
+	}
+
+	for _, user := range m.users {
+		if user.Status != model.UserStatusActive {
+			continue
+		}
+
+		positions, ok := m.qualifiedByUser[user.ID]
+		if !ok {
+			continue
+		}
+
+		for positionID := range positions {
+			if _, ok := requestedPositions[positionID]; !ok {
+				continue
+			}
+			qualifiedByPosition[positionID] = append(qualifiedByPosition[positionID], &model.AssignmentCandidate{
+				UserID: user.ID,
+				Name:   user.Name,
+				Email:  user.Email,
+			})
+		}
+	}
+
+	for positionID := range qualifiedByPosition {
+		sort.Slice(qualifiedByPosition[positionID], func(i, j int) bool {
+			return qualifiedByPosition[positionID][i].UserID < qualifiedByPosition[positionID][j].UserID
+		})
+	}
+
+	return qualifiedByPosition, nil
+}
+
 func (m *publicationRepositoryStatefulMock) ListPublicationAssignments(
 	ctx context.Context,
 	publicationID int64,

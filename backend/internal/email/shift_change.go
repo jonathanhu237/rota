@@ -24,6 +24,7 @@ const (
 	ShiftChangeOutcomeRejected  ShiftChangeOutcome = "rejected"
 	ShiftChangeOutcomeClaimed   ShiftChangeOutcome = "claimed"
 	ShiftChangeOutcomeCancelled ShiftChangeOutcome = "cancelled"
+	ShiftChangeOutcomeInvalidated ShiftChangeOutcome = "invalidated"
 )
 
 // ShiftRef describes a single shift in human-readable form for email bodies.
@@ -107,9 +108,13 @@ func BuildShiftChangeResolvedMessage(data ShiftChangeResolvedData) Message {
 		fmt.Fprintf(&b, "%s claimed the shift you released to the pool.\n", data.ResponderName)
 	case ShiftChangeOutcomeCancelled:
 		fmt.Fprint(&b, "Your shift change request was cancelled.\n")
+	case ShiftChangeOutcomeInvalidated:
+		fmt.Fprint(&b, "Your shift change request is no longer applicable because an administrator edited the referenced shift.\n")
 	}
 
-	fmt.Fprintf(&b, "\nShift involved: %s\n", formatShiftRefValue(data.RequesterShift))
+	if !isZeroShiftRef(data.RequesterShift) {
+		fmt.Fprintf(&b, "\nShift involved: %s\n", formatShiftRefValue(data.RequesterShift))
+	}
 	if data.CounterpartShift != nil {
 		fmt.Fprintf(&b, "Counterpart shift: %s\n", formatShiftRef(data.CounterpartShift))
 	}
@@ -132,6 +137,10 @@ func formatShiftRef(s *ShiftRef) string {
 		return "(unknown)"
 	}
 	return formatShiftRefValue(*s)
+}
+
+func isZeroShiftRef(s ShiftRef) bool {
+	return s.Weekday == "" && s.StartTime == "" && s.EndTime == "" && s.PositionName == ""
 }
 
 func requestsLink(baseURL string) string {

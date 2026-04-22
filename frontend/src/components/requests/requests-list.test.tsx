@@ -170,4 +170,17 @@ describe("RequestsList", () => {
 
     expect(cancelMock).toHaveBeenCalledWith(10, 42)
   })
+
+  it("shows the admin-edit invalidation reason in history", () => {
+    const { getByText } = renderList([
+      buildRequest({
+        id: 77,
+        requester_user_id: 1,
+        state: "invalidated",
+        decided_at: "2026-04-18T10:00:00Z",
+      }),
+    ])
+
+    expect(getByText("requests.history.invalidatedReason")).toBeInTheDocument()
+  })
 })

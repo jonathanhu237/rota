@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -89,18 +90,20 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects non-assigning effective states", func(t *testing.T) {
+	t.Run("allows all mutable effective states", func(t *testing.T) {
 		t.Parallel()
 
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
 		tests := []struct {
 			name        string
 			publication *model.Publication
+			wantErr     error
 		}{
-			{name: "draft", publication: draftPublication(now)},
-			{name: "collecting", publication: collectingPublication(now)},
+			{name: "draft", publication: draftPublication(now), wantErr: ErrPublicationNotMutable},
+			{name: "collecting", publication: collectingPublication(now), wantErr: ErrPublicationNotMutable},
+			{name: "published", publication: publishedPublication(now)},
 			{name: "active", publication: activePublication(now)},
-			{name: "ended", publication: endedPublication(now)},
+			{name: "ended", publication: endedPublication(now), wantErr: ErrPublicationNotMutable},
 		}
 
 		for _, tc := range tests {
@@ -110,13 +113,22 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 				repo.publications[1] = tc.publication
 				service := NewPublicationService(repo, fixedClock{now: now})
 
-				_, err := service.CreateAssignment(context.Background(), CreateAssignmentInput{
+				assignment, err := service.CreateAssignment(context.Background(), CreateAssignmentInput{
 					PublicationID:   1,
 					UserID:          7,
 					TemplateShiftID: 11,
 				})
-				if !errors.Is(err, ErrPublicationNotAssigning) {
-					t.Fatalf("expected ErrPublicationNotAssigning, got %v", err)
+				if tc.wantErr != nil {
+					if !errors.Is(err, tc.wantErr) {
+						t.Fatalf("expected %v, got %v", tc.wantErr, err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatalf("CreateAssignment returned error: %v", err)
+				}
+				if assignment == nil {
+					t.Fatal("expected assignment for mutable state")
 				}
 			})
 		}
@@ -209,6 +221,300 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			t.Fatalf("expected ErrPublicationNotFound, got %v", err)
 		}
 	})
+
+	t.Run("invalidates pending requester-side shift change requests after delete", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+		repo := newPublicationRepositoryStatefulMock()
+		repo.publications[1] = publishedPublication(now)
+		repo.assignments[assignmentKey(1, 7, 11)] = &model.Assignment{
+			ID:              1,
+			PublicationID:   1,
+			UserID:          7,
+			TemplateShiftID: 11,
+			CreatedAt:       now.Add(-15 * time.Minute),
+		}
+		shiftChangeRepo := newShiftChangeRepositoryStatefulMock(repo)
+		shiftChangeRepo.requests[55] = &model.ShiftChangeRequest{
+			ID:                    55,
+			PublicationID:         1,
+			Type:                  model.ShiftChangeTypeGivePool,
+			RequesterUserID:       7,
+			RequesterAssignmentID: 1,
+			State:                 model.ShiftChangeStatePending,
+			CreatedAt:             now.Add(-time.Hour),
+			ExpiresAt:             now.Add(24 * time.Hour),
+		}
+		emailer := &emailStub{}
+		service := NewPublicationService(
+			repo,
+			fixedClock{now: now},
+			WithPublicationShiftChangeNotifications(shiftChangeRepo, emailer, "https://rota.example.com", nil),
+		)
+
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		err := service.DeleteAssignment(ctx, DeleteAssignmentInput{
+			PublicationID: 1,
+			AssignmentID:  1,
+		})
+		if err != nil {
+			t.Fatalf("DeleteAssignment returned error: %v", err)
+		}
+
+		if got := shiftChangeRepo.requests[55].State; got != model.ShiftChangeStateInvalidated {
+			t.Fatalf("expected request to be invalidated, got %q", got)
+		}
+
+		events := stub.Events()
+		if len(events) != 2 {
+			t.Fatalf("expected 2 audit events, got %+v", events)
+		}
+
+		cascadeEvent := stub.FindByAction(audit.ActionShiftChangeInvalidateCascade)
+		if cascadeEvent == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionShiftChangeInvalidateCascade, stub.Actions())
+		}
+		if cascadeEvent.TargetType != audit.TargetTypeShiftChangeRequest {
+			t.Fatalf("unexpected target type: %q", cascadeEvent.TargetType)
+		}
+		if cascadeEvent.TargetID == nil || *cascadeEvent.TargetID != 55 {
+			t.Fatalf("unexpected target id: %v", cascadeEvent.TargetID)
+		}
+		if cascadeEvent.Metadata["reason"] != "assignment_deleted" {
+			t.Fatalf("expected reason metadata, got %+v", cascadeEvent.Metadata)
+		}
+		if cascadeEvent.Metadata["assignment_id"] != int64(1) {
+			t.Fatalf("expected assignment_id metadata, got %+v", cascadeEvent.Metadata)
+		}
+
+		messages := emailer.messages()
+		if len(messages) != 1 {
+			t.Fatalf("expected 1 email, got %d", len(messages))
+		}
+		if messages[0].To != "alice@example.com" {
+			t.Fatalf("unexpected email recipient: %+v", messages[0])
+		}
+		if !strings.Contains(messages[0].Body, "administrator edited the referenced shift") {
+			t.Fatalf("expected invalidation copy, got %q", messages[0].Body)
+		}
+	})
+
+	t.Run("invalidates pending counterpart-side shift change requests after delete", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+		repo := newPublicationRepositoryStatefulMock()
+		repo.publications[1] = activePublication(now)
+		repo.assignments[assignmentKey(1, 7, 11)] = &model.Assignment{
+			ID:              1,
+			PublicationID:   1,
+			UserID:          7,
+			TemplateShiftID: 11,
+			CreatedAt:       now.Add(-30 * time.Minute),
+		}
+		repo.assignments[assignmentKey(1, 8, 12)] = &model.Assignment{
+			ID:              2,
+			PublicationID:   1,
+			UserID:          8,
+			TemplateShiftID: 12,
+			CreatedAt:       now.Add(-20 * time.Minute),
+		}
+		counterpartUserID := int64(8)
+		counterpartAssignmentID := int64(2)
+		shiftChangeRepo := newShiftChangeRepositoryStatefulMock(repo)
+		shiftChangeRepo.requests[56] = &model.ShiftChangeRequest{
+			ID:                      56,
+			PublicationID:           1,
+			Type:                    model.ShiftChangeTypeSwap,
+			RequesterUserID:         7,
+			RequesterAssignmentID:   1,
+			CounterpartUserID:       &counterpartUserID,
+			CounterpartAssignmentID: &counterpartAssignmentID,
+			State:                   model.ShiftChangeStatePending,
+			CreatedAt:               now.Add(-time.Hour),
+			ExpiresAt:               now.Add(24 * time.Hour),
+		}
+		emailer := &emailStub{}
+		service := NewPublicationService(
+			repo,
+			fixedClock{now: now},
+			WithPublicationShiftChangeNotifications(shiftChangeRepo, emailer, "https://rota.example.com", nil),
+		)
+
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		err := service.DeleteAssignment(ctx, DeleteAssignmentInput{
+			PublicationID: 1,
+			AssignmentID:  2,
+		})
+		if err != nil {
+			t.Fatalf("DeleteAssignment returned error: %v", err)
+		}
+
+		if got := shiftChangeRepo.requests[56].State; got != model.ShiftChangeStateInvalidated {
+			t.Fatalf("expected request to be invalidated, got %q", got)
+		}
+		if len(emailer.messages()) != 1 {
+			t.Fatalf("expected 1 email, got %d", len(emailer.messages()))
+		}
+		if stub.FindByAction(audit.ActionShiftChangeInvalidateCascade) == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionShiftChangeInvalidateCascade, stub.Actions())
+		}
+	})
+
+	t.Run("does not touch non-pending shift change requests", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+		repo := newPublicationRepositoryStatefulMock()
+		repo.publications[1] = assigningPublication(now)
+		repo.assignments[assignmentKey(1, 7, 11)] = &model.Assignment{
+			ID:              1,
+			PublicationID:   1,
+			UserID:          7,
+			TemplateShiftID: 11,
+			CreatedAt:       now.Add(-15 * time.Minute),
+		}
+		shiftChangeRepo := newShiftChangeRepositoryStatefulMock(repo)
+		shiftChangeRepo.requests[57] = &model.ShiftChangeRequest{
+			ID:                    57,
+			PublicationID:         1,
+			Type:                  model.ShiftChangeTypeGivePool,
+			RequesterUserID:       7,
+			RequesterAssignmentID: 1,
+			State:                 model.ShiftChangeStateApproved,
+			CreatedAt:             now.Add(-time.Hour),
+			ExpiresAt:             now.Add(24 * time.Hour),
+		}
+		emailer := &emailStub{}
+		service := NewPublicationService(
+			repo,
+			fixedClock{now: now},
+			WithPublicationShiftChangeNotifications(shiftChangeRepo, emailer, "https://rota.example.com", nil),
+		)
+
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		err := service.DeleteAssignment(ctx, DeleteAssignmentInput{
+			PublicationID: 1,
+			AssignmentID:  1,
+		})
+		if err != nil {
+			t.Fatalf("DeleteAssignment returned error: %v", err)
+		}
+
+		if got := shiftChangeRepo.requests[57].State; got != model.ShiftChangeStateApproved {
+			t.Fatalf("expected request state to remain approved, got %q", got)
+		}
+		if stub.FindByAction(audit.ActionShiftChangeInvalidateCascade) != nil {
+			t.Fatalf("did not expect cascade audit event, got %v", stub.Actions())
+		}
+		if len(emailer.messages()) != 0 {
+			t.Fatalf("expected no email, got %d", len(emailer.messages()))
+		}
+	})
+
+	t.Run("skips cascade side effects when no pending request references the assignment", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+		repo := newPublicationRepositoryStatefulMock()
+		repo.publications[1] = assigningPublication(now)
+		repo.assignments[assignmentKey(1, 7, 11)] = &model.Assignment{
+			ID:              1,
+			PublicationID:   1,
+			UserID:          7,
+			TemplateShiftID: 11,
+			CreatedAt:       now.Add(-15 * time.Minute),
+		}
+		shiftChangeRepo := newShiftChangeRepositoryStatefulMock(repo)
+		emailer := &emailStub{}
+		service := NewPublicationService(
+			repo,
+			fixedClock{now: now},
+			WithPublicationShiftChangeNotifications(shiftChangeRepo, emailer, "https://rota.example.com", nil),
+		)
+
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		err := service.DeleteAssignment(ctx, DeleteAssignmentInput{
+			PublicationID: 1,
+			AssignmentID:  1,
+		})
+		if err != nil {
+			t.Fatalf("DeleteAssignment returned error: %v", err)
+		}
+
+		if len(stub.Events()) != 1 {
+			t.Fatalf("expected only assignment delete audit event, got %+v", stub.Events())
+		}
+		if len(emailer.messages()) != 0 {
+			t.Fatalf("expected no email, got %d", len(emailer.messages()))
+		}
+	})
+
+	t.Run("delete still succeeds when cascade update fails", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+		repo := newPublicationRepositoryStatefulMock()
+		repo.publications[1] = publishedPublication(now)
+		repo.assignments[assignmentKey(1, 7, 11)] = &model.Assignment{
+			ID:              1,
+			PublicationID:   1,
+			UserID:          7,
+			TemplateShiftID: 11,
+			CreatedAt:       now.Add(-15 * time.Minute),
+		}
+		shiftChangeRepo := newShiftChangeRepositoryStatefulMock(repo)
+		shiftChangeRepo.invalidateRequestsForAssignmentErr = errors.New("db unavailable")
+		shiftChangeRepo.requests[58] = &model.ShiftChangeRequest{
+			ID:                    58,
+			PublicationID:         1,
+			Type:                  model.ShiftChangeTypeGivePool,
+			RequesterUserID:       7,
+			RequesterAssignmentID: 1,
+			State:                 model.ShiftChangeStatePending,
+			CreatedAt:             now.Add(-time.Hour),
+			ExpiresAt:             now.Add(24 * time.Hour),
+		}
+		emailer := &emailStub{}
+		service := NewPublicationService(
+			repo,
+			fixedClock{now: now},
+			WithPublicationShiftChangeNotifications(shiftChangeRepo, emailer, "https://rota.example.com", nil),
+		)
+
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		err := service.DeleteAssignment(ctx, DeleteAssignmentInput{
+			PublicationID: 1,
+			AssignmentID:  1,
+		})
+		if err != nil {
+			t.Fatalf("DeleteAssignment returned error: %v", err)
+		}
+
+		if len(repo.assignments) != 0 {
+			t.Fatalf("expected assignment delete to succeed, got %d assignments", len(repo.assignments))
+		}
+		if got := shiftChangeRepo.requests[58].State; got != model.ShiftChangeStatePending {
+			t.Fatalf("expected request to remain pending, got %q", got)
+		}
+		if len(stub.Events()) != 1 {
+			t.Fatalf("expected only assignment delete audit event, got %+v", stub.Events())
+		}
+		if len(emailer.messages()) != 0 {
+			t.Fatalf("expected no email, got %d", len(emailer.messages()))
+		}
+	})
 }
 
 func TestPublicationServiceDeleteAssignment(t *testing.T) {
@@ -273,18 +579,20 @@ func TestPublicationServiceDeleteAssignment(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects non-assigning effective states", func(t *testing.T) {
+	t.Run("allows all mutable effective states", func(t *testing.T) {
 		t.Parallel()
 
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
 		tests := []struct {
 			name        string
 			publication *model.Publication
+			wantErr     error
 		}{
-			{name: "draft", publication: draftPublication(now)},
-			{name: "collecting", publication: collectingPublication(now)},
+			{name: "draft", publication: draftPublication(now), wantErr: ErrPublicationNotMutable},
+			{name: "collecting", publication: collectingPublication(now), wantErr: ErrPublicationNotMutable},
+			{name: "published", publication: publishedPublication(now)},
 			{name: "active", publication: activePublication(now)},
-			{name: "ended", publication: endedPublication(now)},
+			{name: "ended", publication: endedPublication(now), wantErr: ErrPublicationNotMutable},
 		}
 
 		for _, tc := range tests {
@@ -301,11 +609,20 @@ func TestPublicationServiceDeleteAssignment(t *testing.T) {
 					PublicationID: 1,
 					AssignmentID:  1,
 				})
-				if !errors.Is(err, ErrPublicationNotAssigning) {
-					t.Fatalf("expected ErrPublicationNotAssigning, got %v", err)
+				if tc.wantErr != nil {
+					if !errors.Is(err, tc.wantErr) {
+						t.Fatalf("expected %v, got %v", tc.wantErr, err)
+					}
+					if len(stub.Events()) != 0 {
+						t.Fatalf("expected no audit events, got %+v", stub.Events())
+					}
+					return
 				}
-				if len(stub.Events()) != 0 {
-					t.Fatalf("expected no audit events, got %+v", stub.Events())
+				if err != nil {
+					t.Fatalf("DeleteAssignment returned error: %v", err)
+				}
+				if len(stub.Events()) != 1 {
+					t.Fatalf("expected one audit event, got %+v", stub.Events())
 				}
 			})
 		}
@@ -523,12 +840,50 @@ func TestPublicationServiceEndPublication(t *testing.T) {
 }
 
 func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
-	t.Run("assignment board returns shifts, candidates, assignments, and zero-candidate shifts", func(t *testing.T) {
+	t.Run("assignment board is available during all mutable publication states", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+		tests := []struct {
+			name        string
+			publication *model.Publication
+			wantErr     error
+		}{
+			{name: "draft", publication: draftPublication(now), wantErr: ErrPublicationNotAssigning},
+			{name: "collecting", publication: collectingPublication(now), wantErr: ErrPublicationNotAssigning},
+			{name: "assigning", publication: assigningPublication(now)},
+			{name: "published", publication: publishedPublication(now)},
+			{name: "active", publication: activePublication(now)},
+			{name: "ended", publication: endedPublication(now), wantErr: ErrPublicationNotAssigning},
+		}
+
+		for _, tc := range tests {
+			tc := tc
+			t.Run(tc.name, func(t *testing.T) {
+				repo := newPublicationRepositoryStatefulMock()
+				repo.publications[1] = tc.publication
+				service := NewPublicationService(repo, fixedClock{now: now})
+
+				_, err := service.GetAssignmentBoard(context.Background(), 1)
+				if tc.wantErr != nil {
+					if !errors.Is(err, tc.wantErr) {
+						t.Fatalf("expected %v, got %v", tc.wantErr, err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatalf("GetAssignmentBoard returned error: %v", err)
+				}
+			})
+		}
+	})
+
+	t.Run("assignment board returns shifts, candidates, non-candidate qualified users, assignments, and zero-candidate shifts", func(t *testing.T) {
 		t.Parallel()
 
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
 		repo := newPublicationRepositoryStatefulMock()
-		repo.publications[1] = assigningPublication(now)
+		repo.publications[1] = publishedPublication(now)
 		repo.submissions[submissionKey(1, 7, 11)] = &model.AvailabilitySubmission{
 			ID:              1,
 			PublicationID:   1,
@@ -544,6 +899,14 @@ func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
 			CreatedAt:       now.Add(-90 * time.Minute),
 		}
 		delete(repo.qualifiedByUser, 7)
+		repo.users[10] = &model.User{
+			ID:     10,
+			Email:  "dana@example.com",
+			Name:   "Dana",
+			Status: model.UserStatusActive,
+		}
+		repo.qualifiedByUser[8] = map[int64]struct{}{101: {}}
+		repo.qualifiedByUser[10] = map[int64]struct{}{101: {}}
 		repo.assignments[assignmentKey(1, 8, 11)] = &model.Assignment{
 			ID:              1,
 			PublicationID:   1,
@@ -572,8 +935,14 @@ func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
 		if len(board.Shifts[0].Assignments) != 1 || board.Shifts[0].Assignments[0].UserID != 8 {
 			t.Fatalf("unexpected assignments: %+v", board.Shifts[0].Assignments)
 		}
+		if len(board.Shifts[0].NonCandidateQualified) != 1 || board.Shifts[0].NonCandidateQualified[0].UserID != 10 {
+			t.Fatalf("unexpected non-candidate qualified users: %+v", board.Shifts[0].NonCandidateQualified)
+		}
 		if len(board.Shifts[1].Candidates) != 0 {
 			t.Fatalf("expected zero candidates for second shift, got %d", len(board.Shifts[1].Candidates))
+		}
+		if len(board.Shifts[1].NonCandidateQualified) != 0 {
+			t.Fatalf("expected zero non-candidate qualified users for second shift, got %d", len(board.Shifts[1].NonCandidateQualified))
 		}
 	})
 

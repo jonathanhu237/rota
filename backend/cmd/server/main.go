@@ -132,7 +132,17 @@ func main() {
 	)
 	positionService := service.NewPositionService(positionRepo)
 	templateService := service.NewTemplateService(templateRepo, positionRepo)
-	publicationService := service.NewPublicationService(publicationRepo, nil)
+	shiftChangeRepo := repository.NewShiftChangeRepository(db)
+	publicationService := service.NewPublicationService(
+		publicationRepo,
+		nil,
+		service.WithPublicationShiftChangeNotifications(
+			shiftChangeRepo,
+			emailer,
+			cfg.AppBaseURL,
+			slog.Default(),
+		),
+	)
 	userPositionService := service.NewUserPositionService(userPositionRepo)
 
 	var auditRecorder audit.Recorder = repository.NewAuditRecorder(db, slog.Default())
@@ -145,7 +155,6 @@ func main() {
 	templateHandler := handler.NewTemplateHandler(templateService)
 	publicationHandler := handler.NewPublicationHandler(publicationService)
 	userPositionHandler := handler.NewUserPositionHandler(userPositionService)
-	shiftChangeRepo := repository.NewShiftChangeRepository(db)
 	shiftChangeService := service.NewShiftChangeService(
 		shiftChangeRepo,
 		publicationRepo,

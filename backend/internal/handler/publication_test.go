@@ -509,7 +509,11 @@ func TestPublicationHandler(t *testing.T) {
 			t.Fatalf("expected status 200, got %d", recorder.Code)
 		}
 		response := decodeJSONResponse[assignmentBoardResponse](t, recorder)
-		if response.Publication == nil || len(response.Shifts) != 1 || len(response.Shifts[0].Candidates) != 1 || len(response.Shifts[0].Assignments) != 1 {
+		if response.Publication == nil ||
+			len(response.Shifts) != 1 ||
+			len(response.Shifts[0].Candidates) != 1 ||
+			len(response.Shifts[0].NonCandidateQualified) != 1 ||
+			len(response.Shifts[0].Assignments) != 1 {
 			t.Fatalf("unexpected response: %+v", response)
 		}
 	})
@@ -850,6 +854,14 @@ func sampleAssignmentBoardResult() *service.AssignmentBoardResult {
 						UserID:          1,
 						Name:            "Worker",
 						Email:           "worker@example.com",
+					},
+				},
+				NonCandidateQualified: []*model.AssignmentCandidate{
+					{
+						TemplateShiftID: 2,
+						UserID:          2,
+						Name:            "Available",
+						Email:           "available@example.com",
 					},
 				},
 				Assignments: []*model.AssignmentParticipant{

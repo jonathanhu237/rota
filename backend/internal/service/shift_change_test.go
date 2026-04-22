@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -33,9 +34,10 @@ func (m *publicationRepositoryStatefulMock) GetAssignment(
 // -------- shift change repository stateful mock --------
 
 type shiftChangeRepositoryStatefulMock struct {
-	mu       sync.Mutex
-	requests map[int64]*model.ShiftChangeRequest
-	nextID   int64
+	mu                                 sync.Mutex
+	requests                           map[int64]*model.ShiftChangeRequest
+	nextID                             int64
+	invalidateRequestsForAssignmentErr error
 
 	// pub is the paired publication repo used for assignment mutations in
 	// ApplySwap / ApplyGive. Keyed like the real code uses for the assignments
@@ -305,6 +307,38 @@ func (m *shiftChangeRepositoryStatefulMock) MarkExpired(
 	t := now
 	req.DecidedAt = &t
 	return nil
+}
+
+func (m *shiftChangeRepositoryStatefulMock) InvalidateRequestsForAssignment(
+	ctx context.Context,
+	assignmentID int64,
+	now time.Time,
+) ([]int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.invalidateRequestsForAssignmentErr != nil {
+		return nil, m.invalidateRequestsForAssignmentErr
+	}
+
+	ids := make([]int64, 0)
+	for id, req := range m.requests {
+		if req.State != model.ShiftChangeStatePending {
+			continue
+		}
+		if req.RequesterAssignmentID != assignmentID &&
+			(req.CounterpartAssignmentID == nil || *req.CounterpartAssignmentID != assignmentID) {
+			continue
+		}
+
+		req.State = model.ShiftChangeStateInvalidated
+		t := now
+		req.DecidedAt = &t
+		ids = append(ids, id)
+	}
+
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids, nil
 }
 
 // findAssignmentByID returns a pointer to the assignment stored in the

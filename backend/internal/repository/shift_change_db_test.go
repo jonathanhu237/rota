@@ -593,3 +593,118 @@ func TestShiftChangeRepositoryMarkExpiredAndInvalidated(t *testing.T) {
 		t.Fatalf("expected state invalidated, got %q", got)
 	}
 }
+
+func TestShiftChangeRepositoryInvalidateRequestsForAssignment(t *testing.T) {
+	db := openIntegrationDB(t)
+	repo := NewShiftChangeRepository(db)
+	ctx := context.Background()
+
+	position := seedPosition(t, db, positionSeed{})
+	template := seedTemplate(t, db, templateSeed{})
+	shiftA := seedTemplateShift(t, db, templateShiftSeed{
+		TemplateID: template.ID,
+		PositionID: position.ID,
+		Weekday:    1,
+	})
+	shiftB := seedTemplateShift(t, db, templateShiftSeed{
+		TemplateID: template.ID,
+		PositionID: position.ID,
+		Weekday:    2,
+		StartTime:  "13:00",
+		EndTime:    "16:00",
+	})
+	publication := seedPublication(t, db, publicationSeed{
+		TemplateID: template.ID,
+		State:      model.PublicationStatePublished,
+		CreatedAt:  testTime(),
+	})
+
+	requester := seedUser(t, db, userSeed{})
+	counterpart := seedUser(t, db, userSeed{})
+	otherUser := seedUser(t, db, userSeed{})
+
+	requesterAssignment := seedAssignment(t, db, publication.ID, requester.ID, shiftA.ID, testTime())
+	counterpartAssignment := seedAssignment(t, db, publication.ID, counterpart.ID, shiftB.ID, testTime())
+	otherAssignment := seedAssignment(t, db, publication.ID, otherUser.ID, shiftA.ID, testTime().Add(time.Minute))
+
+	counterpartUserID := counterpart.ID
+	counterpartAssignmentID := counterpartAssignment.ID
+	requesterRef := seedShiftChangeRequest(
+		t,
+		db,
+		publication.ID,
+		model.ShiftChangeTypeSwap,
+		requester.ID,
+		requesterAssignment.ID,
+		&counterpartUserID,
+		&counterpartAssignmentID,
+		model.ShiftChangeStatePending,
+		testTime(),
+		testTime().Add(24*time.Hour),
+	)
+
+	requesterUserID := requester.ID
+	requesterAssignmentID := requesterAssignment.ID
+	counterpartRef := seedShiftChangeRequest(
+		t,
+		db,
+		publication.ID,
+		model.ShiftChangeTypeSwap,
+		otherUser.ID,
+		otherAssignment.ID,
+		&requesterUserID,
+		&requesterAssignmentID,
+		model.ShiftChangeStatePending,
+		testTime(),
+		testTime().Add(24*time.Hour),
+	)
+
+	approvedRef := seedShiftChangeRequest(
+		t,
+		db,
+		publication.ID,
+		model.ShiftChangeTypeGivePool,
+		requester.ID,
+		requesterAssignment.ID,
+		nil,
+		nil,
+		model.ShiftChangeStateApproved,
+		testTime(),
+		testTime().Add(24*time.Hour),
+	)
+
+	unrelatedRef := seedShiftChangeRequest(
+		t,
+		db,
+		publication.ID,
+		model.ShiftChangeTypeGivePool,
+		otherUser.ID,
+		otherAssignment.ID,
+		nil,
+		nil,
+		model.ShiftChangeStatePending,
+		testTime(),
+		testTime().Add(24*time.Hour),
+	)
+
+	ids, err := repo.InvalidateRequestsForAssignment(ctx, requesterAssignment.ID, testTime().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("invalidate requests for assignment: %v", err)
+	}
+
+	if len(ids) != 2 || ids[0] != requesterRef.ID || ids[1] != counterpartRef.ID {
+		t.Fatalf("unexpected invalidated ids: %+v", ids)
+	}
+	if got := fetchRequestState(t, db, requesterRef.ID); got != model.ShiftChangeStateInvalidated {
+		t.Fatalf("expected requester-side ref invalidated, got %q", got)
+	}
+	if got := fetchRequestState(t, db, counterpartRef.ID); got != model.ShiftChangeStateInvalidated {
+		t.Fatalf("expected counterpart-side ref invalidated, got %q", got)
+	}
+	if got := fetchRequestState(t, db, approvedRef.ID); got != model.ShiftChangeStateApproved {
+		t.Fatalf("expected approved request unchanged, got %q", got)
+	}
+	if got := fetchRequestState(t, db, unrelatedRef.ID); got != model.ShiftChangeStatePending {
+		t.Fatalf("expected unrelated request unchanged, got %q", got)
+	}
+}

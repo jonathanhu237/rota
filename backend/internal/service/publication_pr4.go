@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jonathanhu237/rota/backend/internal/audit"
+	"github.com/jonathanhu237/rota/backend/internal/email"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 )
@@ -18,9 +19,10 @@ type AssignmentBoardResult struct {
 }
 
 type AssignmentBoardShiftResult struct {
-	Shift       *model.PublicationShift
-	Candidates  []*model.AssignmentCandidate
-	Assignments []*model.AssignmentParticipant
+	Shift                 *model.PublicationShift
+	Candidates            []*model.AssignmentCandidate
+	NonCandidateQualified []*model.AssignmentCandidate
+	Assignments           []*model.AssignmentParticipant
 }
 
 type RosterResult struct {
@@ -51,8 +53,8 @@ func (s *PublicationService) CreateAssignment(
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
-	if model.ResolvePublicationState(publication, now) != model.PublicationStateAssigning {
-		return nil, ErrPublicationNotAssigning
+	if !isPublicationMutableForAssignments(model.ResolvePublicationState(publication, now)) {
+		return nil, ErrPublicationNotMutable
 	}
 
 	shift, err := s.publicationRepo.GetTemplateShift(ctx, publication.TemplateID, input.TemplateShiftID)
@@ -109,9 +111,11 @@ func (s *PublicationService) DeleteAssignment(
 	if err != nil {
 		return mapPublicationRepositoryError(err)
 	}
-	if model.ResolvePublicationState(publication, now) != model.PublicationStateAssigning {
-		return ErrPublicationNotAssigning
+	if !isPublicationMutableForAssignments(model.ResolvePublicationState(publication, now)) {
+		return ErrPublicationNotMutable
 	}
+
+	deletedAssignment := s.assignmentSnapshotForCascade(ctx, input.AssignmentID)
 
 	if err := s.publicationRepo.DeleteAssignment(ctx, repository.DeleteAssignmentParams{
 		PublicationID: input.PublicationID,
@@ -129,6 +133,8 @@ func (s *PublicationService) DeleteAssignment(
 			"publication_id": input.PublicationID,
 		},
 	})
+
+	s.invalidateShiftChangeRequestsForDeletedAssignment(ctx, input.AssignmentID, deletedAssignment, now)
 
 	return nil
 }
@@ -182,8 +188,8 @@ func (s *PublicationService) ActivatePublication(
 			TargetType: audit.TargetTypePublication,
 			TargetID:   &targetID,
 			Metadata: map[string]any{
-				"expired_count":    len(result.ExpiredRequestIDs),
-				"publication_id":   targetID,
+				"expired_count":  len(result.ExpiredRequestIDs),
+				"publication_id": targetID,
 			},
 		})
 	}
@@ -299,7 +305,7 @@ func (s *PublicationService) GetAssignmentBoard(
 	}
 
 	effectiveState := model.ResolvePublicationState(publication, now)
-	if effectiveState != model.PublicationStateAssigning && effectiveState != model.PublicationStateActive {
+	if !isPublicationMutableForAssignments(effectiveState) {
 		return nil, ErrPublicationNotAssigning
 	}
 
@@ -308,6 +314,19 @@ func (s *PublicationService) GetAssignmentBoard(
 		return nil, mapPublicationRepositoryError(err)
 	}
 	candidates, err := s.publicationRepo.ListAssignmentCandidates(ctx, publicationID)
+	if err != nil {
+		return nil, mapPublicationRepositoryError(err)
+	}
+	positionIDs := make([]int64, 0, len(shifts))
+	seenPositionIDs := make(map[int64]struct{}, len(shifts))
+	for _, shift := range shifts {
+		if _, ok := seenPositionIDs[shift.PositionID]; ok {
+			continue
+		}
+		seenPositionIDs[shift.PositionID] = struct{}{}
+		positionIDs = append(positionIDs, shift.PositionID)
+	}
+	qualifiedByPosition, err := s.publicationRepo.ListQualifiedUsersForPositions(ctx, positionIDs)
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
@@ -330,10 +349,18 @@ func (s *PublicationService) GetAssignmentBoard(
 		Shifts:      make([]*AssignmentBoardShiftResult, 0, len(shifts)),
 	}
 	for _, shift := range shifts {
+		shiftCandidates := candidatesByShift[shift.ID]
+		shiftAssignments := assignmentsByShift[shift.ID]
+
 		result.Shifts = append(result.Shifts, &AssignmentBoardShiftResult{
-			Shift:       shift,
-			Candidates:  cloneAssignmentCandidates(candidatesByShift[shift.ID]),
-			Assignments: cloneAssignmentParticipants(assignmentsByShift[shift.ID]),
+			Shift:      shift,
+			Candidates: cloneAssignmentCandidates(shiftCandidates),
+			NonCandidateQualified: filterNonCandidateQualified(
+				qualifiedByPosition[shift.PositionID],
+				shiftCandidates,
+				shiftAssignments,
+			),
+			Assignments: cloneAssignmentParticipants(shiftAssignments),
 		})
 	}
 
@@ -359,6 +386,156 @@ func (s *PublicationService) GetPublicationRoster(
 	}
 
 	return s.buildRoster(ctx, publication, now)
+}
+
+func isPublicationMutableForAssignments(state model.PublicationState) bool {
+	return state == model.PublicationStateAssigning ||
+		state == model.PublicationStatePublished ||
+		state == model.PublicationStateActive
+}
+
+func (s *PublicationService) assignmentSnapshotForCascade(
+	ctx context.Context,
+	assignmentID int64,
+) *model.Assignment {
+	assignment, err := s.publicationRepo.GetAssignment(ctx, assignmentID)
+	switch {
+	case err == nil:
+		return assignment
+	case errors.Is(err, repository.ErrAssignmentNotFound):
+		return nil
+	default:
+		s.logger.Warn("publication: load assignment for cascade", "assignment_id", assignmentID, "error", err)
+		return nil
+	}
+}
+
+func (s *PublicationService) invalidateShiftChangeRequestsForDeletedAssignment(
+	ctx context.Context,
+	assignmentID int64,
+	deletedAssignment *model.Assignment,
+	now time.Time,
+) {
+	if s.shiftChangeRepo == nil {
+		return
+	}
+
+	requestIDs, err := s.shiftChangeRepo.InvalidateRequestsForAssignment(ctx, assignmentID, now)
+	if err != nil {
+		s.logger.Warn("publication: invalidate shift change requests for deleted assignment", "assignment_id", assignmentID, "error", err)
+		return
+	}
+
+	for _, requestID := range requestIDs {
+		targetID := requestID
+		audit.Record(ctx, audit.Event{
+			Action:     audit.ActionShiftChangeInvalidateCascade,
+			TargetType: audit.TargetTypeShiftChangeRequest,
+			TargetID:   &targetID,
+			Metadata: map[string]any{
+				"request_id":    requestID,
+				"reason":        "assignment_deleted",
+				"assignment_id": assignmentID,
+			},
+		})
+		s.notifyShiftChangeRequestInvalidated(ctx, requestID, assignmentID, deletedAssignment)
+	}
+}
+
+func (s *PublicationService) notifyShiftChangeRequestInvalidated(
+	ctx context.Context,
+	requestID int64,
+	deletedAssignmentID int64,
+	deletedAssignment *model.Assignment,
+) {
+	if s.emailer == nil || s.shiftChangeRepo == nil {
+		return
+	}
+
+	req, err := s.shiftChangeRepo.GetByID(ctx, requestID)
+	if err != nil {
+		s.logger.Warn("publication: load shift change request for invalidation email", "request_id", requestID, "error", err)
+		return
+	}
+	requester, err := s.publicationRepo.GetUserByID(ctx, req.RequesterUserID)
+	if err != nil {
+		s.logger.Warn("publication: load requester for invalidation email", "request_id", requestID, "error", err)
+		return
+	}
+	publication, err := s.publicationRepo.GetByID(ctx, req.PublicationID)
+	if err != nil {
+		s.logger.Warn("publication: load publication for invalidation email", "request_id", requestID, "error", err)
+		return
+	}
+
+	data := email.ShiftChangeResolvedData{
+		To:            requester.Email,
+		RecipientName: requester.Name,
+		Outcome:       email.ShiftChangeOutcomeInvalidated,
+		Type:          email.ShiftChangeType(req.Type),
+		BaseURL:       s.appBaseURL,
+	}
+	requesterShift, err := s.resolveShiftChangeEmailShift(
+		ctx,
+		publication.TemplateID,
+		req.RequesterAssignmentID,
+		deletedAssignmentID,
+		deletedAssignment,
+	)
+	if err != nil {
+		s.logger.Warn("publication: load requester shift for invalidation email", "request_id", requestID, "error", err)
+	} else if requesterShift != nil {
+		data.RequesterShift = *requesterShift
+	}
+	if req.CounterpartAssignmentID != nil {
+		counterpartShift, err := s.resolveShiftChangeEmailShift(
+			ctx,
+			publication.TemplateID,
+			*req.CounterpartAssignmentID,
+			deletedAssignmentID,
+			deletedAssignment,
+		)
+		if err != nil {
+			s.logger.Warn("publication: load counterpart shift for invalidation email", "request_id", requestID, "error", err)
+		} else if counterpartShift != nil {
+			data.CounterpartShift = counterpartShift
+		}
+	}
+
+	msg := email.BuildShiftChangeResolvedMessage(data)
+	if err := s.emailer.Send(ctx, msg); err != nil {
+		s.logger.Warn("publication: send invalidation email", "request_id", requestID, "error", err)
+	}
+}
+
+func (s *PublicationService) resolveShiftChangeEmailShift(
+	ctx context.Context,
+	templateID int64,
+	assignmentID int64,
+	deletedAssignmentID int64,
+	deletedAssignment *model.Assignment,
+) (*email.ShiftRef, error) {
+	var assignment *model.Assignment
+	if deletedAssignment != nil && assignmentID == deletedAssignmentID {
+		assignment = deletedAssignment
+	} else {
+		var err error
+		assignment, err = s.publicationRepo.GetAssignment(ctx, assignmentID)
+		if err != nil {
+			if errors.Is(err, repository.ErrAssignmentNotFound) {
+				return nil, nil
+			}
+			return nil, err
+		}
+	}
+
+	shift, err := s.publicationRepo.GetTemplateShift(ctx, templateID, assignment.TemplateShiftID)
+	if err != nil {
+		return nil, err
+	}
+
+	ref := toShiftRef(shift, nil)
+	return &ref, nil
 }
 
 func (s *PublicationService) GetCurrentRoster(ctx context.Context) (*RosterResult, error) {
@@ -464,4 +641,46 @@ func cloneAssignmentParticipants(participants []*model.AssignmentParticipant) []
 		return cloned[i].UserID < cloned[j].UserID
 	})
 	return cloned
+}
+
+func filterNonCandidateQualified(
+	qualified []*model.AssignmentCandidate,
+	candidates []*model.AssignmentCandidate,
+	assignments []*model.AssignmentParticipant,
+) []*model.AssignmentCandidate {
+	if len(qualified) == 0 {
+		return make([]*model.AssignmentCandidate, 0)
+	}
+
+	excludedUserIDs := make(map[int64]struct{}, len(candidates)+len(assignments))
+	for _, candidate := range candidates {
+		if candidate == nil {
+			continue
+		}
+		excludedUserIDs[candidate.UserID] = struct{}{}
+	}
+	for _, assignment := range assignments {
+		if assignment == nil {
+			continue
+		}
+		excludedUserIDs[assignment.UserID] = struct{}{}
+	}
+
+	filtered := make([]*model.AssignmentCandidate, 0, len(qualified))
+	for _, candidate := range qualified {
+		if candidate == nil {
+			continue
+		}
+		if _, ok := excludedUserIDs[candidate.UserID]; ok {
+			continue
+		}
+		clonedCandidate := *candidate
+		filtered = append(filtered, &clonedCandidate)
+	}
+
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].UserID < filtered[j].UserID
+	})
+
+	return filtered
 }

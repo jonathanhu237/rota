@@ -115,9 +115,10 @@ type assignmentResponse struct {
 }
 
 type assignmentBoardShiftResponse struct {
-	Shift       publicationShiftResponse      `json:"shift"`
-	Candidates  []assignmentCandidateResponse `json:"candidates"`
-	Assignments []assignmentResponse          `json:"assignments"`
+	Shift                 publicationShiftResponse      `json:"shift"`
+	Candidates            []assignmentCandidateResponse `json:"candidates"`
+	NonCandidateQualified []assignmentCandidateResponse `json:"non_candidate_qualified"`
+	Assignments           []assignmentResponse          `json:"assignments"`
 }
 
 type assignmentBoardResponse struct {

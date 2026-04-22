@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest"
 
 import type { AssignmentBoardShift } from "@/lib/types"
 
-import { isAssignmentBoardShiftUnderstaffed } from "./assignment-board-state"
+import {
+  getVisibleNonCandidateQualified,
+  isAssignmentBoardMutable,
+  isAssignmentBoardShiftUnderstaffed,
+} from "./assignment-board-state"
 
 function makeShift(
   overrides: Partial<AssignmentBoardShift> = {},
@@ -18,6 +22,7 @@ function makeShift(
       required_headcount: 2,
     },
     candidates: [],
+    non_candidate_qualified: [],
     assignments: [],
     ...overrides,
   }
@@ -45,5 +50,58 @@ describe("isAssignmentBoardShiftUnderstaffed", () => {
         }),
       ),
     ).toBe(false)
+  })
+
+  it("filters out users who already appear as candidates or assignments", () => {
+    expect(
+      getVisibleNonCandidateQualified(
+        makeShift({
+          candidates: [
+            { user_id: 7, name: "Alice", email: "alice@example.com" },
+          ],
+          non_candidate_qualified: [
+            { user_id: 7, name: "Alice", email: "alice@example.com" },
+            { user_id: 8, name: "Bob", email: "bob@example.com" },
+            { user_id: 9, name: "Cara", email: "cara@example.com" },
+          ],
+          assignments: [
+            {
+              assignment_id: 1,
+              user_id: 9,
+              name: "Cara",
+              email: "cara@example.com",
+            },
+          ],
+        }),
+        true,
+      ),
+    ).toEqual([{ user_id: 8, name: "Bob", email: "bob@example.com" }])
+  })
+
+  it("returns an empty list when the qualified toggle is off", () => {
+    expect(
+      getVisibleNonCandidateQualified(
+        makeShift({
+          non_candidate_qualified: [
+            { user_id: 8, name: "Bob", email: "bob@example.com" },
+          ],
+        }),
+        false,
+      ),
+    ).toEqual([])
+  })
+})
+
+describe("isAssignmentBoardMutable", () => {
+  it("returns true for assigning, published, and active publications", () => {
+    expect(isAssignmentBoardMutable("ASSIGNING")).toBe(true)
+    expect(isAssignmentBoardMutable("PUBLISHED")).toBe(true)
+    expect(isAssignmentBoardMutable("ACTIVE")).toBe(true)
+  })
+
+  it("returns false outside the mutable window", () => {
+    expect(isAssignmentBoardMutable("DRAFT")).toBe(false)
+    expect(isAssignmentBoardMutable("COLLECTING")).toBe(false)
+    expect(isAssignmentBoardMutable("ENDED")).toBe(false)
   })
 })

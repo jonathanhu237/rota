@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/jonathanhu237/rota/backend/internal/model"
@@ -459,6 +460,46 @@ func (r *ShiftChangeRepository) MarkInvalidated(
 	`
 	_, err := r.db.ExecContext(ctx, query, id, now)
 	return err
+}
+
+// InvalidateRequestsForAssignment transitions pending requests that
+// reference the given assignment to invalidated and returns the affected ids.
+func (r *ShiftChangeRepository) InvalidateRequestsForAssignment(
+	ctx context.Context,
+	assignmentID int64,
+	now time.Time,
+) ([]int64, error) {
+	const query = `
+		UPDATE shift_change_requests
+		SET state = 'invalidated', decided_at = $2
+		WHERE state = 'pending'
+			AND (
+				requester_assignment_id = $1
+				OR counterpart_assignment_id = $1
+			)
+		RETURNING id;
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, assignmentID, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ids := make([]int64, 0)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids, nil
 }
 
 // MarkExpired transitions a pending request to expired on observation.

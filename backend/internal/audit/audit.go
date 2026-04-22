@@ -44,6 +44,7 @@ const (
 	ActionShiftChangeApprove     = "shift_change.approve"
 	ActionShiftChangeReject      = "shift_change.reject"
 	ActionShiftChangeCancel      = "shift_change.cancel"
+	ActionShiftChangeInvalidateCascade = "shift_change.invalidate.cascade"
 	ActionShiftChangeExpireBulk  = "shift_change.expire.bulk"
 
 	ActionSubmissionCreate = "submission.create"

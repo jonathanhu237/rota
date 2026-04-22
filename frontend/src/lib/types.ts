@@ -107,6 +107,7 @@ export type AssignmentBoardAssignment = {
 export type AssignmentBoardShift = {
   shift: PublicationShift
   candidates: AssignmentBoardCandidate[]
+  non_candidate_qualified: AssignmentBoardCandidate[]
   assignments: AssignmentBoardAssignment[]
 }
 

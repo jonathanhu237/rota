@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jonathanhu237/rota/backend/internal/model"
+	"github.com/lib/pq"
 )
 
 var ErrAssignmentNotFound = errors.New("assignment not found")
@@ -423,6 +424,64 @@ func (r *PublicationRepository) ListAssignmentCandidates(
 	}
 
 	return candidates, nil
+}
+
+func (r *PublicationRepository) ListQualifiedUsersForPositions(
+	ctx context.Context,
+	positionIDs []int64,
+) (map[int64][]*model.AssignmentCandidate, error) {
+	uniquePositionIDs := uniqueSortedPositionIDs(positionIDs)
+	if len(uniquePositionIDs) == 0 {
+		return make(map[int64][]*model.AssignmentCandidate), nil
+	}
+
+	const query = `
+		SELECT
+			up.position_id,
+			u.id,
+			u.name,
+			u.email
+		FROM user_positions up
+		INNER JOIN users u ON u.id = up.user_id
+		WHERE up.position_id = ANY($1)
+			AND u.status = 'active'
+		ORDER BY up.position_id ASC, u.id ASC;
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, pq.Array(uniquePositionIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	qualifiedByPosition := make(map[int64][]*model.AssignmentCandidate, len(uniquePositionIDs))
+	for rows.Next() {
+		var (
+			positionID int64
+			candidate  model.AssignmentCandidate
+		)
+		if err := rows.Scan(
+			&positionID,
+			&candidate.UserID,
+			&candidate.Name,
+			&candidate.Email,
+		); err != nil {
+			return nil, err
+		}
+		qualifiedByPosition[positionID] = append(
+			qualifiedByPosition[positionID],
+			&model.AssignmentCandidate{
+				UserID: candidate.UserID,
+				Name:   candidate.Name,
+				Email:  candidate.Email,
+			},
+		)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return qualifiedByPosition, nil
 }
 
 // GetAssignment loads one assignment by id, returning ErrAssignmentNotFound

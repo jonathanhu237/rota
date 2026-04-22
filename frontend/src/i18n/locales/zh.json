@@ -528,6 +528,7 @@
       "PUBLICATION_ALREADY_EXISTS": "当前已经存在一个未结束的发布。",
       "PUBLICATION_NOT_ACTIVE": "当前发布不处于已生效状态。",
       "PUBLICATION_NOT_ASSIGNING": "当前发布现在不能修改分配。",
+      "PUBLICATION_NOT_MUTABLE": "当前发布现在不能再编辑排班。",
       "PUBLICATION_NOT_COLLECTING": "当前发布不在可提交可用性的阶段。",
       "PUBLICATION_NOT_DELETABLE": "只有草稿状态的发布可以删除。",
       "PUBLICATION_NOT_PUBLISHED": "当前发布还没有进入公示状态。",
@@ -538,6 +539,12 @@
       "USER_DISABLED": "该用户已被禁用。",
       "USER_NOT_FOUND": "用户不存在",
       "UNAUTHORIZED": "未授权"
+    },
+    "assignmentBoard": {
+      "showAllQualified": "显示所有具备资格的员工",
+      "didNotSubmitAvailability": "未提交可用性",
+      "publishedWarning": "该排班已经对员工可见。在这里修改分配可能会使待处理的调班申请失效。",
+      "activeWarning": "该排班已经生效。在这里做出的修改会立即生效。"
     }
   },
   "assignments": {
@@ -684,6 +691,9 @@
       "shift": "班次 #{{id}}",
       "swapSummary": "{{requesterShift}} ↔ {{counterpartShift}}",
       "metadata": "由 {{requester}} 发起 · {{createdAt}}"
+    },
+    "history": {
+      "invalidatedReason": "由于关联班次在处理前已变更，此申请已被取消。"
     },
     "toast": {
       "approved": "申请已同意。",

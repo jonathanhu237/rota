@@ -480,6 +480,15 @@ func newAssignmentBoardResponse(result *service.AssignmentBoardResult) assignmen
 			})
 		}
 
+		nonCandidateQualified := make([]assignmentCandidateResponse, 0, len(shiftResult.NonCandidateQualified))
+		for _, candidate := range shiftResult.NonCandidateQualified {
+			nonCandidateQualified = append(nonCandidateQualified, assignmentCandidateResponse{
+				UserID: candidate.UserID,
+				Name:   candidate.Name,
+				Email:  candidate.Email,
+			})
+		}
+
 		assignments := make([]assignmentResponse, 0, len(shiftResult.Assignments))
 		for _, assignment := range shiftResult.Assignments {
 			assignments = append(assignments, assignmentResponse{
@@ -491,9 +500,10 @@ func newAssignmentBoardResponse(result *service.AssignmentBoardResult) assignmen
 		}
 
 		responseShifts = append(responseShifts, assignmentBoardShiftResponse{
-			Shift:       newPublicationShiftResponse(shiftResult.Shift),
-			Candidates:  candidates,
-			Assignments: assignments,
+			Shift:                 newPublicationShiftResponse(shiftResult.Shift),
+			Candidates:            candidates,
+			NonCandidateQualified: nonCandidateQualified,
+			Assignments:           assignments,
 		})
 	}
 
@@ -555,6 +565,8 @@ func (h *PublicationHandler) writePublicationServiceError(w http.ResponseWriter,
 		writeError(w, http.StatusConflict, "PUBLICATION_NOT_DELETABLE", "Publication is not deletable")
 	case errors.Is(err, service.ErrPublicationNotCollecting):
 		writeError(w, http.StatusConflict, "PUBLICATION_NOT_COLLECTING", "Publication is not collecting submissions")
+	case errors.Is(err, service.ErrPublicationNotMutable):
+		writeError(w, http.StatusConflict, "PUBLICATION_NOT_MUTABLE", "Publication is not mutable")
 	case errors.Is(err, service.ErrPublicationNotAssigning):
 		writeError(w, http.StatusConflict, "PUBLICATION_NOT_ASSIGNING", "Publication is not assigning")
 	case errors.Is(err, service.ErrPublicationNotPublished):

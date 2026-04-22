@@ -11,6 +11,7 @@ var (
 	ErrPublicationNotFound      = errors.New("publication not found")
 	ErrPublicationNotDeletable  = errors.New("publication not deletable")
 	ErrPublicationNotCollecting = errors.New("publication not collecting")
+	ErrPublicationNotMutable    = errors.New("publication not mutable")
 	ErrPublicationNotAssigning  = errors.New("publication not assigning")
 	ErrPublicationNotPublished  = errors.New("publication not published")
 	ErrPublicationNotActive     = errors.New("publication not active")

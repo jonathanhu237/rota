@@ -529,6 +529,7 @@
       "PUBLICATION_ALREADY_EXISTS": "A non-ended publication already exists.",
       "PUBLICATION_NOT_ACTIVE": "This publication is not active right now.",
       "PUBLICATION_NOT_ASSIGNING": "This publication is not accepting assignment changes right now.",
+      "PUBLICATION_NOT_MUTABLE": "This publication is no longer editable right now.",
       "PUBLICATION_NOT_COLLECTING": "This publication is not collecting availability right now.",
       "PUBLICATION_NOT_DELETABLE": "Only draft publications can be deleted.",
       "PUBLICATION_NOT_PUBLISHED": "This publication is not published right now.",
@@ -539,6 +540,12 @@
       "USER_DISABLED": "This user is disabled.",
       "USER_NOT_FOUND": "User not found",
       "UNAUTHORIZED": "Unauthorized"
+    },
+    "assignmentBoard": {
+      "showAllQualified": "Show all qualified employees",
+      "didNotSubmitAvailability": "Didn't submit availability",
+      "publishedWarning": "This schedule is already visible to employees. Editing assignments here may invalidate pending shift-change requests.",
+      "activeWarning": "This schedule is already active. Changes made here take effect immediately."
     }
   },
   "assignments": {
@@ -685,6 +692,9 @@
       "shift": "Shift #{{id}}",
       "swapSummary": "{{requesterShift}} ↔ {{counterpartShift}}",
       "metadata": "Requested by {{requester}} · {{createdAt}}"
+    },
+    "history": {
+      "invalidatedReason": "Cancelled because the referenced shift changed before the request was processed."
     },
     "toast": {
       "approved": "Request approved.",
