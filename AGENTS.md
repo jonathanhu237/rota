@@ -1,125 +1,88 @@
 ## Development Workflow
 
-This project uses **OpenSpec** for spec-driven development. All change proposals, designs, tasks, and specs live under `openspec/` and are tracked in git.
+This project uses **OpenSpec** for spec-driven development. Every behavior change goes through a change folder under `openspec/changes/` before any code is touched. Specs in `openspec/specs/` are the source of truth.
 
 ### Roles
 
-- **Claude:** exploring, proposing, reviewing, committing
-- **Codex:** implementing tasks, reporting outcomes
-
-### Parallelism
-
-Both Claude and Codex should maximize use of parallel agents whenever tasks are independent. Do not execute sequentially what can be done concurrently — spawn multiple agents in parallel for exploration, implementation, or review sub-tasks where there are no dependencies between them.
+- **Claude**: explores, writes spec artifacts (`proposal.md`, `design.md`, `tasks.md`, delta specs), reviews implementation against spec, commits.
+- **Codex**: applies tasks (implements code, runs tests, reports outcomes).
 
 ### Loop
 
 ```
-/opsx:explore (optional) → /opsx:propose → /opsx:apply → review → /opsx:archive → commit
+/opsx:explore (optional)
+    → /opsx:propose <change-name>
+    → /opsx:apply
+    → /opsx:verify (recommended for multi-session changes)
+    → review
+    → /opsx:archive
+    → git commit
 ```
 
-### Step-by-step
+1. **Explore (optional):** `/opsx:explore` — read the codebase, compare options, sketch designs. No code written.
+2. **Propose:** `/opsx:propose <change-name>` — scaffold `openspec/changes/<name>/` with `proposal.md`, `design.md`, `tasks.md`, and any delta under `specs/`.
+3. **Apply:** `/opsx:apply` — work through `tasks.md`, ticking each `- [ ]` to `- [x]`. Codex drives.
+4. **Verify (optional):** `/opsx:verify` — completeness / correctness / coherence pass. Useful when the change spans multiple sessions or multiple agents; redundant if a human review immediately follows `/opsx:apply`.
+5. **Review:** Claude verifies implementation against the change artifacts. Behavior drift is fixed in artifacts first, then re-applied — do not patch code to match a stale design.
+6. **Archive:** `/opsx:archive` — move the change to `openspec/changes/archive/YYYY-MM-DD-<name>/` and merge delta specs into `openspec/specs/`. Commit the result.
 
-1. **Explore (optional):** `/opsx:explore` for thinking-partner mode — investigate the codebase, compare options, sketch designs. No code is written here.
+Skill details live under `.claude/skills/openspec-*/SKILL.md` (mirrored to `.codex/skills/`).
 
-2. **Propose:** `/opsx:propose <change-name>` scaffolds `openspec/changes/<name>/` with `proposal.md` (what & why), `design.md` (how), `tasks.md` (steps), and any delta `specs/`.
+### Rules of engagement
 
-3. **Apply:** `/opsx:apply` reads the artifacts and works through `tasks.md`, ticking each `- [ ]` to `- [x]` as it completes. Codex usually drives this step.
-
-4. **Review:** Claude verifies the implementation against the change artifacts. Issues are fixed by re-running `/opsx:apply` or by direct edits.
-
-5. **Archive:** `/opsx:archive` moves the change to `openspec/changes/archive/YYYY-MM-DD-<name>/` and syncs delta specs into `openspec/specs/`. Commit the result.
-
-Detailed step-by-step instructions live in `.claude/skills/openspec-*/SKILL.md` (and the mirror under `.codex/skills/`).
+- **One live writer per change.** Do not have Claude and Codex editing the same files concurrently. Handoff happens through the OpenSpec artifacts, not through the working tree.
+- **Behavior drift → fix the artifact first.** If review finds the implementation diverges from `design.md` / `tasks.md` / specs in a way that changes user-visible behavior or interfaces, update the artifact first and re-apply. Typos, renames, refactors that preserve behavior, comment tweaks, and logging changes can be patched directly without an artifact update.
+- **Parallelism is for independent work.** Spawn parallel agents only when tasks genuinely don't share files or state; never to "speed up" the same change folder.
 
 ### Commit convention
 
 Follow [Conventional Commits](https://www.conventionalcommits.org/):
+
 - `feat(scope):` new feature
 - `fix(scope):` bug fix
 - `chore:` tooling, config, dependencies
 - `docs:` documentation only
+- `test:` tests only
 
-The archived change directory under `openspec/changes/archive/` is part of the commit — that's the durable record of what was built and why.
-
----
-
-## Project Overview
-
-This project is a web-based **shift scheduling system** for departments.
-
-Consider a department with ~100 employees and multiple positions. Positions are not fixed — e.g., Position A might be staffed by Employee X on Monday morning and Employee Y on Tuesday morning, while each employee has their own availability constraints.
-
-The system allows employees to submit their available time slots, and administrators to create schedules based on that data. It also provides algorithmic auto-scheduling to reduce manual effort.
-
-## Core Features
-
-- **Employee Availability**
-  Employees submit their free time slots so the system knows when each person can work.
-
-- **Admin Scheduling**
-  Administrators view availability data and manually assign employees to positions and time slots.
-
-- **Auto-Scheduling**
-  The system uses scheduling algorithms to generate optimized rosters automatically, which admins can then review and adjust.
-
-- **Multi-Position Support**
-  Departments can define multiple positions, each with its own staffing requirements and rotation rules.
+The archived change directory under `openspec/changes/archive/` is part of the commit — that is the durable record of what was built and why.
 
 ---
 
-## Tech Stack
+## Commands
 
-### Frontend
+**Run locally:**
 
-- **Framework:** React 19 + Vite
-- **Routing:** TanStack Router (file-based)
-- **State management:** TanStack Query
-- **Forms:** React Hook Form + Zod (use `zod/v3`)
-- **UI:** shadcn/ui (Tailwind CSS v4)
-- **HTTP client:** Axios
-- **i18n:** i18next + react-i18next
-  - Supported languages: English (`en`) and Chinese (`zh`)
-  - Default language: follows browser locale, fallback to `en`
-  - All user-facing strings must go through i18next — no hardcoded UI text
-- **Package manager:** pnpm
+- `make run-backend` — start the Go server
+- `make run-frontend` — start the Vite dev server
+- `make migrate-up` / `make migrate-down` / `make migrate-status` — goose migrations
 
-### Backend
+**Tests and checks:**
 
-- **Language:** Go
-- **Database:** PostgreSQL 17, launched via `docker-compose.yml`
-- **Cache / Session:** Redis 8, launched via `docker-compose.yml`
-- **Migrations:** goose (SQL-based, stored in `migrations/`)
-- **Config:** `caarlos0/env` (environment variables)
+- Backend: `cd backend && go test ./...` (unit), `go test -tags=integration ./...` (needs Postgres running), `go vet ./...`, `go build ./...`, `govulncheck ./...`
+- Frontend: `cd frontend && pnpm test && pnpm lint && pnpm build`
 
-### Infrastructure
+**Production stack:**
 
-- **Orchestration:** Docker Compose
-- **Build / Dev tasks:** Makefile (`run-backend`, `run-frontend`, `migrate-up`, `migrate-down`, `migrate-status`)
+- `make prod-up` / `make prod-down` / `make prod-logs`
 
 ---
 
-## Config
+## Done definition
 
-- Configuration is managed exclusively via environment variables.
-- New config items must be added to `.env.example`. Provide default values for non-sensitive items; leave sensitive items blank.
-- Update `.env` accordingly when adding new config items.
-- For local development passwords, use `pa55word` uniformly.
+A task is done only when all of the following hold:
 
----
+- Tests are added for the new behavior: a success path and at least one rejection / error path per new service method.
+- Backend: `go build ./...`, `go vet ./...`, `go test ./...` all clean. Changes that touch SQL also run integration tests clean.
+- Frontend: `pnpm lint`, `pnpm test`, `pnpm build` all clean.
+- `tasks.md` boxes are all ticked.
 
-## Testing
-
-- Every new feature or bug fix **must** include tests.
-- Backend: use Go's standard `testing` package. Place test files alongside the code they test (e.g., `user_test.go` next to `user.go`).
-- Frontend: use Vitest for unit tests.
-- Tests should cover the main success path and key error cases. Do not skip tests just because the feature "seems simple."
-- When applying a change, the implementer must report which tests were added and whether they pass.
-- Reviewers must flag missing or insufficient test coverage as an issue before archiving.
+Missing or insufficient tests are a blocker before archiving, not a follow-up.
 
 ---
 
-## Code Conventions
+## Config conventions
 
-- Write all code comments in **English**.
-- In Go code: if `interface{}` is needed, use `any` instead.
-- In Go code: keep SQL statement indentation aligned with the surrounding Go indentation.
+- All configuration is via environment variables.
+- New variables must be added to `.env.example`. Non-sensitive entries: include a default. Sensitive entries: leave blank.
+- Local development password: `pa55word` uniformly across services.
+- Secrets never land in git; verify `.env` is `.gitignore`d before adding any new secret.
