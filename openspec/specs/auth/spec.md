@@ -1,0 +1,484 @@
+# Auth Capability
+
+## Purpose
+
+Rota is an internal tool with no public signup. Administrators create accounts, invitees activate them by setting a password, and thereafter users authenticate with email and password against a Redis-backed session conveyed through an `HttpOnly` cookie. This capability covers identity, sessions, invitation, password reset, rate limiting, and the authorization middleware shared by the rest of the API. Scheduling is covered by the scheduling capability; audit log mechanics and retention are covered by the audit capability.
+
+## Requirements
+
+### Requirement: Users table schema
+
+The system SHALL persist users in a `users` table with columns `id` (BIGSERIAL primary key), `email` (TEXT, unique, not null, normalized by trimming whitespace), `password_hash` (TEXT, nullable while the user is `pending`), `name` (TEXT, not null), `is_admin` (BOOLEAN, not null, default `FALSE`), `status` (TEXT, not null, default `active`, constrained by `CHECK IN ('active','disabled','pending')`), and `version` (INTEGER, not null, default `1`, used as an optimistic concurrency token). Password hashes SHALL be produced with `bcrypt.DefaultCost`.
+
+#### Scenario: Pending user has no password hash
+
+- **GIVEN** a user in status `pending`
+- **THEN** the `password_hash` column is null
+- **AND** bcrypt comparison never succeeds against that row
+
+#### Scenario: Status check constraint rejects unknown values
+
+- **WHEN** an insert or update sets `status` to a value outside `{active, disabled, pending}`
+- **THEN** the database rejects the statement due to the CHECK constraint
+
+### Requirement: Password policy
+
+The system SHALL require passwords of at least 8 characters. No composition requirements SHALL be enforced.
+
+#### Scenario: Password under minimum length rejected
+
+- **WHEN** `/auth/setup-password` is called with a password shorter than 8 characters
+- **THEN** the request is rejected with `PASSWORD_TOO_SHORT` (400)
+
+### Requirement: Setup token table schema
+
+The system SHALL persist setup tokens in a `user_setup_tokens` table with columns `id` (BIGSERIAL primary key), `user_id` (BIGINT, FK to `users(id)` with `ON DELETE CASCADE`), `token_hash` (TEXT, unique, the SHA-256 hex of the raw token), `purpose` (TEXT, constrained by `CHECK IN ('invitation','password_reset')`), `expires_at` (TIMESTAMPTZ, not null), `used_at` (TIMESTAMPTZ, null until spent; set once on successful use), and `created_at` (TIMESTAMPTZ, not null, default `NOW()`). Indexes SHALL include a unique index on `token_hash` and a secondary index on `(user_id, purpose)`. Raw tokens SHALL NOT be stored.
+
+#### Scenario: Raw token is hashed before persistence
+
+- **WHEN** a setup token is issued
+- **THEN** only the SHA-256 hex digest of the raw token is stored in `token_hash`
+- **AND** the raw token is never written to the database or logs
+
+### Requirement: User status transitions
+
+The system SHALL allow only the following `status` transitions: admin user creation without password produces `pending`; bootstrap admin creation produces `active`; successful `SetupPassword` using an invitation token transitions `pending` to `active`; admin disable transitions `active` to `disabled`; admin re-activation transitions `disabled` to `active`.
+
+#### Scenario: Successful invitation setup activates pending user
+
+- **GIVEN** a user with status `pending` and a valid invitation token
+- **WHEN** the user POSTs a valid password to `/auth/setup-password`
+- **THEN** the user's `status` is updated to `active`
+- **AND** `password_hash` is set in the same SQL statement
+
+#### Scenario: Admin disable transitions active to disabled
+
+- **GIVEN** an `active` user
+- **WHEN** an admin disables the user via `PATCH /users/{id}/status`
+- **THEN** the user's `status` becomes `disabled`
+
+### Requirement: Idempotent bootstrap admin
+
+On startup the server SHALL invoke `EnsureBootstrapAdmin`, which MUST return without changes when any admin already exists (count of users with `is_admin = TRUE` is greater than zero). When no admin exists, the function SHALL require `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`, and `BOOTSTRAP_ADMIN_NAME` environment variables; any missing value or a password that fails `ValidatePassword` SHALL yield `ErrConfigInvalid` and the server SHALL exit. On success the admin SHALL be inserted directly with `status = 'active'`, `is_admin = TRUE`, and a bcrypt-hashed password. The bootstrap path SHALL NOT emit an invitation token.
+
+#### Scenario: Bootstrap is a no-op when admin already exists
+
+- **GIVEN** at least one user with `is_admin = TRUE` already in the database
+- **WHEN** the server starts and runs `EnsureBootstrapAdmin`
+- **THEN** no new user is inserted and no error is raised
+
+#### Scenario: Missing bootstrap env var aborts startup
+
+- **GIVEN** no admin exists in the database
+- **AND** `BOOTSTRAP_ADMIN_PASSWORD` is unset
+- **WHEN** the server starts
+- **THEN** `EnsureBootstrapAdmin` returns `ErrConfigInvalid`
+- **AND** the server exits
+
+#### Scenario: First-time bootstrap inserts active admin
+
+- **GIVEN** no admin exists and all three bootstrap env vars are valid
+- **WHEN** the server starts
+- **THEN** a single user is inserted with `is_admin = TRUE`, `status = 'active'`, and a bcrypt password hash
+- **AND** no invitation token is issued
+
+### Requirement: Session storage and cookie
+
+Sessions SHALL be stored in Redis under keys of the form `session:<session_id>`, where `session_id` is 32 bytes of `crypto/rand` rendered as lowercase hex, and the value SHALL be the user's `id` as a decimal string. The session TTL SHALL be `SESSION_EXPIRES_HOURS` hours, applied on `SET` and refreshed on every `Authenticate` call via `EXPIRE` (sliding window). The session cookie SHALL be named `session_id` with `Path=/`, `HttpOnly`, `SameSite=Lax`, and `Secure` whenever the request was received over TLS (`r.TLS != nil`). The cookie `MaxAge` and `Expires` SHALL match the Redis TTL.
+
+#### Scenario: Session TTL refreshed on authenticated request
+
+- **GIVEN** an authenticated request carrying a valid `session_id` cookie
+- **WHEN** the middleware calls `Authenticate`
+- **THEN** the Redis key's TTL is reset to `SESSION_EXPIRES_HOURS` via `EXPIRE`
+- **AND** the response rewrites the cookie with a matching `MaxAge` / `Expires`
+
+#### Scenario: Secure flag tracks request TLS
+
+- **WHEN** a session cookie is emitted in response to a request with `r.TLS != nil`
+- **THEN** the cookie has the `Secure` attribute set
+- **WHEN** the request was not over TLS
+- **THEN** the cookie is emitted without `Secure`
+
+### Requirement: Session creation only on login
+
+The system SHALL create sessions exclusively on successful `Login`. Each login SHALL produce a freshly generated `session_id` unrelated to any previous cookie. The system SHALL NOT upgrade an anonymous cookie to an authenticated session.
+
+#### Scenario: Login replaces any pre-existing session id
+
+- **GIVEN** a client sends `POST /auth/login` while presenting a pre-set `session_id` cookie
+- **WHEN** the login succeeds
+- **THEN** the response sets a freshly generated `session_id` unrelated to the request cookie
+
+### Requirement: Session invalidation
+
+`Logout` SHALL delete the Redis key and clear the cookie. Admin disable of a user SHALL trigger `DeleteUserSessions(userID)`, which scans the session keyspace and drops every session whose value equals that user id.
+
+#### Scenario: Admin disable terminates live sessions
+
+- **GIVEN** a user with multiple live session keys in Redis
+- **WHEN** an admin disables the user
+- **THEN** `DeleteUserSessions(userID)` deletes every Redis key whose value is the user's id
+
+#### Scenario: Authenticate does not revive an expired session
+
+- **GIVEN** a browser still holds a `session_id` cookie whose Redis key has been deleted or expired
+- **WHEN** the next authenticated request is made
+- **THEN** `Authenticate` returns an error
+- **AND** the middleware clears the cookie and responds `UNAUTHORIZED` (401)
+
+### Requirement: Login resolution order
+
+`POST /auth/login` SHALL accept `{email, password}` and resolve in this order: (1) `GetByEmail` — return `INVALID_CREDENTIALS` (401) if not found; (2) return `USER_DISABLED` (403) if `status = 'disabled'`; (3) return `USER_PENDING` (403) if `status = 'pending'`; (4) `bcrypt.CompareHashAndPassword` — return `INVALID_CREDENTIALS` (401) on mismatch; (5) on success, create a new session, set the cookie, and return `{user: {...}}`. Unknown emails SHALL always resolve to `INVALID_CREDENTIALS`. Each failure branch SHALL emit `auth.login.failure` with the corresponding `reason` (`invalid_credentials`, `user_disabled`, `user_pending`); success SHALL emit `auth.login.success`.
+
+#### Scenario: Unknown email returns generic INVALID_CREDENTIALS
+
+- **WHEN** `/auth/login` is called with an email that is not in `users`
+- **THEN** the response is 401 with code `INVALID_CREDENTIALS`
+- **AND** `auth.login.failure` is emitted with `reason = invalid_credentials`
+
+#### Scenario: Disabled user sees USER_DISABLED before bcrypt
+
+- **GIVEN** a user with `status = 'disabled'`
+- **WHEN** `/auth/login` is called with that email (regardless of password correctness)
+- **THEN** the response is 403 with code `USER_DISABLED`
+- **AND** `auth.login.failure` is emitted with `reason = user_disabled`
+- **AND** `bcrypt.CompareHashAndPassword` is not invoked
+
+#### Scenario: Pending user sees USER_PENDING before bcrypt
+
+- **GIVEN** a user with `status = 'pending'`
+- **WHEN** `/auth/login` is called with that email
+- **THEN** the response is 403 with code `USER_PENDING`
+- **AND** `auth.login.failure` is emitted with `reason = user_pending`
+
+#### Scenario: Wrong password for active user
+
+- **GIVEN** an active user
+- **WHEN** `/auth/login` is called with the correct email but wrong password
+- **THEN** the response is 401 with code `INVALID_CREDENTIALS`
+- **AND** `auth.login.failure` is emitted with `reason = invalid_credentials`
+
+#### Scenario: Successful login
+
+- **GIVEN** an active user with a matching password
+- **WHEN** `/auth/login` is called with correct credentials
+- **THEN** a new Redis session is created
+- **AND** the `session_id` cookie is set
+- **AND** the response body is `{user: {...}}`
+- **AND** `auth.login.success` is emitted
+
+### Requirement: Idempotent logout
+
+`POST /auth/logout` SHALL read the `session_id` cookie, delete the Redis key when present, and always write a cleared cookie (`MaxAge=-1`, empty value). The endpoint SHALL return `204 No Content` regardless of whether a session was present. It SHALL emit `auth.logout`, attaching the target user id when the logger had an authenticated actor on the request context.
+
+#### Scenario: Logout without a session still succeeds
+
+- **WHEN** `/auth/logout` is called with no `session_id` cookie
+- **THEN** the response is `204 No Content`
+- **AND** a cleared cookie is written
+
+#### Scenario: Logout with a live session deletes Redis key
+
+- **GIVEN** a live session in Redis matching the request cookie
+- **WHEN** `/auth/logout` is called
+- **THEN** the Redis key is deleted
+- **AND** the response is `204 No Content`
+- **AND** `auth.logout` is emitted
+
+### Requirement: Admin-driven user creation
+
+`POST /users` SHALL be an admin-only endpoint that (1) normalizes email and name, validates the email shape via `mail.ParseAddress`, and checks uniqueness — duplicates SHALL return `EMAIL_ALREADY_EXISTS`; (2) within a single transaction, inserts the user with `password_hash = NULL` and `status = 'pending'` and issues an invitation setup token; (3) after the transaction commits, sends `BuildInvitationMessage` with a link of the form `<APP_BASE_URL>/setup-password?token=<raw-token>`; (4) emits `user.create` to the audit log. The raw token SHALL NOT be logged or persisted.
+
+#### Scenario: Duplicate email rejected
+
+- **WHEN** an admin posts to `/users` with an email that already exists (after trimming)
+- **THEN** the response is an error with code `EMAIL_ALREADY_EXISTS`
+- **AND** no user is inserted
+
+#### Scenario: Invitation issued and emailed on create
+
+- **GIVEN** a valid, unique email
+- **WHEN** an admin posts to `/users`
+- **THEN** a user is inserted with `status = 'pending'` and `password_hash = NULL`
+- **AND** an invitation setup token is issued in the same transaction
+- **AND** an invitation email containing `<APP_BASE_URL>/setup-password?token=<raw-token>` is sent after commit
+- **AND** `user.create` is emitted
+
+### Requirement: Invitation token TTL
+
+Invitation tokens SHALL be valid for `INVITATION_TOKEN_TTL` (default `72h`).
+
+#### Scenario: Token past TTL rejected
+
+- **GIVEN** an invitation token whose `expires_at` is in the past
+- **WHEN** the token is presented to `/auth/setup-token` or `/auth/setup-password`
+- **THEN** the handler responds with `TOKEN_EXPIRED` (410)
+
+### Requirement: Resend invitation
+
+`POST /users/{id}/resend-invitation` SHALL be admin-only. It SHALL refuse for non-pending users with `USER_NOT_PENDING`. It SHALL issue a fresh invitation token (implicitly invalidating any prior unused invitation tokens for the same user via `InvalidateUnusedTokens`), resend the email, and emit `user.invitation.resend`.
+
+#### Scenario: Resend refused for non-pending user
+
+- **GIVEN** a user with `status != 'pending'`
+- **WHEN** an admin calls `POST /users/{id}/resend-invitation`
+- **THEN** the response is an error with code `USER_NOT_PENDING`
+
+#### Scenario: Resend invalidates prior invitation
+
+- **GIVEN** a pending user with an existing unused invitation token T1
+- **WHEN** an admin calls `POST /users/{id}/resend-invitation`
+- **THEN** T1's `expires_at` is set to `now` (invalidated)
+- **AND** a new invitation token T2 is issued
+- **AND** the invitation email is resent
+- **AND** `user.invitation.resend` is emitted
+
+### Requirement: Anti-enumeration password reset request
+
+`POST /auth/password-reset-request` SHALL accept `{email}` and SHALL always return the same generic 200 response body `{"message": "If an account exists, a reset link has been sent"}`, regardless of whether the email exists or is eligible. The email SHALL be trimmed; an empty email SHALL be accepted as a no-op. A reset token SHALL be issued only when the user exists and `status = 'active'`; for not-found users, pending users, and disabled users, no token SHALL be issued. Active users SHALL receive a freshly issued `password_reset` setup token valid for `PASSWORD_RESET_TOKEN_TTL` (default `1h`) and a templated email. The handler SHALL emit `auth.password_reset.request` with metadata including the email and a server-only `user_found` boolean.
+
+#### Scenario: Unknown email returns generic 200
+
+- **WHEN** `/auth/password-reset-request` is called with an email not present in `users`
+- **THEN** the response is 200 with body `{"message": "If an account exists, a reset link has been sent"}`
+- **AND** no token is issued
+- **AND** `auth.password_reset.request` is emitted with `user_found = false`
+
+#### Scenario: Pending or disabled user returns generic 200 without token
+
+- **GIVEN** a user with `status` in `{pending, disabled}`
+- **WHEN** `/auth/password-reset-request` is called with that email
+- **THEN** the response is the same generic 200 body
+- **AND** no `password_reset` token is issued
+- **AND** no reset email is sent
+
+#### Scenario: Active user receives reset email
+
+- **GIVEN** a user with `status = 'active'`
+- **WHEN** `/auth/password-reset-request` is called with that email
+- **THEN** a new `password_reset` token is issued with TTL `PASSWORD_RESET_TOKEN_TTL`
+- **AND** a reset email is sent
+- **AND** the response is the same generic 200 body
+- **AND** `auth.password_reset.request` is emitted with `user_found = true`
+
+#### Scenario: Empty email is a no-op
+
+- **WHEN** `/auth/password-reset-request` is called with an empty or whitespace-only email
+- **THEN** the response is the same generic 200 body
+- **AND** no lookup or token issuance occurs
+
+### Requirement: Setup token shape
+
+The raw setup token SHALL be a URL-safe base64 encoding of 32 random bytes generated by `crypto/rand`. The database SHALL store only the SHA-256 hex digest of the raw token.
+
+#### Scenario: Token hash uniqueness enforced
+
+- **WHEN** a new setup token is inserted with a `token_hash` that already exists
+- **THEN** the unique index on `token_hash` rejects the insert
+
+### Requirement: Setup token preview
+
+`GET /auth/setup-token?token=...` SHALL decode and hash the supplied token, look it up, and on success return `{email, name, purpose}`. It SHALL reject malformed tokens with `INVALID_TOKEN` (400), unknown tokens with `TOKEN_NOT_FOUND` (404), already-used tokens with `TOKEN_USED` (410), and expired tokens with `TOKEN_EXPIRED` (410).
+
+#### Scenario: Malformed token rejected
+
+- **WHEN** `/auth/setup-token` is called with a token that is not valid URL-safe base64 or wrong length
+- **THEN** the response is 400 with code `INVALID_TOKEN`
+
+#### Scenario: Unknown token rejected
+
+- **WHEN** `/auth/setup-token` is called with a well-formed token whose hash has no row
+- **THEN** the response is 404 with code `TOKEN_NOT_FOUND`
+
+#### Scenario: Already-used token rejected
+
+- **GIVEN** a setup token whose `used_at` is not null
+- **WHEN** `/auth/setup-token` is called with that token
+- **THEN** the response is 410 with code `TOKEN_USED`
+
+#### Scenario: Valid token returns account context
+
+- **GIVEN** a valid, unused, unexpired setup token
+- **WHEN** `/auth/setup-token` is called
+- **THEN** the response body is `{email, name, purpose}`
+
+### Requirement: Setup password consumption
+
+`POST /auth/setup-password` SHALL accept `{token, password}` and within a single transaction SHALL: (1) validate the password (`len >= 8`); (2) resolve the token using the same four rejection branches as the preview (`INVALID_TOKEN`, `TOKEN_NOT_FOUND`, `TOKEN_USED`, `TOKEN_EXPIRED`); (3) bcrypt-hash the new password; (4) mark the token `used_at = now`; (5) invalidate every other unused token for that user — across both purposes — by setting `expires_at` to `now`; (6) update `password_hash` and set `status = 'active'` in the same `SET`. On success the handler SHALL return `204 No Content` and emit `auth.password.set` with metadata `purpose ∈ {invitation, password_reset}` reflecting the token consumed.
+
+#### Scenario: Short password rejected
+
+- **WHEN** `/auth/setup-password` is called with a password shorter than 8 characters
+- **THEN** the response is 400 with code `PASSWORD_TOO_SHORT`
+- **AND** no token is consumed and no user is modified
+
+#### Scenario: Successful invitation setup activates user and invalidates siblings
+
+- **GIVEN** a pending user with an unused invitation token T1 and a separate unused reset token T2
+- **WHEN** `/auth/setup-password` is called with T1 and a valid password
+- **THEN** the password is bcrypt-hashed and written to `password_hash`
+- **AND** `status` is set to `active` in the same SQL statement
+- **AND** T1's `used_at` is set to now
+- **AND** T2's `expires_at` is set to now (invalidated)
+- **AND** the response is `204 No Content`
+- **AND** `auth.password.set` is emitted with `purpose = invitation`
+
+#### Scenario: Successful password reset
+
+- **GIVEN** an active user with an unused password_reset token
+- **WHEN** `/auth/setup-password` is called with that token and a valid password
+- **THEN** `password_hash` is updated
+- **AND** the token's `used_at` is set
+- **AND** the response is `204 No Content`
+- **AND** `auth.password.set` is emitted with `purpose = password_reset`
+
+### Requirement: Token issuance invalidates prior same-purpose tokens
+
+`issueToken` SHALL call `InvalidateUnusedTokens(userID, purpose, now)` before creating a new token, ensuring any still-valid token of the same purpose for that user is invalidated before the new one is created.
+
+#### Scenario: Re-requesting reset invalidates prior reset token
+
+- **GIVEN** an active user with an unused password_reset token T1
+- **WHEN** the user requests another reset and the server issues T2
+- **THEN** T1's `expires_at` is set to `now` before T2 is inserted
+- **AND** only T2 remains usable
+
+### Requirement: Login rate limiting
+
+`POST /auth/login` SHALL be chained with two in-process `golang.org/x/time/rate` limiters; either one triggering SHALL reject the request. The per-IP limiter SHALL key on the first hop of `X-Forwarded-For`, falling back to `RemoteAddr`, and enforce 5 requests per minute (one token per 12s) with burst 5. The per-email limiter SHALL key on the lowercased email extracted from the JSON body and enforce 10 requests per 15 minutes (one token per 90s) with burst 10. On rejection the handler SHALL return `429` with code `TOO_MANY_REQUESTS` and a `Retry-After` header in seconds. Empty keys SHALL skip rate limiting.
+
+#### Scenario: Per-IP burst exhausted returns 429
+
+- **GIVEN** five consecutive `/auth/login` requests from the same IP within the burst window
+- **WHEN** a sixth request arrives before a token refills
+- **THEN** the response is 429 with code `TOO_MANY_REQUESTS`
+- **AND** a `Retry-After` header in seconds is present
+
+#### Scenario: Per-email limiter throttles credential stuffing
+
+- **GIVEN** ten `/auth/login` requests against the same email from differing IPs within 15 minutes
+- **WHEN** an eleventh request arrives for that email before an email-token refills
+- **THEN** the response is 429 with code `TOO_MANY_REQUESTS`
+
+#### Scenario: Unparseable body skips email limiter
+
+- **WHEN** `/auth/login` receives a body from which the email key function cannot extract an email (empty key)
+- **THEN** the email limiter does not evaluate that request (only the IP limiter applies)
+
+### Requirement: Password reset request rate limiting
+
+`POST /auth/password-reset-request` SHALL be protected by a per-IP rate limiter enforcing 3 requests per hour (one token per 20 minutes) with burst 3. On rejection the handler SHALL return `429` with code `TOO_MANY_REQUESTS` and a `Retry-After` header.
+
+#### Scenario: Fourth reset request from same IP rejected
+
+- **GIVEN** three `/auth/password-reset-request` calls from the same IP within the burst
+- **WHEN** a fourth arrives before a token refills
+- **THEN** the response is 429 with code `TOO_MANY_REQUESTS`
+
+### Requirement: Rate limiter store bounds
+
+The rate limiter store SHALL keep up to 4096 live keys in an LRU with 30-minute idle eviction, cleaned every 5 minutes.
+
+#### Scenario: Idle key evicted after 30 minutes
+
+- **GIVEN** a rate-limit key that has seen no traffic for 30 minutes
+- **WHEN** the periodic cleanup (every 5 minutes) runs
+- **THEN** the key is evicted from the store
+
+### Requirement: RequireAuth middleware
+
+The `RequireAuth` middleware SHALL read the `session_id` cookie, call `Authenticate`, and on success: (a) refresh the cookie expiry to match the new Redis TTL; (b) attach the resolved `*model.User` to the request context; (c) attach the actor id for audit. On `session.ErrSessionNotFound`, on an unknown user id, or on a user whose status has since flipped to `disabled`, it SHALL clear the cookie and return `UNAUTHORIZED` (401).
+
+#### Scenario: Missing session cookie rejected
+
+- **WHEN** an authenticated endpoint is called without a `session_id` cookie
+- **THEN** the response is 401 with code `UNAUTHORIZED`
+
+#### Scenario: Cookie for disabled user rejected
+
+- **GIVEN** a still-live session cookie whose referenced user has been disabled
+- **WHEN** the next request is made to a `RequireAuth`-protected endpoint
+- **THEN** the cookie is cleared
+- **AND** the response is 401 with code `UNAUTHORIZED`
+
+#### Scenario: Authenticated request carries user on context
+
+- **GIVEN** a valid session whose user is active
+- **WHEN** the request reaches a `RequireAuth`-protected handler
+- **THEN** `*model.User` is attached to the request context
+- **AND** the actor id is attached for audit logging
+- **AND** the cookie expiry is refreshed to the new Redis TTL
+
+### Requirement: RequireAdmin middleware
+
+`RequireAdmin` SHALL wrap `RequireAuth` and SHALL additionally return `FORBIDDEN` (403) when the resolved user's `IsAdmin` is false.
+
+#### Scenario: Non-admin user forbidden from admin endpoint
+
+- **GIVEN** an authenticated user with `is_admin = FALSE`
+- **WHEN** the user calls an admin-only endpoint (e.g. `GET /users`)
+- **THEN** the response is 403 with code `FORBIDDEN`
+
+#### Scenario: Admin passes through
+
+- **GIVEN** an authenticated user with `is_admin = TRUE`
+- **WHEN** the user calls an admin-only endpoint
+- **THEN** the request proceeds to the handler
+
+### Requirement: Auth and user API routing
+
+The server SHALL expose these HTTP routes: `POST /auth/login` (rate-limited per IP and per email); `POST /auth/logout` (no middleware); `GET /auth/me` (`RequireAuth`); `POST /auth/password-reset-request` (rate-limited per IP); `GET /auth/setup-token` (no middleware); `POST /auth/setup-password` (no middleware); `GET /users` (`RequireAdmin`); `POST /users` (`RequireAdmin`); `GET /users/{id}` (`RequireAdmin`); `PUT /users/{id}` (`RequireAdmin`, versioned); `POST /users/{id}/resend-invitation` (`RequireAdmin`); `PATCH /users/{id}/status` (`RequireAdmin`, versioned).
+
+#### Scenario: User update uses optimistic concurrency
+
+- **GIVEN** a user row with `version = N`
+- **WHEN** `PUT /users/{id}` is called with a stale `version`
+- **THEN** the update is rejected due to version mismatch
+
+#### Scenario: Admin list is paginated
+
+- **WHEN** an admin calls `GET /users`
+- **THEN** the response is a paginated list of users
+
+### Requirement: Security headers delegated to proxy
+
+The Go server SHALL NOT set security headers such as `Content-Security-Policy`, `Strict-Transport-Security`, `X-Content-Type-Options`, or `Referrer-Policy`. These headers SHALL be set by the Caddy reverse proxy at the edge of the deployment.
+
+#### Scenario: Backend response omits CSP
+
+- **WHEN** the backend returns a response
+- **THEN** the response does not contain a `Content-Security-Policy` header set by the Go server
+
+### Requirement: Canonical error codes
+
+The system SHALL use the following error codes with the associated HTTP statuses: `INVALID_REQUEST` (400) for malformed JSON or missing required login fields; `INVALID_CREDENTIALS` (401) for unknown email or wrong password on `/auth/login`; `UNAUTHORIZED` (401) for missing/invalid session, expired session, or deleted user; `USER_PENDING` (403) for login against a pending account; `USER_DISABLED` (403) for login against a disabled account; `FORBIDDEN` (403) for authenticated non-admin on admin-only endpoint; `INVALID_TOKEN` (400) for malformed/wrong-length setup token; `TOKEN_NOT_FOUND` (404) for unknown setup token hash; `TOKEN_EXPIRED` (410) for expired setup token; `TOKEN_USED` (410) for already-used setup token; `PASSWORD_TOO_SHORT` (400) for password under 8 characters on `/auth/setup-password`; `TOO_MANY_REQUESTS` (429) for rate-limit rejection; `INTERNAL_ERROR` (500) for unmapped internal error.
+
+#### Scenario: Malformed JSON on login returns INVALID_REQUEST
+
+- **WHEN** `/auth/login` receives a body that is not valid JSON
+- **THEN** the response is 400 with code `INVALID_REQUEST`
+
+#### Scenario: Unmapped internal error returns 500
+
+- **WHEN** a handler encounters an error that is not mapped to a specific code
+- **THEN** the response is 500 with code `INTERNAL_ERROR`
+
+### Requirement: Emitted audit actions
+
+The auth and user surfaces SHALL emit the following audit actions: `auth.login.success`; `auth.login.failure` with metadata `reason ∈ {invalid_credentials, user_pending, user_disabled}`; `auth.logout`; `auth.password_reset.request` with metadata including a server-only `user_found` flag; `auth.password.set` with metadata `purpose ∈ {invitation, password_reset}`; `user.create`; `user.update`; `user.invitation.resend`; `user.status.activate`; `user.status.disable`. Audit records SHALL NOT carry passwords, raw tokens, token hashes, or session ids.
+
+#### Scenario: Login failure metadata carries reason
+
+- **WHEN** `/auth/login` fails due to a disabled user
+- **THEN** an `auth.login.failure` audit record is written with metadata `reason = user_disabled`
+
+#### Scenario: Password set metadata carries purpose
+
+- **WHEN** `/auth/setup-password` succeeds with a `password_reset` token
+- **THEN** an `auth.password.set` audit record is written with metadata `purpose = password_reset`
+
+#### Scenario: Audit records exclude secrets
+
+- **WHEN** any auth audit event is emitted
+- **THEN** the record contains no password, no raw setup token, no `token_hash` value, and no `session_id`

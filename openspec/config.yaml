@@ -17,7 +17,7 @@ rules:
   proposal:
     - Lead with the user-visible problem, not a technical itch.
     - Include a "Non-goals" section with at least three explicit exclusions.
-    - Do not propose any of these (already ruled out): multi-timezone, multi-tenancy, 2FA, OAuth / SSO, CSRF tokens, CSP headers, WebSocket / push / SMS, date-specific roster navigation, multi-language email bodies.
+    - "Do not propose any of these (already ruled out): multi-timezone, multi-tenancy, 2FA, OAuth / SSO, CSRF tokens, CSP headers, WebSocket / push / SMS, date-specific roster navigation, multi-language email bodies."
 
   design:
     - Schema changes include goose Up AND Down SQL.
