@@ -12,6 +12,8 @@ import type {
   ShiftChangeType,
   Template,
   TemplateDetail,
+  TemplateSlot,
+  TemplateSlotPosition,
   TemplateShift,
   Roster,
   SetupTokenPreview,
@@ -58,6 +60,14 @@ export type TemplateResponse = {
 
 export type TemplateShiftResponse = {
   shift: TemplateShift
+}
+
+export type TemplateSlotResponse = {
+  slot: TemplateSlot
+}
+
+export type TemplateSlotPositionResponse = {
+  position: TemplateSlotPosition
 }
 
 export type PublicationsResponse = {
@@ -138,6 +148,21 @@ export type CreateTemplateShiftInput = {
 
 export type UpdateTemplateShiftInput = CreateTemplateShiftInput
 
+export type CreateTemplateSlotInput = {
+  weekday: number
+  start_time: string
+  end_time: string
+}
+
+export type UpdateTemplateSlotInput = CreateTemplateSlotInput
+
+export type CreateTemplateSlotPositionInput = {
+  position_id: number
+  required_headcount: number
+}
+
+export type UpdateTemplateSlotPositionInput = CreateTemplateSlotPositionInput
+
 export type CreatePublicationInput = {
   template_id: number
   name: string
@@ -148,7 +173,8 @@ export type CreatePublicationInput = {
 
 export type CreateAssignmentInput = {
   user_id: number
-  template_shift_id: number
+  slot_id: number
+  position_id: number
 }
 
 export const currentUserQueryOptions = queryOptions({
@@ -344,6 +370,16 @@ export const rosterCurrentQueryOptions = queryOptions({
   },
 })
 
+export const publicationRosterQueryOptions = (publicationID: number) =>
+  queryOptions({
+    queryKey: ["publications", "detail", publicationID, "roster"],
+    queryFn: async () => {
+      const res = await api.get<RosterResponse>(`/publications/${publicationID}/roster`)
+      return res.data
+    },
+    enabled: publicationID > 0,
+  })
+
 export const myPublicationSubmissionsQueryOptions = (publicationID: number) =>
   queryOptions({
     queryKey: ["publications", "current", "submissions", publicationID],
@@ -445,6 +481,68 @@ export async function deleteTemplate(templateID: number) {
 export async function cloneTemplate(templateID: number) {
   const res = await api.post<TemplateResponse>(`/templates/${templateID}/clone`)
   return res.data.template
+}
+
+export async function createTemplateSlot(
+  templateID: number,
+  input: CreateTemplateSlotInput,
+) {
+  const res = await api.post<TemplateSlotResponse>(
+    `/templates/${templateID}/slots`,
+    input,
+  )
+  return res.data.slot
+}
+
+export async function updateTemplateSlot(
+  templateID: number,
+  slotID: number,
+  input: UpdateTemplateSlotInput,
+) {
+  const res = await api.patch<TemplateSlotResponse>(
+    `/templates/${templateID}/slots/${slotID}`,
+    input,
+  )
+  return res.data.slot
+}
+
+export async function deleteTemplateSlot(templateID: number, slotID: number) {
+  await api.delete(`/templates/${templateID}/slots/${slotID}`)
+}
+
+export async function createTemplateSlotPosition(
+  templateID: number,
+  slotID: number,
+  input: CreateTemplateSlotPositionInput,
+) {
+  const res = await api.post<TemplateSlotPositionResponse>(
+    `/templates/${templateID}/slots/${slotID}/positions`,
+    input,
+  )
+  return res.data.position
+}
+
+export async function updateTemplateSlotPosition(
+  templateID: number,
+  slotID: number,
+  positionEntryID: number,
+  input: UpdateTemplateSlotPositionInput,
+) {
+  const res = await api.patch<TemplateSlotPositionResponse>(
+    `/templates/${templateID}/slots/${slotID}/positions/${positionEntryID}`,
+    input,
+  )
+  return res.data.position
+}
+
+export async function deleteTemplateSlotPosition(
+  templateID: number,
+  slotID: number,
+  positionEntryID: number,
+) {
+  await api.delete(
+    `/templates/${templateID}/slots/${slotID}/positions/${positionEntryID}`,
+  )
 }
 
 export async function createTemplateShift(

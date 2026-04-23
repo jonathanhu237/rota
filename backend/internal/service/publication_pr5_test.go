@@ -18,7 +18,7 @@ func TestPublicationServiceAutoAssignPublication(t *testing.T) {
 		now := time.Date(2026, 4, 23, 10, 0, 0, 0, time.UTC)
 		repo := newPublicationRepositoryStatefulMock()
 		repo.publications[1] = assigningPublication(now)
-		repo.templateShifts[11].RequiredHeadcount = 1
+		repo.slotPositions[21][0].RequiredHeadcount = 1
 		repo.submissions[submissionKey(1, 7, 11)] = &model.AvailabilitySubmission{
 			ID:              1,
 			PublicationID:   1,
@@ -40,12 +40,13 @@ func TestPublicationServiceAutoAssignPublication(t *testing.T) {
 			TemplateShiftID: 12,
 			CreatedAt:       now.Add(-2 * time.Hour),
 		}
-		repo.assignments[assignmentKey(1, 8, 11)] = &model.Assignment{
-			ID:              1,
-			PublicationID:   1,
-			UserID:          8,
-			TemplateShiftID: 11,
-			CreatedAt:       now.Add(-time.Hour),
+		repo.assignments[assignmentKey(1, 8, 21)] = &model.Assignment{
+			ID:            1,
+			PublicationID: 1,
+			UserID:        8,
+			SlotID:        21,
+			PositionID:    101,
+			CreatedAt:     now.Add(-time.Hour),
 		}
 
 		service := NewPublicationService(repo, fixedClock{now: now})
@@ -61,17 +62,17 @@ func TestPublicationServiceAutoAssignPublication(t *testing.T) {
 		if len(repo.assignments) != 2 {
 			t.Fatalf("expected 2 stored assignments, got %d", len(repo.assignments))
 		}
-		if _, ok := repo.assignments[assignmentKey(1, 8, 11)]; ok {
+		if _, ok := repo.assignments[assignmentKey(1, 8, 21)]; ok {
 			t.Fatalf("expected old manual assignment to be replaced, got %+v", repo.assignments)
 		}
-		if _, ok := repo.assignments[assignmentKey(1, 7, 11)]; !ok {
-			t.Fatalf("expected user 7 assigned to shift 11, got %+v", repo.assignments)
+		if _, ok := repo.assignments[assignmentKey(1, 7, 21)]; !ok {
+			t.Fatalf("expected user 7 assigned to slot 21, got %+v", repo.assignments)
 		}
-		if _, ok := repo.assignments[assignmentKey(1, 8, 12)]; !ok {
-			t.Fatalf("expected user 8 assigned to shift 12, got %+v", repo.assignments)
+		if _, ok := repo.assignments[assignmentKey(1, 8, 22)]; !ok {
+			t.Fatalf("expected user 8 assigned to slot 22, got %+v", repo.assignments)
 		}
-		if len(result.Shifts) != 2 {
-			t.Fatalf("expected 2 board shifts, got %d", len(result.Shifts))
+		if len(result.Slots) != 2 {
+			t.Fatalf("expected 2 board slots, got %d", len(result.Slots))
 		}
 
 		event := stub.FindByAction(audit.ActionPublicationAutoAssign)
@@ -128,9 +129,11 @@ func TestPublicationServiceAutoAssignPublication(t *testing.T) {
 		if len(repo.assignments) != 0 {
 			t.Fatalf("expected no stored assignments, got %+v", repo.assignments)
 		}
-		for _, shift := range result.Shifts {
-			if len(shift.Assignments) != 0 {
-				t.Fatalf("expected empty assignments per shift, got %+v", result.Shifts)
+		for _, slot := range result.Slots {
+			for _, position := range slot.Positions {
+				if len(position.Assignments) != 0 {
+					t.Fatalf("expected empty assignments per slot position, got %+v", result.Slots)
+				}
 			}
 		}
 

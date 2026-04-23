@@ -556,7 +556,7 @@ func lockAssignment(ctx context.Context, tx *sql.Tx, id int64) (AssignmentSnapsh
 
 func loadAssignment(ctx context.Context, tx *sql.Tx, id int64) (*model.Assignment, error) {
 	const query = `
-		SELECT id, publication_id, user_id, template_shift_id, created_at
+		SELECT id, publication_id, user_id, slot_id, position_id, created_at
 		FROM assignments
 		WHERE id = $1;
 	`
@@ -565,7 +565,8 @@ func loadAssignment(ctx context.Context, tx *sql.Tx, id int64) (*model.Assignmen
 		&assignment.ID,
 		&assignment.PublicationID,
 		&assignment.UserID,
-		&assignment.TemplateShiftID,
+		&assignment.SlotID,
+		&assignment.PositionID,
 		&assignment.CreatedAt,
 	); err != nil {
 		return nil, err

@@ -289,6 +289,8 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		seedUserPosition(t, db, secondUser.ID, otherPosition.ID)
 		seedSubmission(t, db, publication.ID, firstUser.ID, firstShift.ID, testTime())
 		seedSubmission(t, db, publication.ID, secondUser.ID, secondShift.ID, testTime().Add(1*time.Minute))
+		firstSlotID := slotIDForEntry(t, db, firstShift.ID)
+		secondSlotID := slotIDForEntry(t, db, secondShift.ID)
 
 		candidates, err := repo.ListAssignmentCandidates(ctx, publication.ID)
 		if err != nil {
@@ -297,10 +299,10 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		if len(candidates) != 2 {
 			t.Fatalf("expected 2 candidates, got %d", len(candidates))
 		}
-		if candidates[0].TemplateShiftID != firstShift.ID || candidates[0].Name != "Alice" {
+		if candidates[0].SlotID != firstSlotID || candidates[0].PositionID != matchingPosition.ID || candidates[0].Name != "Alice" {
 			t.Fatalf("unexpected first candidate: %+v", candidates[0])
 		}
-		if candidates[1].TemplateShiftID != secondShift.ID || candidates[1].Name != "Bob" {
+		if candidates[1].SlotID != secondSlotID || candidates[1].PositionID != otherPosition.ID || candidates[1].Name != "Bob" {
 			t.Fatalf("unexpected second candidate: %+v", candidates[1])
 		}
 
@@ -316,6 +318,90 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		}
 		if qualified[0].StartTime != "09:00" || qualified[0].EndTime != "12:00" {
 			t.Fatalf("expected time formatting 09:00-12:00, got %s-%s", qualified[0].StartTime, qualified[0].EndTime)
+		}
+	})
+
+	t.Run("GetAssignmentBoardView groups slot positions and filters non-candidate qualified users", func(t *testing.T) {
+		db := openIntegrationDB(t)
+		repo := NewPublicationRepository(db)
+		template := seedTemplate(t, db, templateSeed{Name: "Board Template"})
+		firstPosition := seedPosition(t, db, positionSeed{Name: "Front Desk"})
+		secondPosition := seedPosition(t, db, positionSeed{Name: "Cashier"})
+		firstSlotID := seedTemplateSlot(t, db, template.ID, 1, "09:00", "12:00")
+		secondSlotID := seedTemplateSlot(t, db, template.ID, 2, "13:00", "16:00")
+		firstEntryID := seedTemplateSlotPosition(t, db, firstSlotID, firstPosition.ID, 2)
+		seedTemplateSlotPosition(t, db, secondSlotID, secondPosition.ID, 1)
+		publication := seedPublication(t, db, publicationSeed{
+			TemplateID:        template.ID,
+			State:             model.PublicationStateAssigning,
+			SubmissionStartAt: testTime().Add(-4 * time.Hour),
+			SubmissionEndAt:   testTime().Add(-2 * time.Hour),
+			PlannedActiveFrom: testTime().Add(1 * time.Hour),
+			CreatedAt:         testTime().Add(-5 * time.Hour),
+		})
+		firstCandidate := seedUser(t, db, userSeed{Name: "Alice", Email: "alice@example.com"})
+		secondCandidate := seedUser(t, db, userSeed{Name: "Bob", Email: "bob@example.com"})
+		nonCandidateQualified := seedUser(t, db, userSeed{Name: "Dana", Email: "dana@example.com"})
+		disabledQualified := seedUser(t, db, userSeed{
+			Name:   "Disabled",
+			Email:  "disabled@example.com",
+			Status: model.UserStatusDisabled,
+		})
+
+		for _, userID := range []int64{
+			firstCandidate.ID,
+			secondCandidate.ID,
+			nonCandidateQualified.ID,
+			disabledQualified.ID,
+		} {
+			seedUserPosition(t, db, userID, firstPosition.ID)
+		}
+
+		seedSubmission(t, db, publication.ID, firstCandidate.ID, firstEntryID, testTime())
+		seedSubmission(t, db, publication.ID, secondCandidate.ID, firstEntryID, testTime().Add(1*time.Minute))
+		seedAssignment(t, db, publication.ID, secondCandidate.ID, firstEntryID, testTime().Add(2*time.Minute))
+
+		board, err := repo.GetAssignmentBoardView(ctx, publication.ID)
+		if err != nil {
+			t.Fatalf("get assignment board view: %v", err)
+		}
+		if len(board) != 2 {
+			t.Fatalf("expected 2 slots in board view, got %+v", board)
+		}
+
+		firstSlot := board[firstSlotID]
+		if firstSlot == nil || firstSlot.Slot == nil {
+			t.Fatalf("expected first slot view, got %+v", board)
+		}
+		firstPositionView := firstSlot.Positions[firstPosition.ID]
+		if firstPositionView == nil {
+			t.Fatalf("expected first slot position view, got %+v", firstSlot.Positions)
+		}
+		if firstPositionView.RequiredHeadcount != 2 {
+			t.Fatalf("expected required_headcount=2, got %+v", firstPositionView)
+		}
+		if len(firstPositionView.Candidates) != 2 ||
+			firstPositionView.Candidates[0].UserID != firstCandidate.ID ||
+			firstPositionView.Candidates[1].UserID != secondCandidate.ID {
+			t.Fatalf("unexpected candidates: %+v", firstPositionView.Candidates)
+		}
+		if len(firstPositionView.Assignments) != 1 || firstPositionView.Assignments[0].UserID != secondCandidate.ID {
+			t.Fatalf("unexpected assignments: %+v", firstPositionView.Assignments)
+		}
+		if len(firstPositionView.NonCandidateQualified) != 1 || firstPositionView.NonCandidateQualified[0].UserID != nonCandidateQualified.ID {
+			t.Fatalf("unexpected non-candidate qualified users: %+v", firstPositionView.NonCandidateQualified)
+		}
+
+		secondSlot := board[secondSlotID]
+		if secondSlot == nil || secondSlot.Slot == nil {
+			t.Fatalf("expected second slot view, got %+v", board)
+		}
+		secondPositionView := secondSlot.Positions[secondPosition.ID]
+		if secondPositionView == nil {
+			t.Fatalf("expected second slot position view, got %+v", secondSlot.Positions)
+		}
+		if len(secondPositionView.Candidates) != 0 || len(secondPositionView.Assignments) != 0 || len(secondPositionView.NonCandidateQualified) != 0 {
+			t.Fatalf("expected empty second slot position view, got %+v", secondPositionView)
 		}
 	})
 
@@ -356,6 +442,20 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 			t.Fatalf("unexpected second-position users: %+v", qualified[secondPosition.ID])
 		}
 	})
+}
+
+func slotIDForEntry(t testing.TB, db *sql.DB, entryID int64) int64 {
+	t.Helper()
+
+	var slotID int64
+	if err := db.QueryRowContext(
+		context.Background(),
+		`SELECT slot_id FROM template_slot_positions WHERE id = $1`,
+		entryID,
+	).Scan(&slotID); err != nil {
+		t.Fatalf("lookup slot id for entry %d: %v", entryID, err)
+	}
+	return slotID
 }
 
 func seedPublicationPrerequisites(

@@ -274,10 +274,12 @@ func (r *PublicationRepository) ListSubmissionShiftIDs(
 	}
 
 	const query = `
-		SELECT template_shift_id
-		FROM availability_submissions
-		WHERE publication_id = $1 AND user_id = $2
-		ORDER BY template_shift_id ASC;
+		SELECT tsp.id
+		FROM availability_submissions asub
+		INNER JOIN template_slot_positions tsp
+			ON tsp.slot_id = asub.slot_id AND tsp.position_id = asub.position_id
+		WHERE asub.publication_id = $1 AND asub.user_id = $2
+		ORDER BY tsp.id ASC;
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, publicationID, userID)
@@ -315,16 +317,22 @@ func (r *PublicationRepository) UpsertSubmission(
 		return nil, err
 	}
 
+	slotID, positionID, err := getTemplateSlotPositionPairByEntryID(ctx, tx, params.TemplateShiftID)
+	if err != nil {
+		return nil, err
+	}
+
 	const query = `
 		INSERT INTO availability_submissions (
 			publication_id,
 			user_id,
-			template_shift_id,
+			slot_id,
+			position_id,
 			created_at
 		)
-		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (publication_id, user_id, template_shift_id) DO NOTHING
-		RETURNING id, publication_id, user_id, template_shift_id, created_at;
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (publication_id, user_id, slot_id, position_id) DO NOTHING
+		RETURNING id, publication_id, user_id, slot_id, position_id, created_at, $6;
 	`
 
 	submission, err := scanSubmission(tx.QueryRowContext(
@@ -332,12 +340,14 @@ func (r *PublicationRepository) UpsertSubmission(
 		query,
 		params.PublicationID,
 		params.UserID,
-		params.TemplateShiftID,
+		slotID,
+		positionID,
 		params.Now,
+		params.TemplateShiftID,
 	))
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		submission, err = getSubmissionByKey(ctx, tx, params.PublicationID, params.UserID, params.TemplateShiftID)
+		submission, err = getSubmissionByKey(ctx, tx, params.PublicationID, params.UserID, slotID, positionID)
 		if err != nil {
 			return nil, err
 		}
@@ -366,12 +376,20 @@ func (r *PublicationRepository) DeleteSubmission(
 		return err
 	}
 
+	slotID, positionID, err := getTemplateSlotPositionPairByEntryID(ctx, tx, params.TemplateShiftID)
+	switch {
+	case errors.Is(err, ErrTemplateShiftNotFound):
+		return tx.Commit()
+	case err != nil:
+		return err
+	}
+
 	const query = `
 		DELETE FROM availability_submissions
-		WHERE publication_id = $1 AND user_id = $2 AND template_shift_id = $3;
+		WHERE publication_id = $1 AND user_id = $2 AND slot_id = $3 AND position_id = $4;
 	`
 
-	if _, err := tx.ExecContext(ctx, query, params.PublicationID, params.UserID, params.TemplateShiftID); err != nil {
+	if _, err := tx.ExecContext(ctx, query, params.PublicationID, params.UserID, slotID, positionID); err != nil {
 		return err
 	}
 
@@ -384,17 +402,18 @@ func (r *PublicationRepository) GetTemplateShift(
 ) (*model.TemplateShift, error) {
 	const query = `
 		SELECT
-			id,
-			template_id,
-			weekday,
-			TO_CHAR(start_time, 'HH24:MI'),
-			TO_CHAR(end_time, 'HH24:MI'),
-			position_id,
-			required_headcount,
-			created_at,
-			updated_at
-		FROM template_shifts
-		WHERE template_id = $1 AND id = $2;
+			tsp.id,
+			ts.template_id,
+			ts.weekday,
+			TO_CHAR(ts.start_time, 'HH24:MI'),
+			TO_CHAR(ts.end_time, 'HH24:MI'),
+			tsp.position_id,
+			tsp.required_headcount,
+			tsp.created_at,
+			tsp.updated_at
+		FROM template_slot_positions tsp
+		INNER JOIN template_slots ts ON ts.id = tsp.slot_id
+		WHERE ts.template_id = $1 AND tsp.id = $2;
 	`
 
 	shift := &model.TemplateShift{}
@@ -453,20 +472,21 @@ func (r *PublicationRepository) ListQualifiedShifts(
 
 	const query = `
 		SELECT
-			ts.id,
+			tsp.id,
 			ts.template_id,
 			ts.weekday,
 			TO_CHAR(ts.start_time, 'HH24:MI'),
 			TO_CHAR(ts.end_time, 'HH24:MI'),
-			ts.position_id,
-			ts.required_headcount,
-			ts.created_at,
-			ts.updated_at
+			tsp.position_id,
+			tsp.required_headcount,
+			tsp.created_at,
+			tsp.updated_at
 		FROM publications p
-		INNER JOIN template_shifts ts ON ts.template_id = p.template_id
-		INNER JOIN user_positions up ON up.position_id = ts.position_id
+		INNER JOIN template_slots ts ON ts.template_id = p.template_id
+		INNER JOIN template_slot_positions tsp ON tsp.slot_id = ts.id
+		INNER JOIN user_positions up ON up.position_id = tsp.position_id
 		WHERE p.id = $1 AND up.user_id = $2
-		ORDER BY ts.weekday ASC, ts.start_time ASC, ts.id ASC;
+		ORDER BY ts.weekday ASC, ts.start_time ASC, ts.id ASC, tsp.position_id ASC;
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, publicationID, userID)
@@ -604,15 +624,27 @@ func updatePublicationStateIfNeeded(
 func getSubmissionByKey(
 	ctx context.Context,
 	db dbtx,
-	publicationID, userID, templateShiftID int64,
+	publicationID, userID, slotID, positionID int64,
 ) (*model.AvailabilitySubmission, error) {
 	const query = `
-		SELECT id, publication_id, user_id, template_shift_id, created_at
-		FROM availability_submissions
-		WHERE publication_id = $1 AND user_id = $2 AND template_shift_id = $3;
+		SELECT
+			asub.id,
+			asub.publication_id,
+			asub.user_id,
+			asub.slot_id,
+			asub.position_id,
+			asub.created_at,
+			COALESCE(tsp.id, 0)
+		FROM availability_submissions asub
+		LEFT JOIN template_slot_positions tsp
+			ON tsp.slot_id = asub.slot_id AND tsp.position_id = asub.position_id
+		WHERE asub.publication_id = $1
+			AND asub.user_id = $2
+			AND asub.slot_id = $3
+			AND asub.position_id = $4;
 	`
 
-	return submissionFromRow(db.QueryRowContext(ctx, query, publicationID, userID, templateShiftID))
+	return submissionFromRow(db.QueryRowContext(ctx, query, publicationID, userID, slotID, positionID))
 }
 
 func publicationExists(ctx context.Context, db dbtx, publicationID int64) (bool, error) {
@@ -657,12 +689,18 @@ func scanPublication(row scanner) (*model.Publication, error) {
 
 func scanSubmission(row scanner) (*model.AvailabilitySubmission, error) {
 	submission := &model.AvailabilitySubmission{}
+	var (
+		slotID     int64
+		positionID int64
+	)
 	err := row.Scan(
 		&submission.ID,
 		&submission.PublicationID,
 		&submission.UserID,
-		&submission.TemplateShiftID,
+		&slotID,
+		&positionID,
 		&submission.CreatedAt,
+		&submission.TemplateShiftID,
 	)
 	if err != nil {
 		return nil, err

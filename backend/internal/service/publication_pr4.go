@@ -15,11 +15,17 @@ import (
 
 type AssignmentBoardResult struct {
 	Publication *model.Publication
-	Shifts      []*AssignmentBoardShiftResult
+	Slots       []*AssignmentBoardSlotResult
 }
 
-type AssignmentBoardShiftResult struct {
-	Shift                 *model.PublicationShift
+type AssignmentBoardSlotResult struct {
+	Slot      *model.TemplateSlot
+	Positions []*AssignmentBoardPositionResult
+}
+
+type AssignmentBoardPositionResult struct {
+	Position              *model.Position
+	RequiredHeadcount     int
 	Candidates            []*model.AssignmentCandidate
 	NonCandidateQualified []*model.AssignmentCandidate
 	Assignments           []*model.AssignmentParticipant
@@ -32,19 +38,25 @@ type RosterResult struct {
 
 type RosterWeekdayResult struct {
 	Weekday int
-	Shifts  []*RosterShiftResult
+	Slots   []*RosterSlotResult
 }
 
-type RosterShiftResult struct {
-	Shift       *model.PublicationShift
-	Assignments []*model.AssignmentParticipant
+type RosterSlotResult struct {
+	Slot      *model.TemplateSlot
+	Positions []*RosterPositionResult
+}
+
+type RosterPositionResult struct {
+	Position          *model.Position
+	RequiredHeadcount int
+	Assignments       []*model.AssignmentParticipant
 }
 
 func (s *PublicationService) CreateAssignment(
 	ctx context.Context,
 	input CreateAssignmentInput,
 ) (*model.Assignment, error) {
-	if input.PublicationID <= 0 || input.UserID <= 0 || input.TemplateShiftID <= 0 {
+	if input.PublicationID <= 0 || input.UserID <= 0 || input.SlotID <= 0 || input.PositionID <= 0 {
 		return nil, ErrInvalidInput
 	}
 
@@ -57,12 +69,17 @@ func (s *PublicationService) CreateAssignment(
 		return nil, ErrPublicationNotMutable
 	}
 
-	shift, err := s.publicationRepo.GetTemplateShift(ctx, publication.TemplateID, input.TemplateShiftID)
+	slot, err := s.publicationRepo.GetSlot(ctx, publication.TemplateID, input.SlotID)
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
-	if shift.TemplateID != publication.TemplateID {
-		return nil, ErrTemplateShiftNotFound
+
+	slotPositions, err := s.publicationRepo.ListSlotPositions(ctx, input.SlotID)
+	if err != nil {
+		return nil, mapPublicationRepositoryError(err)
+	}
+	if !slotHasPosition(slotPositions, input.PositionID) {
+		return nil, ErrTemplateSlotPositionNotFound
 	}
 
 	user, err := s.publicationRepo.GetUserByID(ctx, input.UserID)
@@ -73,11 +90,30 @@ func (s *PublicationService) CreateAssignment(
 		return nil, ErrUserDisabled
 	}
 
+	existingAssignments, err := s.publicationRepo.ListUserAssignmentsOnWeekdayInPublication(
+		ctx,
+		input.PublicationID,
+		input.UserID,
+		slot.Weekday,
+	)
+	if err != nil {
+		return nil, mapPublicationRepositoryError(err)
+	}
+	for _, assignment := range existingAssignments {
+		if assignment.SlotID == input.SlotID {
+			return nil, ErrAssignmentUserAlreadyInSlot
+		}
+	}
+	if hasAssignmentTimeConflict(existingAssignments, slot.StartTime, slot.EndTime) {
+		return nil, ErrAssignmentTimeConflict
+	}
+
 	assignment, err := s.publicationRepo.CreateAssignment(ctx, repository.CreateAssignmentParams{
-		PublicationID:   input.PublicationID,
-		UserID:          input.UserID,
-		TemplateShiftID: input.TemplateShiftID,
-		CreatedAt:       now,
+		PublicationID: input.PublicationID,
+		UserID:        input.UserID,
+		SlotID:        input.SlotID,
+		PositionID:    input.PositionID,
+		CreatedAt:     now,
 	})
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
@@ -89,13 +125,55 @@ func (s *PublicationService) CreateAssignment(
 		TargetType: audit.TargetTypeAssignment,
 		TargetID:   &targetID,
 		Metadata: map[string]any{
-			"publication_id":    assignment.PublicationID,
-			"user_id":           assignment.UserID,
-			"template_shift_id": assignment.TemplateShiftID,
+			"publication_id": assignment.PublicationID,
+			"user_id":        assignment.UserID,
+			"slot_id":        assignment.SlotID,
+			"position_id":    assignment.PositionID,
 		},
 	})
 
 	return assignment, nil
+}
+
+func slotHasPosition(slotPositions []*model.TemplateSlotPosition, positionID int64) bool {
+	for _, slotPosition := range slotPositions {
+		if slotPosition.PositionID == positionID {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasAssignmentTimeConflict(
+	assignments []*model.AssignmentSlotView,
+	startTime, endTime string,
+) bool {
+	targetStartMinutes, err := parseClockMinutes(startTime)
+	if err != nil {
+		return false
+	}
+	targetEndMinutes, err := parseClockMinutes(endTime)
+	if err != nil {
+		return false
+	}
+
+	for _, assignment := range assignments {
+		assignmentStartMinutes, err := parseClockMinutes(assignment.StartTime)
+		if err != nil {
+			continue
+		}
+		assignmentEndMinutes, err := parseClockMinutes(assignment.EndTime)
+		if err != nil {
+			continue
+		}
+
+		if assignmentStartMinutes < targetEndMinutes && targetStartMinutes < assignmentEndMinutes {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (s *PublicationService) DeleteAssignment(
@@ -125,13 +203,19 @@ func (s *PublicationService) DeleteAssignment(
 	}
 
 	targetID := input.AssignmentID
+	metadata := map[string]any{
+		"publication_id": input.PublicationID,
+	}
+	if deletedAssignment != nil {
+		metadata["user_id"] = deletedAssignment.UserID
+		metadata["slot_id"] = deletedAssignment.SlotID
+		metadata["position_id"] = deletedAssignment.PositionID
+	}
 	audit.Record(ctx, audit.Event{
 		Action:     audit.ActionAssignmentDelete,
 		TargetType: audit.TargetTypeAssignment,
 		TargetID:   &targetID,
-		Metadata: map[string]any{
-			"publication_id": input.PublicationID,
-		},
+		Metadata:   metadata,
 	})
 
 	s.invalidateShiftChangeRequestsForDeletedAssignment(ctx, input.AssignmentID, deletedAssignment, now)
@@ -309,59 +393,71 @@ func (s *PublicationService) GetAssignmentBoard(
 		return nil, ErrPublicationNotAssigning
 	}
 
-	shifts, err := s.publicationRepo.ListPublicationShifts(ctx, publicationID)
+	boardView, err := s.publicationRepo.GetAssignmentBoardView(ctx, publicationID)
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
-	}
-	candidates, err := s.publicationRepo.ListAssignmentCandidates(ctx, publicationID)
-	if err != nil {
-		return nil, mapPublicationRepositoryError(err)
-	}
-	positionIDs := make([]int64, 0, len(shifts))
-	seenPositionIDs := make(map[int64]struct{}, len(shifts))
-	for _, shift := range shifts {
-		if _, ok := seenPositionIDs[shift.PositionID]; ok {
-			continue
-		}
-		seenPositionIDs[shift.PositionID] = struct{}{}
-		positionIDs = append(positionIDs, shift.PositionID)
-	}
-	qualifiedByPosition, err := s.publicationRepo.ListQualifiedUsersForPositions(ctx, positionIDs)
-	if err != nil {
-		return nil, mapPublicationRepositoryError(err)
-	}
-	assignments, err := s.publicationRepo.ListPublicationAssignments(ctx, publicationID)
-	if err != nil {
-		return nil, mapPublicationRepositoryError(err)
-	}
-
-	candidatesByShift := make(map[int64][]*model.AssignmentCandidate)
-	for _, candidate := range candidates {
-		candidatesByShift[candidate.TemplateShiftID] = append(candidatesByShift[candidate.TemplateShiftID], candidate)
-	}
-	assignmentsByShift := make(map[int64][]*model.AssignmentParticipant)
-	for _, assignment := range assignments {
-		assignmentsByShift[assignment.TemplateShiftID] = append(assignmentsByShift[assignment.TemplateShiftID], assignment)
 	}
 
 	result := &AssignmentBoardResult{
 		Publication: publicationWithEffectiveState(publication, now),
-		Shifts:      make([]*AssignmentBoardShiftResult, 0, len(shifts)),
+		Slots:       make([]*AssignmentBoardSlotResult, 0),
 	}
-	for _, shift := range shifts {
-		shiftCandidates := candidatesByShift[shift.ID]
-		shiftAssignments := assignmentsByShift[shift.ID]
 
-		result.Shifts = append(result.Shifts, &AssignmentBoardShiftResult{
-			Shift:      shift,
-			Candidates: cloneAssignmentCandidates(shiftCandidates),
-			NonCandidateQualified: filterNonCandidateQualified(
-				qualifiedByPosition[shift.PositionID],
-				shiftCandidates,
-				shiftAssignments,
-			),
-			Assignments: cloneAssignmentParticipants(shiftAssignments),
+	slotIDs := make([]int64, 0, len(boardView))
+	for slotID := range boardView {
+		slotIDs = append(slotIDs, slotID)
+	}
+	sort.Slice(slotIDs, func(i, j int) bool {
+		left := boardView[slotIDs[i]].Slot
+		right := boardView[slotIDs[j]].Slot
+		switch {
+		case left.Weekday != right.Weekday:
+			return left.Weekday < right.Weekday
+		case left.StartTime != right.StartTime:
+			return left.StartTime < right.StartTime
+		case left.EndTime != right.EndTime:
+			return left.EndTime < right.EndTime
+		default:
+			return left.ID < right.ID
+		}
+	})
+
+	for _, slotID := range slotIDs {
+		slotView := boardView[slotID]
+		slotResult := &AssignmentBoardSlotResult{
+			Slot: &model.TemplateSlot{
+				ID:         slotView.Slot.ID,
+				TemplateID: slotView.Slot.TemplateID,
+				Weekday:    slotView.Slot.Weekday,
+				StartTime:  slotView.Slot.StartTime,
+				EndTime:    slotView.Slot.EndTime,
+			},
+			Positions: make([]*AssignmentBoardPositionResult, 0, len(slotView.Positions)),
+		}
+
+		positionIDs := make([]int64, 0, len(slotView.Positions))
+		for positionID := range slotView.Positions {
+			positionIDs = append(positionIDs, positionID)
+		}
+		sort.Slice(positionIDs, func(i, j int) bool {
+			return positionIDs[i] < positionIDs[j]
 		})
+
+		for _, positionID := range positionIDs {
+			positionView := slotView.Positions[positionID]
+			slotResult.Positions = append(slotResult.Positions, &AssignmentBoardPositionResult{
+				Position: &model.Position{
+					ID:   positionView.Position.ID,
+					Name: positionView.Position.Name,
+				},
+				RequiredHeadcount:     positionView.RequiredHeadcount,
+				Candidates:            cloneAssignmentCandidates(positionView.Candidates),
+				NonCandidateQualified: cloneAssignmentCandidates(positionView.NonCandidateQualified),
+				Assignments:           cloneAssignmentParticipants(positionView.Assignments),
+			})
+		}
+
+		result.Slots = append(result.Slots, slotResult)
 	}
 
 	return result, nil
@@ -477,7 +573,7 @@ func (s *PublicationService) notifyShiftChangeRequestInvalidated(
 	}
 	requesterShift, err := s.resolveShiftChangeEmailShift(
 		ctx,
-		publication.TemplateID,
+		publication.ID,
 		req.RequesterAssignmentID,
 		deletedAssignmentID,
 		deletedAssignment,
@@ -490,7 +586,7 @@ func (s *PublicationService) notifyShiftChangeRequestInvalidated(
 	if req.CounterpartAssignmentID != nil {
 		counterpartShift, err := s.resolveShiftChangeEmailShift(
 			ctx,
-			publication.TemplateID,
+			publication.ID,
 			*req.CounterpartAssignmentID,
 			deletedAssignmentID,
 			deletedAssignment,
@@ -510,7 +606,7 @@ func (s *PublicationService) notifyShiftChangeRequestInvalidated(
 
 func (s *PublicationService) resolveShiftChangeEmailShift(
 	ctx context.Context,
-	templateID int64,
+	publicationID int64,
 	assignmentID int64,
 	deletedAssignmentID int64,
 	deletedAssignment *model.Assignment,
@@ -529,12 +625,16 @@ func (s *PublicationService) resolveShiftChangeEmailShift(
 		}
 	}
 
-	shift, err := s.publicationRepo.GetTemplateShift(ctx, templateID, assignment.TemplateShiftID)
+	shifts, err := s.publicationRepo.ListPublicationShifts(ctx, publicationID)
 	if err != nil {
 		return nil, err
 	}
+	shift := findPublicationShiftForAssignment(buildPublicationShiftIndex(shifts), assignment)
+	if shift == nil {
+		return nil, ErrTemplateSlotPositionNotFound
+	}
 
-	ref := toShiftRef(shift, nil)
+	ref := toShiftRef(shift)
 	return &ref, nil
 }
 
@@ -575,27 +675,51 @@ func (s *PublicationService) buildRoster(
 		return nil, mapPublicationRepositoryError(err)
 	}
 
-	assignmentsByShift := make(map[int64][]*model.AssignmentParticipant)
+	assignmentsBySlotPosition := make(map[slotPositionKey][]*model.AssignmentParticipant)
 	for _, assignment := range assignments {
-		assignmentsByShift[assignment.TemplateShiftID] = append(assignmentsByShift[assignment.TemplateShiftID], assignment)
+		key := slotPositionKey{
+			SlotID:     assignment.SlotID,
+			PositionID: assignment.PositionID,
+		}
+		assignmentsBySlotPosition[key] = append(assignmentsBySlotPosition[key], assignment)
 	}
 
 	weekdays := make([]*RosterWeekdayResult, 0, 7)
-	shiftsByWeekday := make(map[int][]*RosterShiftResult)
+	slotsByWeekday := make(map[int][]*RosterSlotResult)
+	slotByWeekdayAndID := make(map[int]map[int64]*RosterSlotResult)
 	for _, shift := range shifts {
-		shiftsByWeekday[shift.Weekday] = append(shiftsByWeekday[shift.Weekday], &RosterShiftResult{
-			Shift:       shift,
-			Assignments: cloneAssignmentParticipants(assignmentsByShift[shift.ID]),
+		if slotByWeekdayAndID[shift.Weekday] == nil {
+			slotByWeekdayAndID[shift.Weekday] = make(map[int64]*RosterSlotResult)
+		}
+
+		slotResult, ok := slotByWeekdayAndID[shift.Weekday][shift.SlotID]
+		if !ok {
+			slotResult = &RosterSlotResult{
+				Slot:      publicationShiftSlot(shift),
+				Positions: make([]*RosterPositionResult, 0),
+			}
+			slotByWeekdayAndID[shift.Weekday][shift.SlotID] = slotResult
+			slotsByWeekday[shift.Weekday] = append(slotsByWeekday[shift.Weekday], slotResult)
+		}
+
+		key := slotPositionKey{
+			SlotID:     shift.SlotID,
+			PositionID: shift.PositionID,
+		}
+		slotResult.Positions = append(slotResult.Positions, &RosterPositionResult{
+			Position:          publicationShiftPosition(shift),
+			RequiredHeadcount: shift.RequiredHeadcount,
+			Assignments:       cloneAssignmentParticipants(assignmentsBySlotPosition[key]),
 		})
 	}
 
 	for weekday := 1; weekday <= 7; weekday++ {
 		weekdays = append(weekdays, &RosterWeekdayResult{
 			Weekday: weekday,
-			Shifts:  shiftsByWeekday[weekday],
+			Slots:   slotsByWeekday[weekday],
 		})
-		if weekdays[len(weekdays)-1].Shifts == nil {
-			weekdays[len(weekdays)-1].Shifts = make([]*RosterShiftResult, 0)
+		if weekdays[len(weekdays)-1].Slots == nil {
+			weekdays[len(weekdays)-1].Slots = make([]*RosterSlotResult, 0)
 		}
 	}
 
@@ -603,6 +727,39 @@ func (s *PublicationService) buildRoster(
 		Publication: publicationWithEffectiveState(publication, now),
 		Weekdays:    weekdays,
 	}, nil
+}
+
+type slotPositionKey struct {
+	SlotID     int64
+	PositionID int64
+}
+
+func publicationShiftSlot(shift *model.PublicationShift) *model.TemplateSlot {
+	if shift == nil {
+		return nil
+	}
+
+	return &model.TemplateSlot{
+		ID:         shift.SlotID,
+		TemplateID: shift.TemplateID,
+		Weekday:    shift.Weekday,
+		StartTime:  shift.StartTime,
+		EndTime:    shift.EndTime,
+		CreatedAt:  shift.CreatedAt,
+		UpdatedAt:  shift.UpdatedAt,
+		Positions:  make([]*model.TemplateSlotPosition, 0),
+	}
+}
+
+func publicationShiftPosition(shift *model.PublicationShift) *model.Position {
+	if shift == nil {
+		return nil
+	}
+
+	return &model.Position{
+		ID:   shift.PositionID,
+		Name: shift.PositionName,
+	}
 }
 
 func cloneAssignmentCandidates(candidates []*model.AssignmentCandidate) []*model.AssignmentCandidate {

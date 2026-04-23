@@ -16,9 +16,12 @@ type templateService interface {
 	UpdateTemplate(ctx context.Context, input service.UpdateTemplateInput) (*model.Template, error)
 	DeleteTemplate(ctx context.Context, id int64) error
 	CloneTemplate(ctx context.Context, id int64) (*model.Template, error)
-	CreateTemplateShift(ctx context.Context, input service.CreateTemplateShiftInput) (*model.TemplateShift, error)
-	UpdateTemplateShift(ctx context.Context, input service.UpdateTemplateShiftInput) (*model.TemplateShift, error)
-	DeleteTemplateShift(ctx context.Context, templateID, shiftID int64) error
+	CreateTemplateSlot(ctx context.Context, input service.CreateTemplateSlotInput) (*model.TemplateSlot, error)
+	UpdateTemplateSlot(ctx context.Context, input service.UpdateTemplateSlotInput) (*model.TemplateSlot, error)
+	DeleteTemplateSlot(ctx context.Context, templateID, slotID int64) error
+	CreateTemplateSlotPosition(ctx context.Context, input service.CreateTemplateSlotPositionInput) (*model.TemplateSlotPosition, error)
+	UpdateTemplateSlotPosition(ctx context.Context, input service.UpdateTemplateSlotPositionInput) (*model.TemplateSlotPosition, error)
+	DeleteTemplateSlotPosition(ctx context.Context, templateID, slotID, slotPositionID int64) error
 }
 
 type TemplateHandler struct {
@@ -34,8 +37,12 @@ type templateDetailResponse struct {
 	Template templateResponse `json:"template"`
 }
 
-type templateShiftDetailResponse struct {
-	Shift templateShiftResponse `json:"shift"`
+type templateSlotDetailResponse struct {
+	Slot templateSlotResponse `json:"slot"`
+}
+
+type templateSlotPositionDetailResponse struct {
+	Position templateSlotPositionResponse `json:"position"`
 }
 
 type createTemplateRequest struct {
@@ -48,12 +55,15 @@ type replaceTemplateRequest struct {
 	Description string `json:"description"`
 }
 
-type templateShiftRequest struct {
-	Weekday           int    `json:"weekday"`
-	StartTime         string `json:"start_time"`
-	EndTime           string `json:"end_time"`
-	PositionID        int64  `json:"position_id"`
-	RequiredHeadcount int    `json:"required_headcount"`
+type templateSlotRequest struct {
+	Weekday   int    `json:"weekday"`
+	StartTime string `json:"start_time"`
+	EndTime   string `json:"end_time"`
+}
+
+type templateSlotPositionRequest struct {
+	PositionID        int64 `json:"position_id"`
+	RequiredHeadcount int   `json:"required_headcount"`
 }
 
 func NewTemplateHandler(templateService templateService) *TemplateHandler {
@@ -198,24 +208,114 @@ func (h *TemplateHandler) Clone(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *TemplateHandler) CreateShift(w http.ResponseWriter, r *http.Request) {
+func (h *TemplateHandler) CreateSlot(w http.ResponseWriter, r *http.Request) {
 	templateID, err := parsePathID(r, "id")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid template id")
 		return
 	}
 
-	var req templateShiftRequest
+	var req templateSlotRequest
 	if err := readJSON(w, r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
 		return
 	}
 
-	shift, err := h.templateService.CreateTemplateShift(r.Context(), service.CreateTemplateShiftInput{
+	slot, err := h.templateService.CreateTemplateSlot(r.Context(), service.CreateTemplateSlotInput{
+		TemplateID: templateID,
+		Weekday:    req.Weekday,
+		StartTime:  req.StartTime,
+		EndTime:    req.EndTime,
+	})
+	if err != nil {
+		h.writeTemplateServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusCreated, templateSlotDetailResponse{
+		Slot: newTemplateSlotResponse(slot),
+	})
+}
+
+func (h *TemplateHandler) UpdateSlot(w http.ResponseWriter, r *http.Request) {
+	templateID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid template id")
+		return
+	}
+
+	slotID, err := parsePathID(r, "slot_id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid template slot id")
+		return
+	}
+
+	var req templateSlotRequest
+	if err := readJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+
+	slot, err := h.templateService.UpdateTemplateSlot(r.Context(), service.UpdateTemplateSlotInput{
+		TemplateID: templateID,
+		SlotID:     slotID,
+		Weekday:    req.Weekday,
+		StartTime:  req.StartTime,
+		EndTime:    req.EndTime,
+	})
+	if err != nil {
+		h.writeTemplateServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, templateSlotDetailResponse{
+		Slot: newTemplateSlotResponse(slot),
+	})
+}
+
+func (h *TemplateHandler) DeleteSlot(w http.ResponseWriter, r *http.Request) {
+	templateID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid template id")
+		return
+	}
+
+	slotID, err := parsePathID(r, "slot_id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid template slot id")
+		return
+	}
+
+	if err := h.templateService.DeleteTemplateSlot(r.Context(), templateID, slotID); err != nil {
+		h.writeTemplateServiceError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *TemplateHandler) CreateSlotPosition(w http.ResponseWriter, r *http.Request) {
+	templateID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid template id")
+		return
+	}
+
+	slotID, err := parsePathID(r, "slot_id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid template slot id")
+		return
+	}
+
+	var req templateSlotPositionRequest
+	if err := readJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+
+	slotPosition, err := h.templateService.CreateTemplateSlotPosition(r.Context(), service.CreateTemplateSlotPositionInput{
 		TemplateID:        templateID,
-		Weekday:           req.Weekday,
-		StartTime:         req.StartTime,
-		EndTime:           req.EndTime,
+		SlotID:            slotID,
 		PositionID:        req.PositionID,
 		RequiredHeadcount: req.RequiredHeadcount,
 	})
@@ -224,36 +324,40 @@ func (h *TemplateHandler) CreateShift(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeData(w, http.StatusCreated, templateShiftDetailResponse{
-		Shift: newTemplateShiftResponse(shift),
+	writeData(w, http.StatusCreated, templateSlotPositionDetailResponse{
+		Position: newTemplateSlotPositionResponse(slotPosition),
 	})
 }
 
-func (h *TemplateHandler) UpdateShift(w http.ResponseWriter, r *http.Request) {
+func (h *TemplateHandler) UpdateSlotPosition(w http.ResponseWriter, r *http.Request) {
 	templateID, err := parsePathID(r, "id")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid template id")
 		return
 	}
 
-	shiftID, err := parsePathID(r, "shift_id")
+	slotID, err := parsePathID(r, "slot_id")
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid template shift id")
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid template slot id")
 		return
 	}
 
-	var req templateShiftRequest
+	slotPositionID, err := parsePathID(r, "position_entry_id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid template slot position id")
+		return
+	}
+
+	var req templateSlotPositionRequest
 	if err := readJSON(w, r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
 		return
 	}
 
-	shift, err := h.templateService.UpdateTemplateShift(r.Context(), service.UpdateTemplateShiftInput{
+	slotPosition, err := h.templateService.UpdateTemplateSlotPosition(r.Context(), service.UpdateTemplateSlotPositionInput{
 		TemplateID:        templateID,
-		ShiftID:           shiftID,
-		Weekday:           req.Weekday,
-		StartTime:         req.StartTime,
-		EndTime:           req.EndTime,
+		SlotID:            slotID,
+		SlotPositionID:    slotPositionID,
 		PositionID:        req.PositionID,
 		RequiredHeadcount: req.RequiredHeadcount,
 	})
@@ -262,25 +366,31 @@ func (h *TemplateHandler) UpdateShift(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeData(w, http.StatusOK, templateShiftDetailResponse{
-		Shift: newTemplateShiftResponse(shift),
+	writeData(w, http.StatusOK, templateSlotPositionDetailResponse{
+		Position: newTemplateSlotPositionResponse(slotPosition),
 	})
 }
 
-func (h *TemplateHandler) DeleteShift(w http.ResponseWriter, r *http.Request) {
+func (h *TemplateHandler) DeleteSlotPosition(w http.ResponseWriter, r *http.Request) {
 	templateID, err := parsePathID(r, "id")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid template id")
 		return
 	}
 
-	shiftID, err := parsePathID(r, "shift_id")
+	slotID, err := parsePathID(r, "slot_id")
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid template shift id")
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid template slot id")
 		return
 	}
 
-	if err := h.templateService.DeleteTemplateShift(r.Context(), templateID, shiftID); err != nil {
+	slotPositionID, err := parsePathID(r, "position_entry_id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid template slot position id")
+		return
+	}
+
+	if err := h.templateService.DeleteTemplateSlotPosition(r.Context(), templateID, slotID, slotPositionID); err != nil {
 		h.writeTemplateServiceError(w, err)
 		return
 	}
@@ -296,8 +406,12 @@ func (h *TemplateHandler) writeTemplateServiceError(w http.ResponseWriter, err e
 		writeError(w, http.StatusNotFound, "TEMPLATE_NOT_FOUND", "Template not found")
 	case errors.Is(err, service.ErrTemplateLocked):
 		writeError(w, http.StatusConflict, "TEMPLATE_LOCKED", "Template is locked")
-	case errors.Is(err, service.ErrTemplateShiftNotFound):
-		writeError(w, http.StatusNotFound, "TEMPLATE_SHIFT_NOT_FOUND", "Template shift not found")
+	case errors.Is(err, service.ErrTemplateSlotOverlap):
+		writeError(w, http.StatusConflict, "TEMPLATE_SLOT_OVERLAP", "Template slot overlaps with existing slot")
+	case errors.Is(err, service.ErrTemplateSlotNotFound):
+		writeError(w, http.StatusNotFound, "TEMPLATE_SLOT_NOT_FOUND", "Template slot not found")
+	case errors.Is(err, service.ErrTemplateSlotPositionNotFound):
+		writeError(w, http.StatusNotFound, "TEMPLATE_SLOT_POSITION_NOT_FOUND", "Template slot position not found")
 	case errors.Is(err, service.ErrInvalidShiftTime):
 		writeError(w, http.StatusBadRequest, "INVALID_SHIFT_TIME", "Shift end time must be after start time")
 	case errors.Is(err, service.ErrInvalidWeekday):

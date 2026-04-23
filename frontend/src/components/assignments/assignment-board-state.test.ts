@@ -1,26 +1,37 @@
 import { describe, expect, it } from "vitest"
 
-import type { AssignmentBoardShift } from "@/lib/types"
+import type {
+  AssignmentBoardPosition,
+  AssignmentBoardSlot,
+} from "@/lib/types"
 
 import {
   getVisibleNonCandidateQualified,
   isAssignmentBoardMutable,
-  isAssignmentBoardShiftUnderstaffed,
+  isAssignmentBoardPositionUnderstaffed,
 } from "./assignment-board-state"
 
-function makeShift(
-  overrides: Partial<AssignmentBoardShift> = {},
-): AssignmentBoardShift {
+function makeSlot(): AssignmentBoardSlot {
   return {
-    shift: {
+    slot: {
       id: 11,
       weekday: 1,
       start_time: "09:00",
       end_time: "12:00",
-      position_id: 101,
-      position_name: "Front Desk",
-      required_headcount: 2,
     },
+    positions: [],
+  }
+}
+
+function makePosition(
+  overrides: Partial<AssignmentBoardPosition> = {},
+): AssignmentBoardPosition {
+  return {
+    position: {
+      id: 101,
+      name: "Front Desk",
+    },
+    required_headcount: 2,
     candidates: [],
     non_candidate_qualified: [],
     assignments: [],
@@ -28,11 +39,11 @@ function makeShift(
   }
 }
 
-describe("isAssignmentBoardShiftUnderstaffed", () => {
+describe("isAssignmentBoardPositionUnderstaffed", () => {
   it("returns true when assignments are below required headcount", () => {
     expect(
-      isAssignmentBoardShiftUnderstaffed(
-        makeShift({
+      isAssignmentBoardPositionUnderstaffed(
+        makePosition({
           assignments: [{ assignment_id: 1, user_id: 7, name: "Alice", email: "alice@example.com" }],
         }),
       ),
@@ -41,8 +52,8 @@ describe("isAssignmentBoardShiftUnderstaffed", () => {
 
   it("returns false when assignments meet or exceed required headcount", () => {
     expect(
-      isAssignmentBoardShiftUnderstaffed(
-        makeShift({
+      isAssignmentBoardPositionUnderstaffed(
+        makePosition({
           assignments: [
             { assignment_id: 1, user_id: 7, name: "Alice", email: "alice@example.com" },
             { assignment_id: 2, user_id: 8, name: "Bob", email: "bob@example.com" },
@@ -55,7 +66,8 @@ describe("isAssignmentBoardShiftUnderstaffed", () => {
   it("filters out users who already appear as candidates or assignments", () => {
     expect(
       getVisibleNonCandidateQualified(
-        makeShift({
+        makeSlot(),
+        makePosition({
           candidates: [
             { user_id: 7, name: "Alice", email: "alice@example.com" },
           ],
@@ -81,7 +93,8 @@ describe("isAssignmentBoardShiftUnderstaffed", () => {
   it("returns an empty list when the qualified toggle is off", () => {
     expect(
       getVisibleNonCandidateQualified(
-        makeShift({
+        makeSlot(),
+        makePosition({
           non_candidate_qualified: [
             { user_id: 8, name: "Bob", email: "bob@example.com" },
           ],

@@ -246,7 +246,7 @@
   },
   "templates": {
     "title": "模板管理",
-    "description": "创建并维护可复用的每周班次模板。",
+    "description": "创建并维护可复用的每周时段模板。",
     "createTemplate": "创建模板",
     "name": "名称",
     "descriptionLabel": "描述",
@@ -274,13 +274,19 @@
       "submittingEdit": "保存中..."
     },
     "detail": {
-      "description": "更新模板信息并管理其每周班次。",
+      "description": "更新模板信息并管理其每周时段和岗位配置。",
       "loadErrorTitle": "加载模板失败",
       "loadErrorDescription": "当前无法加载该模板。"
     },
     "actions": {
       "clone": "克隆",
       "delete": "删除",
+      "addSlot": "新增时段",
+      "editSlot": "编辑时段",
+      "deleteSlot": "删除时段",
+      "addPosition": "新增岗位",
+      "editPosition": "编辑岗位",
+      "deletePosition": "删除岗位",
       "addShift": "新增班次",
       "editShift": "编辑班次",
       "deleteShift": "删除班次"
@@ -297,6 +303,20 @@
       "confirm": "确认删除",
       "submitting": "删除中..."
     },
+    "deleteSlotDialog": {
+      "title": "删除时段",
+      "description": "确认删除 {{summary}}？此操作无法撤销。",
+      "summary": "{{weekday}} · {{startTime}}-{{endTime}}",
+      "confirm": "确认删除时段",
+      "submitting": "删除中..."
+    },
+    "deletePositionDialog": {
+      "title": "删除时段岗位",
+      "description": "确认删除 {{summary}}？此操作无法撤销。",
+      "summary": "{{positionName}} · {{startTime}}-{{endTime}} · 需要 {{headcount}} 人",
+      "confirm": "确认删除岗位",
+      "submitting": "删除中..."
+    },
     "deleteShiftDialog": {
       "title": "删除班次",
       "description": "确认删除 {{summary}}？此操作无法撤销。",
@@ -304,13 +324,50 @@
       "confirm": "确认删除班次",
       "submitting": "删除中..."
     },
+    "slotsTitle": "每周时段",
+    "slotsDescription": "按星期管理模板的时段，以及每个时段内的岗位配置。",
+    "noSlotsForWeekday": "这一天还没有任何时段。",
+    "noPositionsForSlot": "这个时段还没有添加岗位配置。",
     "shiftsTitle": "每周班次",
     "shiftsDescription": "按星期管理该模板的所有班次。",
-    "positionsLoadError": "加载岗位列表失败，无法编辑班次。",
-    "noPositions": "请先创建岗位，再为模板添加班次。",
+    "positionsLoadError": "加载岗位列表失败，无法编辑时段岗位。",
+    "noPositions": "请先创建岗位，再为时段添加岗位配置。",
     "noShiftsForWeekday": "这一天还没有任何班次。",
     "unknownPosition": "未知岗位",
     "lockedBanner": "该模板已锁定，无法编辑或删除。如需修改，请先克隆。",
+    "slot": {
+      "weekday": "星期",
+      "startTime": "开始时间",
+      "endTime": "结束时间",
+      "summary": "{{startTime}}-{{endTime}}",
+      "positionsCount": "{{count}} 个岗位"
+    },
+    "position": {
+      "position": "岗位",
+      "requiredHeadcount": "所需人数",
+      "summary": "需要 {{headcount}} 人"
+    },
+    "slotDialog": {
+      "createTitle": "新增时段",
+      "createDescription": "为该模板新增一个每周时段。",
+      "editTitle": "编辑时段",
+      "editDescription": "更新所选的每周时段。",
+      "submitCreate": "创建时段",
+      "submitEdit": "保存时段",
+      "submittingCreate": "创建中...",
+      "submittingEdit": "保存中..."
+    },
+    "positionDialog": {
+      "createTitle": "新增时段岗位",
+      "createDescription": "为这个时段新增一个岗位需求。",
+      "editTitle": "编辑时段岗位",
+      "editDescription": "更新所选的岗位需求。",
+      "submitCreate": "创建岗位",
+      "submitEdit": "保存岗位",
+      "submittingCreate": "创建中...",
+      "submittingEdit": "保存中...",
+      "selectPosition": "请选择岗位"
+    },
     "shift": {
       "weekday": "星期",
       "startTime": "开始时间",
@@ -354,6 +411,12 @@
       "updated": "模板更新成功。",
       "deleted": "模板删除成功。",
       "cloned": "模板克隆成功。",
+      "slotCreated": "时段创建成功。",
+      "slotUpdated": "时段更新成功。",
+      "slotDeleted": "时段删除成功。",
+      "positionCreated": "岗位配置创建成功。",
+      "positionUpdated": "岗位配置更新成功。",
+      "positionDeleted": "岗位配置删除成功。",
       "shiftCreated": "班次创建成功。",
       "shiftUpdated": "班次更新成功。",
       "shiftDeleted": "班次删除成功。"
@@ -368,6 +431,9 @@
       "POSITION_NOT_FOUND": "岗位不存在",
       "TEMPLATE_LOCKED": "模板已锁定",
       "TEMPLATE_NOT_FOUND": "模板不存在",
+      "TEMPLATE_SLOT_NOT_FOUND": "模板时段不存在",
+      "TEMPLATE_SLOT_OVERLAP": "该时段与同一天中已有的时段发生重叠。",
+      "TEMPLATE_SLOT_POSITION_NOT_FOUND": "模板时段岗位不存在",
       "TEMPLATE_SHIFT_NOT_FOUND": "模板班次不存在",
       "UNAUTHORIZED": "未授权"
     }
@@ -535,6 +601,8 @@
       "PUBLICATION_NOT_FOUND": "发布不存在",
       "TEMPLATE_NOT_FOUND": "模板不存在",
       "TEMPLATE_SHIFT_NOT_FOUND": "模板班次不存在",
+      "ASSIGNMENT_USER_ALREADY_IN_SLOT": "该用户已在此时段被分配到其他岗位。",
+      "ASSIGNMENT_TIME_CONFLICT": "该分配与用户已有的班次时间冲突。",
       "NOT_QUALIFIED": "您没有该班次的任职资格。",
       "USER_DISABLED": "该用户已被禁用。",
       "USER_NOT_FOUND": "用户不存在",
@@ -689,6 +757,7 @@
     },
     "card": {
       "shift": "班次 #{{id}}",
+      "shiftSummary": "{{weekday}} · {{positionName}} · {{startTime}}-{{endTime}}",
       "swapSummary": "{{requesterShift}} ↔ {{counterpartShift}}",
       "metadata": "由 {{requester}} 发起 · {{createdAt}}"
     },

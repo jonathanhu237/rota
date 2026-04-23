@@ -2,7 +2,11 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ToastProvider } from "@/components/ui/toast"
-import type { PublicationMember, ShiftChangeRequest } from "@/lib/types"
+import type {
+  PublicationMember,
+  RosterWeekday,
+  ShiftChangeRequest,
+} from "@/lib/types"
 import { renderWithProviders } from "@/test-utils/render"
 
 import { RequestsList } from "./requests-list"
@@ -26,6 +30,50 @@ const members: PublicationMember[] = [
   { user_id: 1, name: "Alice" },
   { user_id: 2, name: "Bob" },
   { user_id: 3, name: "Carol" },
+]
+
+const rosterWeekdays: RosterWeekday[] = [
+  {
+    weekday: 1,
+    slots: [
+      {
+        slot: {
+          id: 10,
+          weekday: 1,
+          start_time: "09:00",
+          end_time: "12:00",
+        },
+        positions: [
+          {
+            position: {
+              id: 101,
+              name: "Front Desk",
+            },
+            required_headcount: 1,
+            assignments: [{ assignment_id: 100, user_id: 2, name: "Bob" }],
+          },
+        ],
+      },
+      {
+        slot: {
+          id: 20,
+          weekday: 1,
+          start_time: "13:00",
+          end_time: "17:00",
+        },
+        positions: [
+          {
+            position: {
+              id: 102,
+              name: "Back Office",
+            },
+            required_headcount: 1,
+            assignments: [{ assignment_id: 200, user_id: 1, name: "Alice" }],
+          },
+        ],
+      },
+    ],
+  },
 ]
 
 function buildRequest(
@@ -55,6 +103,7 @@ function renderList(requests: ShiftChangeRequest[], currentUserID = 1) {
         requests={requests}
         members={members}
         currentUserID={currentUserID}
+        rosterWeekdays={rosterWeekdays}
       />
     </ToastProvider>,
   )
@@ -182,5 +231,19 @@ describe("RequestsList", () => {
     ])
 
     expect(getByText("requests.history.invalidatedReason")).toBeInTheDocument()
+  })
+
+  it("renders slot and position summaries when roster data is available", () => {
+    const { getByText } = renderList([
+      buildRequest({
+        id: 88,
+        requester_user_id: 2,
+        type: "give_direct",
+        requester_assignment_id: 100,
+        counterpart_assignment_id: null,
+      }),
+    ])
+
+    expect(getByText("requests.card.shiftSummary")).toBeInTheDocument()
   })
 })

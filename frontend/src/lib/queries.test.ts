@@ -210,17 +210,19 @@ describe("assignment mutations", () => {
     putMock.mockReset()
   })
 
-  it("creates an assignment with the user and template shift ids", async () => {
+  it("creates an assignment with the user, slot, and position ids", async () => {
     postMock.mockResolvedValue({ data: undefined })
 
     await createAssignment(7, {
       user_id: 8,
-      template_shift_id: 11,
+      slot_id: 11,
+      position_id: 101,
     })
 
     expect(postMock).toHaveBeenCalledWith("/publications/7/assignments", {
       user_id: 8,
-      template_shift_id: 11,
+      slot_id: 11,
+      position_id: 101,
     })
   })
 

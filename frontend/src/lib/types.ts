@@ -44,6 +44,26 @@ export type TemplateShift = {
   updated_at: string
 }
 
+export type TemplateSlotPosition = {
+  id: number
+  slot_id: number
+  position_id: number
+  required_headcount: number
+  created_at: string
+  updated_at: string
+}
+
+export type TemplateSlot = {
+  id: number
+  template_id: number
+  weekday: number
+  start_time: string
+  end_time: string
+  created_at: string
+  updated_at: string
+  positions: TemplateSlotPosition[]
+}
+
 export type Template = {
   id: number
   name: string
@@ -55,7 +75,7 @@ export type Template = {
 }
 
 export type TemplateDetail = Template & {
-  shifts: TemplateShift[]
+  slots: TemplateSlot[]
 }
 
 export type PublicationState =
@@ -81,14 +101,16 @@ export type Publication = {
   updated_at: string
 }
 
-export type PublicationShift = {
+export type PublicationSlot = {
   id: number
   weekday: number
   start_time: string
   end_time: string
-  position_id: number
-  position_name: string
-  required_headcount: number
+}
+
+export type PublicationPosition = {
+  id: number
+  name: string
 }
 
 export type AssignmentBoardCandidate = {
@@ -104,16 +126,22 @@ export type AssignmentBoardAssignment = {
   email: string
 }
 
-export type AssignmentBoardShift = {
-  shift: PublicationShift
+export type AssignmentBoardPosition = {
+  position: PublicationPosition
+  required_headcount: number
   candidates: AssignmentBoardCandidate[]
   non_candidate_qualified: AssignmentBoardCandidate[]
   assignments: AssignmentBoardAssignment[]
 }
 
+export type AssignmentBoardSlot = {
+  slot: PublicationSlot
+  positions: AssignmentBoardPosition[]
+}
+
 export type AssignmentBoard = {
   publication: Publication
-  shifts: AssignmentBoardShift[]
+  slots: AssignmentBoardSlot[]
 }
 
 export type RosterAssignment = {
@@ -122,14 +150,20 @@ export type RosterAssignment = {
   name: string
 }
 
-export type RosterShift = {
-  shift: PublicationShift
+export type RosterPosition = {
+  position: PublicationPosition
+  required_headcount: number
   assignments: RosterAssignment[]
+}
+
+export type RosterSlot = {
+  slot: PublicationSlot
+  positions: RosterPosition[]
 }
 
 export type RosterWeekday = {
   weekday: number
-  shifts: RosterShift[]
+  slots: RosterSlot[]
 }
 
 export type Roster = {

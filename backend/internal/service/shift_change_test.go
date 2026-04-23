@@ -353,7 +353,7 @@ func findAssignmentByID(pub *publicationRepositoryStatefulMock, id int64) *model
 }
 
 // swapAssignmentUser replaces the user_id on the assignment with the given
-// ID, re-keying the entry so the composite pub:user:shift key stays correct.
+// ID, re-keying the entry so the composite pub:user:slot key stays correct.
 func swapAssignmentUser(pub *publicationRepositoryStatefulMock, assignmentID int64, newUserID int64) {
 	for key, a := range pub.assignments {
 		if a.ID != assignmentID {
@@ -361,7 +361,7 @@ func swapAssignmentUser(pub *publicationRepositoryStatefulMock, assignmentID int
 		}
 		delete(pub.assignments, key)
 		a.UserID = newUserID
-		pub.assignments[assignmentKey(a.PublicationID, a.UserID, a.TemplateShiftID)] = a
+		pub.assignments[assignmentKey(a.PublicationID, a.UserID, a.SlotID)] = a
 		return
 	}
 }
@@ -404,21 +404,23 @@ func buildShiftChangeFixture(now time.Time) (*publicationRepositoryStatefulMock,
 	pub.qualifiedByUser[7] = map[int64]struct{}{101: {}, 102: {}}
 	pub.qualifiedByUser[8] = map[int64]struct{}{101: {}, 102: {}}
 
-	// Assignments: user 7 on shift 11 (Monday 09:00-12:00, position 101),
-	// user 8 on shift 12 (Wednesday 13:00-17:00, position 102).
-	pub.assignments[assignmentKey(1, 7, 11)] = &model.Assignment{
-		ID:              100,
-		PublicationID:   1,
-		UserID:          7,
-		TemplateShiftID: 11,
-		CreatedAt:       now.Add(-24 * time.Hour),
+	// Assignments: user 7 on slot 21 (Monday 09:00-12:00, position 101),
+	// user 8 on slot 22 (Wednesday 13:00-17:00, position 102).
+	pub.assignments[assignmentKey(1, 7, 21)] = &model.Assignment{
+		ID:            100,
+		PublicationID: 1,
+		UserID:        7,
+		SlotID:        21,
+		PositionID:    101,
+		CreatedAt:     now.Add(-24 * time.Hour),
 	}
-	pub.assignments[assignmentKey(1, 8, 12)] = &model.Assignment{
-		ID:              101,
-		PublicationID:   1,
-		UserID:          8,
-		TemplateShiftID: 12,
-		CreatedAt:       now.Add(-24 * time.Hour),
+	pub.assignments[assignmentKey(1, 8, 22)] = &model.Assignment{
+		ID:            101,
+		PublicationID: 1,
+		UserID:        8,
+		SlotID:        22,
+		PositionID:    102,
+		CreatedAt:     now.Add(-24 * time.Hour),
 	}
 	pub.nextAssignmentID = 200
 
@@ -918,21 +920,26 @@ func TestShiftChangeServiceApprove(t *testing.T) {
 		// Add a third shift that overlaps with shift 12 on the same weekday
 		// (Wednesday). User 7 already holds this third shift, so receiving
 		// shift 12 via the swap would create a time conflict.
-		pub.templateShifts[13] = &model.TemplateShift{
+		pub.templateSlots[23] = &model.TemplateSlot{
+			ID:         23,
+			TemplateID: 1,
+			Weekday:    3,
+			StartTime:  "14:00",
+			EndTime:    "16:00",
+		}
+		pub.slotPositions[23] = []*model.TemplateSlotPosition{{
 			ID:                13,
-			TemplateID:        1,
-			Weekday:           3,
-			StartTime:         "14:00",
-			EndTime:           "16:00",
+			SlotID:            23,
 			PositionID:        101,
 			RequiredHeadcount: 1,
-		}
-		pub.assignments[assignmentKey(1, 7, 13)] = &model.Assignment{
-			ID:              102,
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 13,
-			CreatedAt:       now.Add(-24 * time.Hour),
+		}}
+		pub.assignments[assignmentKey(1, 7, 23)] = &model.Assignment{
+			ID:            102,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        23,
+			PositionID:    101,
+			CreatedAt:     now.Add(-24 * time.Hour),
 		}
 		svc := newTestShiftChangeService(pub, sc, &emailStub{}, now)
 
@@ -1551,38 +1558,38 @@ func TestShiftChangeServiceListGetCount(t *testing.T) {
 func TestHasOverlapInSet(t *testing.T) {
 	t.Parallel()
 
-	mk := func(weekday int, start, end string) *model.TemplateShift {
-		return &model.TemplateShift{Weekday: weekday, StartTime: start, EndTime: end}
+	mk := func(weekday int, start, end string) *model.PublicationShift {
+		return &model.PublicationShift{Weekday: weekday, StartTime: start, EndTime: end}
 	}
 
 	tests := []struct {
 		name  string
-		input []*model.TemplateShift
+		input []*model.PublicationShift
 		want  bool
 	}{
 		{
 			name:  "non-overlapping same weekday",
-			input: []*model.TemplateShift{mk(1, "09:00", "10:00"), mk(1, "11:00", "12:00")},
+			input: []*model.PublicationShift{mk(1, "09:00", "10:00"), mk(1, "11:00", "12:00")},
 			want:  false,
 		},
 		{
 			name:  "full overlap same weekday",
-			input: []*model.TemplateShift{mk(1, "09:00", "12:00"), mk(1, "09:00", "12:00")},
+			input: []*model.PublicationShift{mk(1, "09:00", "12:00"), mk(1, "09:00", "12:00")},
 			want:  true,
 		},
 		{
 			name:  "partial overlap same weekday",
-			input: []*model.TemplateShift{mk(1, "09:00", "11:00"), mk(1, "10:00", "12:00")},
+			input: []*model.PublicationShift{mk(1, "09:00", "11:00"), mk(1, "10:00", "12:00")},
 			want:  true,
 		},
 		{
 			name:  "boundary end equals start is not overlap",
-			input: []*model.TemplateShift{mk(1, "09:00", "10:00"), mk(1, "10:00", "11:00")},
+			input: []*model.PublicationShift{mk(1, "09:00", "10:00"), mk(1, "10:00", "11:00")},
 			want:  false,
 		},
 		{
 			name:  "overlap window but different weekday",
-			input: []*model.TemplateShift{mk(1, "09:00", "12:00"), mk(2, "09:00", "12:00")},
+			input: []*model.PublicationShift{mk(1, "09:00", "12:00"), mk(2, "09:00", "12:00")},
 			want:  false,
 		},
 	}

@@ -14,15 +14,18 @@ import (
 )
 
 type stubTemplateService struct {
-	listTemplatesFunc       func(ctx context.Context, input service.ListTemplatesInput) (*service.ListTemplatesResult, error)
-	createTemplateFunc      func(ctx context.Context, input service.CreateTemplateInput) (*model.Template, error)
-	getTemplateByIDFunc     func(ctx context.Context, id int64) (*model.Template, error)
-	updateTemplateFunc      func(ctx context.Context, input service.UpdateTemplateInput) (*model.Template, error)
-	deleteTemplateFunc      func(ctx context.Context, id int64) error
-	cloneTemplateFunc       func(ctx context.Context, id int64) (*model.Template, error)
-	createTemplateShiftFunc func(ctx context.Context, input service.CreateTemplateShiftInput) (*model.TemplateShift, error)
-	updateTemplateShiftFunc func(ctx context.Context, input service.UpdateTemplateShiftInput) (*model.TemplateShift, error)
-	deleteTemplateShiftFunc func(ctx context.Context, templateID, shiftID int64) error
+	listTemplatesFunc              func(ctx context.Context, input service.ListTemplatesInput) (*service.ListTemplatesResult, error)
+	createTemplateFunc             func(ctx context.Context, input service.CreateTemplateInput) (*model.Template, error)
+	getTemplateByIDFunc            func(ctx context.Context, id int64) (*model.Template, error)
+	updateTemplateFunc             func(ctx context.Context, input service.UpdateTemplateInput) (*model.Template, error)
+	deleteTemplateFunc             func(ctx context.Context, id int64) error
+	cloneTemplateFunc              func(ctx context.Context, id int64) (*model.Template, error)
+	createTemplateSlotFunc         func(ctx context.Context, input service.CreateTemplateSlotInput) (*model.TemplateSlot, error)
+	updateTemplateSlotFunc         func(ctx context.Context, input service.UpdateTemplateSlotInput) (*model.TemplateSlot, error)
+	deleteTemplateSlotFunc         func(ctx context.Context, templateID, slotID int64) error
+	createTemplateSlotPositionFunc func(ctx context.Context, input service.CreateTemplateSlotPositionInput) (*model.TemplateSlotPosition, error)
+	updateTemplateSlotPositionFunc func(ctx context.Context, input service.UpdateTemplateSlotPositionInput) (*model.TemplateSlotPosition, error)
+	deleteTemplateSlotPositionFunc func(ctx context.Context, templateID, slotID, slotPositionID int64) error
 }
 
 func (s *stubTemplateService) ListTemplates(ctx context.Context, input service.ListTemplatesInput) (*service.ListTemplatesResult, error) {
@@ -49,16 +52,28 @@ func (s *stubTemplateService) CloneTemplate(ctx context.Context, id int64) (*mod
 	return s.cloneTemplateFunc(ctx, id)
 }
 
-func (s *stubTemplateService) CreateTemplateShift(ctx context.Context, input service.CreateTemplateShiftInput) (*model.TemplateShift, error) {
-	return s.createTemplateShiftFunc(ctx, input)
+func (s *stubTemplateService) CreateTemplateSlot(ctx context.Context, input service.CreateTemplateSlotInput) (*model.TemplateSlot, error) {
+	return s.createTemplateSlotFunc(ctx, input)
 }
 
-func (s *stubTemplateService) UpdateTemplateShift(ctx context.Context, input service.UpdateTemplateShiftInput) (*model.TemplateShift, error) {
-	return s.updateTemplateShiftFunc(ctx, input)
+func (s *stubTemplateService) UpdateTemplateSlot(ctx context.Context, input service.UpdateTemplateSlotInput) (*model.TemplateSlot, error) {
+	return s.updateTemplateSlotFunc(ctx, input)
 }
 
-func (s *stubTemplateService) DeleteTemplateShift(ctx context.Context, templateID, shiftID int64) error {
-	return s.deleteTemplateShiftFunc(ctx, templateID, shiftID)
+func (s *stubTemplateService) DeleteTemplateSlot(ctx context.Context, templateID, slotID int64) error {
+	return s.deleteTemplateSlotFunc(ctx, templateID, slotID)
+}
+
+func (s *stubTemplateService) CreateTemplateSlotPosition(ctx context.Context, input service.CreateTemplateSlotPositionInput) (*model.TemplateSlotPosition, error) {
+	return s.createTemplateSlotPositionFunc(ctx, input)
+}
+
+func (s *stubTemplateService) UpdateTemplateSlotPosition(ctx context.Context, input service.UpdateTemplateSlotPositionInput) (*model.TemplateSlotPosition, error) {
+	return s.updateTemplateSlotPositionFunc(ctx, input)
+}
+
+func (s *stubTemplateService) DeleteTemplateSlotPosition(ctx context.Context, templateID, slotID, slotPositionID int64) error {
+	return s.deleteTemplateSlotPositionFunc(ctx, templateID, slotID, slotPositionID)
 }
 
 func TestTemplateHandler(t *testing.T) {
@@ -312,130 +327,106 @@ func TestTemplateHandler(t *testing.T) {
 		assertErrorResponse(t, recorder, http.StatusNotFound, "TEMPLATE_NOT_FOUND")
 	})
 
-	t.Run("CreateShift returns created shift", func(t *testing.T) {
+	t.Run("CreateSlot returns created slot", func(t *testing.T) {
 		t.Parallel()
 
 		handler := NewTemplateHandler(&stubTemplateService{
-			createTemplateShiftFunc: func(ctx context.Context, input service.CreateTemplateShiftInput) (*model.TemplateShift, error) {
-				return sampleTemplateShift(), nil
+			createTemplateSlotFunc: func(ctx context.Context, input service.CreateTemplateSlotInput) (*model.TemplateSlot, error) {
+				return sampleTemplateSlot(), nil
 			},
 		})
 		recorder := httptest.NewRecorder()
-		req := requestWithPathValues(jsonRequest(t, http.MethodPost, "/templates/1/shifts", map[string]any{
-			"weekday": 1, "start_time": "09:00", "end_time": "12:00", "position_id": 7, "required_headcount": 2,
+		req := requestWithPathValues(jsonRequest(t, http.MethodPost, "/templates/1/slots", map[string]any{
+			"weekday": 1, "start_time": "09:00", "end_time": "12:00",
 		}), map[string]string{"id": "1"})
 
-		handler.CreateShift(recorder, req)
+		handler.CreateSlot(recorder, req)
 
 		if recorder.Code != http.StatusCreated {
 			t.Fatalf("expected status 201, got %d", recorder.Code)
 		}
-	})
-
-	t.Run("CreateShift maps service errors", func(t *testing.T) {
-		t.Parallel()
-
-		cases := []struct {
-			name   string
-			err    error
-			status int
-			code   string
-		}{
-			{name: "invalid weekday", err: service.ErrInvalidWeekday, status: http.StatusBadRequest, code: "INVALID_WEEKDAY"},
-			{name: "invalid shift time", err: service.ErrInvalidShiftTime, status: http.StatusBadRequest, code: "INVALID_SHIFT_TIME"},
-			{name: "invalid headcount", err: service.ErrInvalidHeadcount, status: http.StatusBadRequest, code: "INVALID_HEADCOUNT"},
-			{name: "position not found", err: service.ErrPositionNotFound, status: http.StatusNotFound, code: "POSITION_NOT_FOUND"},
-			{name: "template locked", err: service.ErrTemplateLocked, status: http.StatusConflict, code: "TEMPLATE_LOCKED"},
-		}
-
-		for _, tc := range cases {
-			tc := tc
-			t.Run(tc.name, func(t *testing.T) {
-				t.Parallel()
-
-				handler := NewTemplateHandler(&stubTemplateService{
-					createTemplateShiftFunc: func(ctx context.Context, input service.CreateTemplateShiftInput) (*model.TemplateShift, error) {
-						return nil, tc.err
-					},
-				})
-				recorder := httptest.NewRecorder()
-				req := requestWithPathValues(jsonRequest(t, http.MethodPost, "/templates/1/shifts", map[string]any{
-					"weekday": 1, "start_time": "09:00", "end_time": "12:00", "position_id": 7, "required_headcount": 2,
-				}), map[string]string{"id": "1"})
-
-				handler.CreateShift(recorder, req)
-
-				assertErrorResponse(t, recorder, tc.status, tc.code)
-			})
+		response := decodeJSONResponse[templateSlotDetailResponse](t, recorder)
+		if response.Slot.ID != 2 || response.Slot.TemplateID != 1 {
+			t.Fatalf("unexpected slot response: %+v", response)
 		}
 	})
 
-	t.Run("UpdateShift returns updated shift", func(t *testing.T) {
+	t.Run("CreateSlot maps overlap conflict", func(t *testing.T) {
 		t.Parallel()
 
 		handler := NewTemplateHandler(&stubTemplateService{
-			updateTemplateShiftFunc: func(ctx context.Context, input service.UpdateTemplateShiftInput) (*model.TemplateShift, error) {
-				return sampleTemplateShift(), nil
+			createTemplateSlotFunc: func(ctx context.Context, input service.CreateTemplateSlotInput) (*model.TemplateSlot, error) {
+				return nil, service.ErrTemplateSlotOverlap
 			},
 		})
 		recorder := httptest.NewRecorder()
-		req := requestWithPathValues(jsonRequest(t, http.MethodPut, "/templates/1/shifts/2", map[string]any{
-			"weekday": 1, "start_time": "09:00", "end_time": "12:00", "position_id": 7, "required_headcount": 2,
-		}), map[string]string{"id": "1", "shift_id": "2"})
+		req := requestWithPathValues(jsonRequest(t, http.MethodPost, "/templates/1/slots", map[string]any{
+			"weekday": 1, "start_time": "09:00", "end_time": "12:00",
+		}), map[string]string{"id": "1"})
 
-		handler.UpdateShift(recorder, req)
+		handler.CreateSlot(recorder, req)
 
-		if recorder.Code != http.StatusOK {
-			t.Fatalf("expected status 200, got %d", recorder.Code)
-		}
+		assertErrorResponse(t, recorder, http.StatusConflict, "TEMPLATE_SLOT_OVERLAP")
 	})
 
-	t.Run("UpdateShift maps shift not found", func(t *testing.T) {
+	t.Run("UpdateSlot maps slot not found", func(t *testing.T) {
 		t.Parallel()
 
 		handler := NewTemplateHandler(&stubTemplateService{
-			updateTemplateShiftFunc: func(ctx context.Context, input service.UpdateTemplateShiftInput) (*model.TemplateShift, error) {
-				return nil, service.ErrTemplateShiftNotFound
+			updateTemplateSlotFunc: func(ctx context.Context, input service.UpdateTemplateSlotInput) (*model.TemplateSlot, error) {
+				return nil, service.ErrTemplateSlotNotFound
 			},
 		})
 		recorder := httptest.NewRecorder()
-		req := requestWithPathValues(jsonRequest(t, http.MethodPut, "/templates/1/shifts/2", map[string]any{
-			"weekday": 1, "start_time": "09:00", "end_time": "12:00", "position_id": 7, "required_headcount": 2,
-		}), map[string]string{"id": "1", "shift_id": "2"})
+		req := requestWithPathValues(jsonRequest(t, http.MethodPatch, "/templates/1/slots/2", map[string]any{
+			"weekday": 1, "start_time": "09:00", "end_time": "12:00",
+		}), map[string]string{"id": "1", "slot_id": "2"})
 
-		handler.UpdateShift(recorder, req)
+		handler.UpdateSlot(recorder, req)
 
-		assertErrorResponse(t, recorder, http.StatusNotFound, "TEMPLATE_SHIFT_NOT_FOUND")
+		assertErrorResponse(t, recorder, http.StatusNotFound, "TEMPLATE_SLOT_NOT_FOUND")
 	})
 
-	t.Run("DeleteShift returns no content", func(t *testing.T) {
+	t.Run("CreateSlotPosition returns created slot position", func(t *testing.T) {
 		t.Parallel()
 
 		handler := NewTemplateHandler(&stubTemplateService{
-			deleteTemplateShiftFunc: func(ctx context.Context, templateID, shiftID int64) error { return nil },
+			createTemplateSlotPositionFunc: func(ctx context.Context, input service.CreateTemplateSlotPositionInput) (*model.TemplateSlotPosition, error) {
+				return sampleTemplateSlotPosition(), nil
+			},
 		})
 		recorder := httptest.NewRecorder()
-		req := requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/templates/1/shifts/2", nil), map[string]string{"id": "1", "shift_id": "2"})
+		req := requestWithPathValues(jsonRequest(t, http.MethodPost, "/templates/1/slots/2/positions", map[string]any{
+			"position_id": 7, "required_headcount": 2,
+		}), map[string]string{"id": "1", "slot_id": "2"})
 
-		handler.DeleteShift(recorder, req)
+		handler.CreateSlotPosition(recorder, req)
 
-		if recorder.Code != http.StatusNoContent {
-			t.Fatalf("expected status 204, got %d", recorder.Code)
+		if recorder.Code != http.StatusCreated {
+			t.Fatalf("expected status 201, got %d", recorder.Code)
+		}
+		response := decodeJSONResponse[templateSlotPositionDetailResponse](t, recorder)
+		if response.Position.ID != 3 || response.Position.SlotID != 2 {
+			t.Fatalf("unexpected slot position response: %+v", response)
 		}
 	})
 
-	t.Run("DeleteShift maps template locked", func(t *testing.T) {
+	t.Run("DeleteSlotPosition maps slot position not found", func(t *testing.T) {
 		t.Parallel()
 
 		handler := NewTemplateHandler(&stubTemplateService{
-			deleteTemplateShiftFunc: func(ctx context.Context, templateID, shiftID int64) error { return service.ErrTemplateLocked },
+			deleteTemplateSlotPositionFunc: func(ctx context.Context, templateID, slotID, slotPositionID int64) error {
+				return service.ErrTemplateSlotPositionNotFound
+			},
 		})
 		recorder := httptest.NewRecorder()
-		req := requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/templates/1/shifts/2", nil), map[string]string{"id": "1", "shift_id": "2"})
+		req := requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/templates/1/slots/2/positions/3", nil), map[string]string{
+			"id": "1", "slot_id": "2", "position_entry_id": "3",
+		})
 
-		handler.DeleteShift(recorder, req)
+		handler.DeleteSlotPosition(recorder, req)
 
-		assertErrorResponse(t, recorder, http.StatusConflict, "TEMPLATE_LOCKED")
+		assertErrorResponse(t, recorder, http.StatusNotFound, "TEMPLATE_SLOT_POSITION_NOT_FOUND")
 	})
 }
 
@@ -447,7 +438,7 @@ func sampleTemplate() *model.Template {
 		Description: "Core shifts",
 		CreatedAt:   now,
 		UpdatedAt:   now,
-		Shifts:      []*model.TemplateShift{},
+		Slots:       []*model.TemplateSlot{},
 	}
 }
 
@@ -459,6 +450,32 @@ func sampleTemplateShift() *model.TemplateShift {
 		Weekday:           1,
 		StartTime:         "09:00",
 		EndTime:           "12:00",
+		PositionID:        7,
+		RequiredHeadcount: 2,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}
+}
+
+func sampleTemplateSlot() *model.TemplateSlot {
+	now := time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC)
+	return &model.TemplateSlot{
+		ID:         2,
+		TemplateID: 1,
+		Weekday:    1,
+		StartTime:  "09:00",
+		EndTime:    "12:00",
+		CreatedAt:  now,
+		UpdatedAt:  now,
+		Positions:  []*model.TemplateSlotPosition{},
+	}
+}
+
+func sampleTemplateSlotPosition() *model.TemplateSlotPosition {
+	now := time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC)
+	return &model.TemplateSlotPosition{
+		ID:                3,
+		SlotID:            2,
 		PositionID:        7,
 		RequiredHeadcount: 2,
 		CreatedAt:         now,

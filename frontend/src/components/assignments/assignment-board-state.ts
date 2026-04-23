@@ -1,15 +1,19 @@
 import type {
   AssignmentBoardCandidate,
-  AssignmentBoardShift,
+  AssignmentBoardPosition,
+  AssignmentBoardSlot,
   PublicationState,
 } from "@/lib/types"
 
-export function isAssignmentBoardShiftUnderstaffed(shift: AssignmentBoardShift) {
-  return shift.assignments.length < shift.shift.required_headcount
+export function isAssignmentBoardPositionUnderstaffed(
+  position: Pick<AssignmentBoardPosition, "required_headcount" | "assignments">,
+) {
+  return position.assignments.length < position.required_headcount
 }
 
 export function getVisibleNonCandidateQualified(
-  shift: AssignmentBoardShift,
+  _slot: AssignmentBoardSlot,
+  position: AssignmentBoardPosition,
   showAllQualified: boolean,
 ): AssignmentBoardCandidate[] {
   if (!showAllQualified) {
@@ -17,14 +21,14 @@ export function getVisibleNonCandidateQualified(
   }
 
   const excludedUserIDs = new Set<number>()
-  for (const candidate of shift.candidates) {
+  for (const candidate of position.candidates) {
     excludedUserIDs.add(candidate.user_id)
   }
-  for (const assignment of shift.assignments) {
+  for (const assignment of position.assignments) {
     excludedUserIDs.add(assignment.user_id)
   }
 
-  return shift.non_candidate_qualified.filter(
+  return position.non_candidate_qualified.filter(
     (candidate) => !excludedUserIDs.has(candidate.user_id),
   )
 }

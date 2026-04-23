@@ -30,6 +30,8 @@ type publicationRepositoryStatefulMock struct {
 	deletePublicationFunc func(ctx context.Context, params repository.DeletePublicationParams) error
 	publications          map[int64]*model.Publication
 	templates             map[int64]*model.Template
+	templateSlots         map[int64]*model.TemplateSlot
+	slotPositions         map[int64][]*model.TemplateSlotPosition
 	templateShifts        map[int64]*model.TemplateShift
 	users                 map[int64]*model.User
 	submissions           map[string]*model.AvailabilitySubmission
@@ -50,6 +52,40 @@ func newPublicationRepositoryStatefulMock() *publicationRepositoryStatefulMock {
 			1: {
 				ID:   1,
 				Name: "Core Week",
+			},
+		},
+		templateSlots: map[int64]*model.TemplateSlot{
+			21: {
+				ID:         21,
+				TemplateID: 1,
+				Weekday:    1,
+				StartTime:  "09:00",
+				EndTime:    "12:00",
+			},
+			22: {
+				ID:         22,
+				TemplateID: 1,
+				Weekday:    3,
+				StartTime:  "13:00",
+				EndTime:    "17:00",
+			},
+		},
+		slotPositions: map[int64][]*model.TemplateSlotPosition{
+			21: {
+				{
+					ID:                11,
+					SlotID:            21,
+					PositionID:        101,
+					RequiredHeadcount: 2,
+				},
+			},
+			22: {
+				{
+					ID:                12,
+					SlotID:            22,
+					PositionID:        102,
+					RequiredHeadcount: 1,
+				},
 			},
 		},
 		templateShifts: map[int64]*model.TemplateShift{
@@ -165,6 +201,32 @@ func (m *publicationRepositoryStatefulMock) GetCurrent(
 	})
 
 	return clonePublication(publications[0]), nil
+}
+
+func (m *publicationRepositoryStatefulMock) GetSlot(
+	ctx context.Context,
+	templateID, slotID int64,
+) (*model.TemplateSlot, error) {
+	slot, ok := m.templateSlots[slotID]
+	if !ok || slot.TemplateID != templateID {
+		return nil, repository.ErrTemplateSlotNotFound
+	}
+
+	cloned := *slot
+	return &cloned, nil
+}
+
+func (m *publicationRepositoryStatefulMock) ListSlotPositions(
+	ctx context.Context,
+	slotID int64,
+) ([]*model.TemplateSlotPosition, error) {
+	positions := m.slotPositions[slotID]
+	result := make([]*model.TemplateSlotPosition, 0, len(positions))
+	for _, position := range positions {
+		cloned := *position
+		result = append(result, &cloned)
+	}
+	return result, nil
 }
 
 func (m *publicationRepositoryStatefulMock) GetUserByID(
@@ -390,17 +452,23 @@ func (m *publicationRepositoryStatefulMock) CreateAssignment(
 		return nil, repository.ErrPublicationNotFound
 	}
 
-	key := assignmentKey(params.PublicationID, params.UserID, params.TemplateShiftID)
+	slotID, positionID, _, err := m.resolveAssignmentRef(params.SlotID, params.PositionID, params.TemplateShiftID)
+	if err != nil {
+		return nil, err
+	}
+
+	key := m.assignmentStorageKey(params.PublicationID, params.UserID, params.SlotID, slotID, params.TemplateShiftID)
 	if existing, ok := m.assignments[key]; ok {
 		return cloneAssignment(existing), nil
 	}
 
 	assignment := &model.Assignment{
-		ID:              m.nextAssignmentID,
-		PublicationID:   params.PublicationID,
-		UserID:          params.UserID,
-		TemplateShiftID: params.TemplateShiftID,
-		CreatedAt:       params.CreatedAt,
+		ID:            m.nextAssignmentID,
+		PublicationID: params.PublicationID,
+		UserID:        params.UserID,
+		SlotID:        slotID,
+		PositionID:    positionID,
+		CreatedAt:     params.CreatedAt,
 	}
 	m.assignments[key] = cloneAssignment(assignment)
 	m.nextAssignmentID++
@@ -437,13 +505,18 @@ func (m *publicationRepositoryStatefulMock) ReplaceAssignments(
 	}
 
 	for _, input := range params.Assignments {
-		key := assignmentKey(params.PublicationID, input.UserID, input.TemplateShiftID)
+		slotID, positionID, _, err := m.resolveAssignmentRef(input.SlotID, input.PositionID, input.TemplateShiftID)
+		if err != nil {
+			return err
+		}
+		key := m.assignmentStorageKey(params.PublicationID, input.UserID, input.SlotID, slotID, input.TemplateShiftID)
 		m.assignments[key] = &model.Assignment{
-			ID:              m.nextAssignmentID,
-			PublicationID:   params.PublicationID,
-			UserID:          input.UserID,
-			TemplateShiftID: input.TemplateShiftID,
-			CreatedAt:       params.CreatedAt,
+			ID:            m.nextAssignmentID,
+			PublicationID: params.PublicationID,
+			UserID:        input.UserID,
+			SlotID:        slotID,
+			PositionID:    positionID,
+			CreatedAt:     params.CreatedAt,
 		}
 		m.nextAssignmentID++
 	}
@@ -531,29 +604,50 @@ func (m *publicationRepositoryStatefulMock) ListPublicationShifts(
 	}
 
 	shifts := make([]*model.PublicationShift, 0)
+	seenShiftIDs := make(map[int64]struct{})
+	for slotID, slot := range m.templateSlots {
+		if slot.TemplateID != publication.TemplateID {
+			continue
+		}
+
+		for _, slotPosition := range m.slotPositions[slotID] {
+			seenShiftIDs[slotPosition.ID] = struct{}{}
+			shifts = append(shifts, &model.PublicationShift{
+				ID:                slotPosition.ID,
+				SlotID:            slotID,
+				TemplateID:        slot.TemplateID,
+				Weekday:           slot.Weekday,
+				StartTime:         slot.StartTime,
+				EndTime:           slot.EndTime,
+				PositionID:        slotPosition.PositionID,
+				PositionName:      mockPositionName(slotPosition.PositionID),
+				RequiredHeadcount: slotPosition.RequiredHeadcount,
+				CreatedAt:         slot.CreatedAt,
+				UpdatedAt:         slot.UpdatedAt,
+			})
+		}
+	}
 	for _, shift := range m.templateShifts {
 		if shift.TemplateID != publication.TemplateID {
 			continue
 		}
-
-		positionName := "Unknown"
-		switch shift.PositionID {
-		case 101:
-			positionName = "Front Desk"
-		case 102:
-			positionName = "Cashier"
-		case 103:
-			positionName = "Pharmacist"
+		if _, ok := seenShiftIDs[shift.ID]; ok {
+			continue
 		}
 
+		slotID := m.findSlotIDByTemplateShiftID(shift.ID)
+		if slotID == 0 {
+			slotID = shift.ID
+		}
 		shifts = append(shifts, &model.PublicationShift{
 			ID:                shift.ID,
+			SlotID:            slotID,
 			TemplateID:        shift.TemplateID,
 			Weekday:           shift.Weekday,
 			StartTime:         shift.StartTime,
 			EndTime:           shift.EndTime,
 			PositionID:        shift.PositionID,
-			PositionName:      positionName,
+			PositionName:      mockPositionName(shift.PositionID),
 			RequiredHeadcount: shift.RequiredHeadcount,
 			CreatedAt:         shift.CreatedAt,
 			UpdatedAt:         shift.UpdatedAt,
@@ -566,6 +660,9 @@ func (m *publicationRepositoryStatefulMock) ListPublicationShifts(
 		}
 		if shifts[i].StartTime != shifts[j].StartTime {
 			return shifts[i].StartTime < shifts[j].StartTime
+		}
+		if shifts[i].SlotID != shifts[j].SlotID {
+			return shifts[i].SlotID < shifts[j].SlotID
 		}
 		return shifts[i].ID < shifts[j].ID
 	})
@@ -587,17 +684,22 @@ func (m *publicationRepositoryStatefulMock) ListAssignmentCandidates(
 		if !ok {
 			continue
 		}
+		slotID, positionID, _ := m.resolveStoredSubmissionRef(submission)
 		candidates = append(candidates, &model.AssignmentCandidate{
-			TemplateShiftID: submission.TemplateShiftID,
-			UserID:          user.ID,
-			Name:            user.Name,
-			Email:           user.Email,
+			SlotID:     slotID,
+			PositionID: positionID,
+			UserID:     user.ID,
+			Name:       user.Name,
+			Email:      user.Email,
 		})
 	}
 
 	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].TemplateShiftID != candidates[j].TemplateShiftID {
-			return candidates[i].TemplateShiftID < candidates[j].TemplateShiftID
+		if candidates[i].SlotID != candidates[j].SlotID {
+			return candidates[i].SlotID < candidates[j].SlotID
+		}
+		if candidates[i].PositionID != candidates[j].PositionID {
+			return candidates[i].PositionID < candidates[j].PositionID
 		}
 		return candidates[i].UserID < candidates[j].UserID
 	})
@@ -660,21 +762,132 @@ func (m *publicationRepositoryStatefulMock) ListPublicationAssignments(
 		if !ok {
 			continue
 		}
+		slotID, positionID, _ := m.resolveStoredAssignmentRef(assignment)
 		assignments = append(assignments, &model.AssignmentParticipant{
-			AssignmentID:    assignment.ID,
-			TemplateShiftID: assignment.TemplateShiftID,
-			UserID:          user.ID,
-			Name:            user.Name,
-			Email:           user.Email,
-			CreatedAt:       assignment.CreatedAt,
+			AssignmentID: assignment.ID,
+			SlotID:       slotID,
+			PositionID:   positionID,
+			UserID:       user.ID,
+			Name:         user.Name,
+			Email:        user.Email,
+			CreatedAt:    assignment.CreatedAt,
 		})
 	}
 
 	sort.Slice(assignments, func(i, j int) bool {
-		if assignments[i].TemplateShiftID != assignments[j].TemplateShiftID {
-			return assignments[i].TemplateShiftID < assignments[j].TemplateShiftID
+		if assignments[i].SlotID != assignments[j].SlotID {
+			return assignments[i].SlotID < assignments[j].SlotID
+		}
+		if assignments[i].PositionID != assignments[j].PositionID {
+			return assignments[i].PositionID < assignments[j].PositionID
 		}
 		return assignments[i].UserID < assignments[j].UserID
+	})
+
+	return assignments, nil
+}
+
+func (m *publicationRepositoryStatefulMock) GetAssignmentBoardView(
+	ctx context.Context,
+	publicationID int64,
+) (map[int64]*repository.AssignmentBoardSlotView, error) {
+	shifts, err := m.ListPublicationShifts(ctx, publicationID)
+	if err != nil {
+		return nil, err
+	}
+	candidates, err := m.ListAssignmentCandidates(ctx, publicationID)
+	if err != nil {
+		return nil, err
+	}
+	assignments, err := m.ListPublicationAssignments(ctx, publicationID)
+	if err != nil {
+		return nil, err
+	}
+
+	positionIDs := make([]int64, 0, len(shifts))
+	seenPositionIDs := make(map[int64]struct{}, len(shifts))
+	for _, shift := range shifts {
+		if _, ok := seenPositionIDs[shift.PositionID]; ok {
+			continue
+		}
+		seenPositionIDs[shift.PositionID] = struct{}{}
+		positionIDs = append(positionIDs, shift.PositionID)
+	}
+	qualifiedByPosition, err := m.ListQualifiedUsersForPositions(ctx, positionIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	candidatesBySlotPosition := make(map[slotPositionKey][]*model.AssignmentCandidate)
+	for _, candidate := range candidates {
+		key := slotPositionKey{SlotID: candidate.SlotID, PositionID: candidate.PositionID}
+		candidatesBySlotPosition[key] = append(candidatesBySlotPosition[key], candidate)
+	}
+	assignmentsBySlotPosition := make(map[slotPositionKey][]*model.AssignmentParticipant)
+	for _, assignment := range assignments {
+		key := slotPositionKey{SlotID: assignment.SlotID, PositionID: assignment.PositionID}
+		assignmentsBySlotPosition[key] = append(assignmentsBySlotPosition[key], assignment)
+	}
+
+	board := make(map[int64]*repository.AssignmentBoardSlotView)
+	for _, shift := range shifts {
+		slotView := board[shift.SlotID]
+		if slotView == nil {
+			slotView = &repository.AssignmentBoardSlotView{
+				Slot:      publicationShiftSlot(shift),
+				Positions: make(map[int64]*repository.AssignmentBoardPositionView),
+			}
+			board[shift.SlotID] = slotView
+		}
+
+		key := slotPositionKey{SlotID: shift.SlotID, PositionID: shift.PositionID}
+		candidatesForSlot := candidatesBySlotPosition[key]
+		assignmentsForSlot := assignmentsBySlotPosition[key]
+		slotView.Positions[shift.PositionID] = &repository.AssignmentBoardPositionView{
+			Position:              publicationShiftPosition(shift),
+			RequiredHeadcount:     shift.RequiredHeadcount,
+			Candidates:            cloneAssignmentCandidates(candidatesForSlot),
+			NonCandidateQualified: filterNonCandidateQualified(qualifiedByPosition[shift.PositionID], candidatesForSlot, assignmentsForSlot),
+			Assignments:           cloneAssignmentParticipants(assignmentsForSlot),
+		}
+	}
+
+	return board, nil
+}
+
+func (m *publicationRepositoryStatefulMock) ListUserAssignmentsOnWeekdayInPublication(
+	ctx context.Context,
+	publicationID, userID int64,
+	weekday int,
+) ([]*model.AssignmentSlotView, error) {
+	assignments := make([]*model.AssignmentSlotView, 0)
+	for _, assignment := range m.assignments {
+		if assignment.PublicationID != publicationID || assignment.UserID != userID {
+			continue
+		}
+
+		slot := m.resolveAssignmentSlot(assignment)
+		if slot == nil || slot.Weekday != weekday {
+			continue
+		}
+
+		assignments = append(assignments, &model.AssignmentSlotView{
+			SlotID:     slot.ID,
+			PositionID: assignment.PositionID,
+			Weekday:    slot.Weekday,
+			StartTime:  slot.StartTime,
+			EndTime:    slot.EndTime,
+		})
+	}
+
+	sort.Slice(assignments, func(i, j int) bool {
+		if assignments[i].StartTime != assignments[j].StartTime {
+			return assignments[i].StartTime < assignments[j].StartTime
+		}
+		if assignments[i].SlotID != assignments[j].SlotID {
+			return assignments[i].SlotID < assignments[j].SlotID
+		}
+		return assignments[i].PositionID < assignments[j].PositionID
 	})
 
 	return assignments, nil
@@ -1729,14 +1942,119 @@ func collectingPublication(now time.Time) *model.Publication {
 	}
 }
 
+func (m *publicationRepositoryStatefulMock) resolveAssignmentRef(
+	slotID, positionID, templateShiftID int64,
+) (int64, int64, int64, error) {
+	switch {
+	case slotID > 0 && positionID > 0:
+		templateShiftID = m.findTemplateShiftID(slotID, positionID)
+		if templateShiftID == 0 {
+			return 0, 0, 0, repository.ErrTemplateSlotPositionNotFound
+		}
+		return slotID, positionID, templateShiftID, nil
+	case templateShiftID > 0:
+		if shift, ok := m.templateShifts[templateShiftID]; ok {
+			return m.findSlotIDByTemplateShiftID(templateShiftID), shift.PositionID, templateShiftID, nil
+		}
+		return 0, 0, 0, repository.ErrTemplateShiftNotFound
+	default:
+		return 0, 0, 0, repository.ErrTemplateSlotPositionNotFound
+	}
+}
+
+func (m *publicationRepositoryStatefulMock) resolveStoredSubmissionRef(
+	submission *model.AvailabilitySubmission,
+) (int64, int64, int64) {
+	if submission == nil {
+		return 0, 0, 0
+	}
+
+	if submission.TemplateShiftID > 0 {
+		if shift, ok := m.templateShifts[submission.TemplateShiftID]; ok {
+			return m.findSlotIDByTemplateShiftID(submission.TemplateShiftID), shift.PositionID, submission.TemplateShiftID
+		}
+	}
+
+	return 0, 0, submission.TemplateShiftID
+}
+
+func (m *publicationRepositoryStatefulMock) resolveStoredAssignmentRef(
+	assignment *model.Assignment,
+) (int64, int64, int64) {
+	if assignment == nil {
+		return 0, 0, 0
+	}
+
+	if assignment.SlotID > 0 && assignment.PositionID > 0 {
+		return assignment.SlotID, assignment.PositionID, m.findTemplateShiftID(assignment.SlotID, assignment.PositionID)
+	}
+
+	return assignment.SlotID, assignment.PositionID, 0
+}
+
+func (m *publicationRepositoryStatefulMock) resolveAssignmentSlot(assignment *model.Assignment) *model.TemplateSlot {
+	if assignment == nil {
+		return nil
+	}
+	return m.templateSlots[assignment.SlotID]
+}
+
+func (m *publicationRepositoryStatefulMock) assignmentStorageKey(
+	publicationID, userID, requestedSlotID, resolvedSlotID, templateShiftID int64,
+) string {
+	if resolvedSlotID > 0 {
+		return assignmentKey(publicationID, userID, resolvedSlotID)
+	}
+	if requestedSlotID > 0 {
+		return assignmentKey(publicationID, userID, requestedSlotID)
+	}
+	if templateShiftID > 0 {
+		return assignmentKey(publicationID, userID, m.findSlotIDByTemplateShiftID(templateShiftID))
+	}
+	return assignmentKey(publicationID, userID, 0)
+}
+
+func (m *publicationRepositoryStatefulMock) findTemplateShiftID(slotID, positionID int64) int64 {
+	for _, slotPosition := range m.slotPositions[slotID] {
+		if slotPosition.PositionID == positionID {
+			return slotPosition.ID
+		}
+	}
+	return 0
+}
+
+func (m *publicationRepositoryStatefulMock) findSlotIDByTemplateShiftID(templateShiftID int64) int64 {
+	for slotID, slotPositions := range m.slotPositions {
+		for _, slotPosition := range slotPositions {
+			if slotPosition.ID == templateShiftID {
+				return slotID
+			}
+		}
+	}
+	return 0
+}
+
+func mockPositionName(positionID int64) string {
+	switch positionID {
+	case 101:
+		return "Front Desk"
+	case 102:
+		return "Cashier"
+	case 103:
+		return "Pharmacist"
+	default:
+		return "Unknown"
+	}
+}
+
 func submissionKey(publicationID, userID, shiftID int64) string {
 	return strconv.FormatInt(publicationID, 10) +
 		":" + strconv.FormatInt(userID, 10) +
 		":" + strconv.FormatInt(shiftID, 10)
 }
 
-func assignmentKey(publicationID, userID, shiftID int64) string {
-	return submissionKey(publicationID, userID, shiftID)
+func assignmentKey(publicationID, userID, slotID int64) string {
+	return submissionKey(publicationID, userID, slotID)
 }
 
 func clonePublication(publication *model.Publication) *model.Publication {

@@ -7,50 +7,68 @@ import { findShiftsForMember } from "./roster-utils"
 const sampleWeekdays: RosterWeekday[] = [
   {
     weekday: 1,
-    shifts: [
+    slots: [
       {
-        shift: {
+        slot: {
           id: 101,
           weekday: 1,
           start_time: "09:00",
           end_time: "12:00",
-          position_id: 1,
-          position_name: "Front Desk",
-          required_headcount: 2,
         },
-        assignments: [
-          { assignment_id: 11, user_id: 7, name: "Alice" },
-          { assignment_id: 12, user_id: 8, name: "Bob" },
+        positions: [
+          {
+            position: {
+              id: 1,
+              name: "Front Desk",
+            },
+            required_headcount: 2,
+            assignments: [
+              { assignment_id: 11, user_id: 7, name: "Alice" },
+              { assignment_id: 12, user_id: 8, name: "Bob" },
+            ],
+          },
         ],
       },
       {
-        shift: {
+        slot: {
           id: 102,
           weekday: 1,
           start_time: "13:00",
           end_time: "17:00",
-          position_id: 1,
-          position_name: "Front Desk",
-          required_headcount: 1,
         },
-        assignments: [{ assignment_id: 13, user_id: 7, name: "Alice" }],
+        positions: [
+          {
+            position: {
+              id: 1,
+              name: "Front Desk",
+            },
+            required_headcount: 1,
+            assignments: [{ assignment_id: 13, user_id: 7, name: "Alice" }],
+          },
+        ],
       },
     ],
   },
   {
     weekday: 3,
-    shifts: [
+    slots: [
       {
-        shift: {
+        slot: {
           id: 103,
           weekday: 3,
           start_time: "09:00",
           end_time: "12:00",
-          position_id: 2,
-          position_name: "Back Office",
-          required_headcount: 1,
         },
-        assignments: [{ assignment_id: 14, user_id: 8, name: "Bob" }],
+        positions: [
+          {
+            position: {
+              id: 2,
+              name: "Back Office",
+            },
+            required_headcount: 1,
+            assignments: [{ assignment_id: 14, user_id: 8, name: "Bob" }],
+          },
+        ],
       },
     ],
   },
@@ -62,8 +80,8 @@ describe("findShiftsForMember", () => {
 
     expect(result.map((o) => o.assignmentID)).toEqual([11, 13])
     expect(result[0].weekday).toBe(1)
-    expect(result[0].shift.start_time).toBe("09:00")
-    expect(result[1].shift.start_time).toBe("13:00")
+    expect(result[0].slot.start_time).toBe("09:00")
+    expect(result[1].slot.start_time).toBe("13:00")
   })
 
   it("returns an empty list when the user has no assignments", () => {

@@ -25,14 +25,15 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		ctx := stub.ContextWith(context.Background())
 
 		assignment, err := service.CreateAssignment(ctx, CreateAssignmentInput{
-			PublicationID:   1,
-			UserID:          8,
-			TemplateShiftID: 11,
+			PublicationID: 1,
+			UserID:        8,
+			SlotID:        21,
+			PositionID:    101,
 		})
 		if err != nil {
 			t.Fatalf("CreateAssignment returned error: %v", err)
 		}
-		if assignment.PublicationID != 1 || assignment.UserID != 8 || assignment.TemplateShiftID != 11 {
+		if assignment.PublicationID != 1 || assignment.UserID != 8 || assignment.SlotID != 21 || assignment.PositionID != 101 {
 			t.Fatalf("unexpected assignment: %+v", assignment)
 		}
 
@@ -52,41 +53,55 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		if event.Metadata["user_id"] != int64(8) {
 			t.Fatalf("expected user_id=8 in metadata, got %+v", event.Metadata)
 		}
-		if event.Metadata["template_shift_id"] != int64(11) {
-			t.Fatalf("expected template_shift_id=11 in metadata, got %+v", event.Metadata)
+		if event.Metadata["slot_id"] != int64(21) || event.Metadata["position_id"] != int64(101) {
+			t.Fatalf("expected slot/position metadata, got %+v", event.Metadata)
 		}
 	})
 
-	t.Run("duplicate assignment is idempotent", func(t *testing.T) {
+	t.Run("rejects same user in same slot with a different position", func(t *testing.T) {
 		t.Parallel()
 
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
 		repo := newPublicationRepositoryStatefulMock()
 		repo.publications[1] = assigningPublication(now)
+		repo.slotPositions[21] = append(repo.slotPositions[21], &model.TemplateSlotPosition{
+			ID:                13,
+			SlotID:            21,
+			PositionID:        102,
+			RequiredHeadcount: 1,
+		})
 		service := NewPublicationService(repo, fixedClock{now: now})
 
-		first, err := service.CreateAssignment(context.Background(), CreateAssignmentInput{
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		first, err := service.CreateAssignment(ctx, CreateAssignmentInput{
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21,
+			PositionID:    101,
 		})
 		if err != nil {
 			t.Fatalf("first CreateAssignment returned error: %v", err)
 		}
 
-		second, err := service.CreateAssignment(context.Background(), CreateAssignmentInput{
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
+		_, err = service.CreateAssignment(ctx, CreateAssignmentInput{
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21,
+			PositionID:    102,
 		})
-		if err != nil {
-			t.Fatalf("second CreateAssignment returned error: %v", err)
-		}
-		if first.ID != second.ID {
-			t.Fatalf("expected idempotent assignment ids, got %d and %d", first.ID, second.ID)
+		if !errors.Is(err, ErrAssignmentUserAlreadyInSlot) {
+			t.Fatalf("expected ErrAssignmentUserAlreadyInSlot, got %v", err)
 		}
 		if len(repo.assignments) != 1 {
 			t.Fatalf("expected one stored assignment, got %d", len(repo.assignments))
+		}
+		if len(stub.Events()) != 1 {
+			t.Fatalf("expected one audit event, got %+v", stub.Events())
+		}
+		if event := stub.FindByAction(audit.ActionAssignmentCreate); event == nil || event.TargetID == nil || *event.TargetID != first.ID {
+			t.Fatalf("expected one assignment.create event for first assignment, got %+v", stub.Events())
 		}
 	})
 
@@ -114,9 +129,10 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 				service := NewPublicationService(repo, fixedClock{now: now})
 
 				assignment, err := service.CreateAssignment(context.Background(), CreateAssignmentInput{
-					PublicationID:   1,
-					UserID:          7,
-					TemplateShiftID: 11,
+					PublicationID: 1,
+					UserID:        7,
+					SlotID:        21,
+					PositionID:    101,
 				})
 				if tc.wantErr != nil {
 					if !errors.Is(err, tc.wantErr) {
@@ -134,30 +150,30 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects shift outside publication template", func(t *testing.T) {
+	t.Run("rejects slot outside publication template", func(t *testing.T) {
 		t.Parallel()
 
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
 		repo := newPublicationRepositoryStatefulMock()
 		repo.publications[1] = assigningPublication(now)
-		repo.templateShifts[99] = &model.TemplateShift{
-			ID:                99,
-			TemplateID:        2,
-			Weekday:           5,
-			StartTime:         "10:00",
-			EndTime:           "12:00",
-			PositionID:        101,
-			RequiredHeadcount: 1,
+		repo.templateSlots[99] = &model.TemplateSlot{
+			ID:         99,
+			TemplateID: 2,
+			Weekday:    5,
+			StartTime:  "10:00",
+			EndTime:    "12:00",
 		}
+		repo.slotPositions[99] = []*model.TemplateSlotPosition{{ID: 99, SlotID: 99, PositionID: 101, RequiredHeadcount: 1}}
 		service := NewPublicationService(repo, fixedClock{now: now})
 
 		_, err := service.CreateAssignment(context.Background(), CreateAssignmentInput{
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 99,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        99,
+			PositionID:    101,
 		})
-		if !errors.Is(err, ErrTemplateShiftNotFound) {
-			t.Fatalf("expected ErrTemplateShiftNotFound, got %v", err)
+		if !errors.Is(err, ErrTemplateSlotNotFound) {
+			t.Fatalf("expected ErrTemplateSlotNotFound, got %v", err)
 		}
 	})
 
@@ -170,9 +186,10 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		service := NewPublicationService(repo, fixedClock{now: now})
 
 		_, err := service.CreateAssignment(context.Background(), CreateAssignmentInput{
-			PublicationID:   1,
-			UserID:          999,
-			TemplateShiftID: 11,
+			PublicationID: 1,
+			UserID:        999,
+			SlotID:        21,
+			PositionID:    101,
 		})
 		if !errors.Is(err, ErrUserNotFound) {
 			t.Fatalf("expected ErrUserNotFound, got %v", err)
@@ -191,9 +208,10 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		ctx := stub.ContextWith(context.Background())
 
 		_, err := service.CreateAssignment(ctx, CreateAssignmentInput{
-			PublicationID:   1,
-			UserID:          9,
-			TemplateShiftID: 11,
+			PublicationID: 1,
+			UserID:        9,
+			SlotID:        21,
+			PositionID:    101,
 		})
 		if !errors.Is(err, ErrUserDisabled) {
 			t.Fatalf("expected ErrUserDisabled, got %v", err)
@@ -213,12 +231,130 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		})
 
 		_, err := service.CreateAssignment(context.Background(), CreateAssignmentInput{
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21,
+			PositionID:    101,
 		})
 		if !errors.Is(err, ErrPublicationNotFound) {
 			t.Fatalf("expected ErrPublicationNotFound, got %v", err)
+		}
+	})
+
+	t.Run("rejects overlapping assignment on same weekday", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+		repo := newPublicationRepositoryStatefulMock()
+		repo.publications[1] = assigningPublication(now)
+		repo.templateSlots[23] = &model.TemplateSlot{
+			ID:         23,
+			TemplateID: 1,
+			Weekday:    1,
+			StartTime:  "11:00",
+			EndTime:    "14:00",
+		}
+		repo.slotPositions[23] = []*model.TemplateSlotPosition{{ID: 13, SlotID: 23, PositionID: 102, RequiredHeadcount: 1}}
+		repo.assignments[assignmentKey(1, 7, 21)] = &model.Assignment{
+			ID:            1,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21,
+			PositionID:    101,
+			CreatedAt:     now.Add(-15 * time.Minute),
+		}
+		service := NewPublicationService(repo, fixedClock{now: now})
+
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		_, err := service.CreateAssignment(ctx, CreateAssignmentInput{
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        23,
+			PositionID:    102,
+		})
+		if !errors.Is(err, ErrAssignmentTimeConflict) {
+			t.Fatalf("expected ErrAssignmentTimeConflict, got %v", err)
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events, got %+v", stub.Events())
+		}
+	})
+
+	t.Run("allows assignment on different weekday", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+		repo := newPublicationRepositoryStatefulMock()
+		repo.publications[1] = assigningPublication(now)
+		repo.templateSlots[24] = &model.TemplateSlot{
+			ID:         24,
+			TemplateID: 1,
+			Weekday:    2,
+			StartTime:  "11:00",
+			EndTime:    "14:00",
+		}
+		repo.slotPositions[24] = []*model.TemplateSlotPosition{{ID: 14, SlotID: 24, PositionID: 102, RequiredHeadcount: 1}}
+		repo.assignments[assignmentKey(1, 7, 21)] = &model.Assignment{
+			ID:            1,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21,
+			PositionID:    101,
+			CreatedAt:     now.Add(-15 * time.Minute),
+		}
+		service := NewPublicationService(repo, fixedClock{now: now})
+
+		assignment, err := service.CreateAssignment(context.Background(), CreateAssignmentInput{
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        24,
+			PositionID:    102,
+		})
+		if err != nil {
+			t.Fatalf("CreateAssignment returned error: %v", err)
+		}
+		if assignment.SlotID != 24 || assignment.PositionID != 102 {
+			t.Fatalf("unexpected assignment: %+v", assignment)
+		}
+	})
+
+	t.Run("allows assignment on touching boundary", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+		repo := newPublicationRepositoryStatefulMock()
+		repo.publications[1] = assigningPublication(now)
+		repo.templateSlots[25] = &model.TemplateSlot{
+			ID:         25,
+			TemplateID: 1,
+			Weekday:    1,
+			StartTime:  "12:00",
+			EndTime:    "15:00",
+		}
+		repo.slotPositions[25] = []*model.TemplateSlotPosition{{ID: 15, SlotID: 25, PositionID: 102, RequiredHeadcount: 1}}
+		repo.assignments[assignmentKey(1, 7, 21)] = &model.Assignment{
+			ID:            1,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21,
+			PositionID:    101,
+			CreatedAt:     now.Add(-15 * time.Minute),
+		}
+		service := NewPublicationService(repo, fixedClock{now: now})
+
+		assignment, err := service.CreateAssignment(context.Background(), CreateAssignmentInput{
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        25,
+			PositionID:    102,
+		})
+		if err != nil {
+			t.Fatalf("CreateAssignment returned error: %v", err)
+		}
+		if assignment.SlotID != 25 {
+			t.Fatalf("unexpected assignment: %+v", assignment)
 		}
 	})
 
@@ -228,12 +364,13 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
 		repo := newPublicationRepositoryStatefulMock()
 		repo.publications[1] = publishedPublication(now)
-		repo.assignments[assignmentKey(1, 7, 11)] = &model.Assignment{
-			ID:              1,
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
-			CreatedAt:       now.Add(-15 * time.Minute),
+		repo.assignments[assignmentKey(1, 7, 21)] = &model.Assignment{
+			ID:            1,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21,
+			PositionID:    101,
+			CreatedAt:     now.Add(-15 * time.Minute),
 		}
 		shiftChangeRepo := newShiftChangeRepositoryStatefulMock(repo)
 		shiftChangeRepo.requests[55] = &model.ShiftChangeRequest{
@@ -308,19 +445,21 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
 		repo := newPublicationRepositoryStatefulMock()
 		repo.publications[1] = activePublication(now)
-		repo.assignments[assignmentKey(1, 7, 11)] = &model.Assignment{
-			ID:              1,
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
-			CreatedAt:       now.Add(-30 * time.Minute),
+		repo.assignments[assignmentKey(1, 7, 21)] = &model.Assignment{
+			ID:            1,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21,
+			PositionID:    101,
+			CreatedAt:     now.Add(-30 * time.Minute),
 		}
-		repo.assignments[assignmentKey(1, 8, 12)] = &model.Assignment{
-			ID:              2,
-			PublicationID:   1,
-			UserID:          8,
-			TemplateShiftID: 12,
-			CreatedAt:       now.Add(-20 * time.Minute),
+		repo.assignments[assignmentKey(1, 8, 22)] = &model.Assignment{
+			ID:            2,
+			PublicationID: 1,
+			UserID:        8,
+			SlotID:        22,
+			PositionID:    102,
+			CreatedAt:     now.Add(-20 * time.Minute),
 		}
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(2)
@@ -372,12 +511,13 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
 		repo := newPublicationRepositoryStatefulMock()
 		repo.publications[1] = assigningPublication(now)
-		repo.assignments[assignmentKey(1, 7, 11)] = &model.Assignment{
-			ID:              1,
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
-			CreatedAt:       now.Add(-15 * time.Minute),
+		repo.assignments[assignmentKey(1, 7, 21)] = &model.Assignment{
+			ID:            1,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21,
+			PositionID:    101,
+			CreatedAt:     now.Add(-15 * time.Minute),
 		}
 		shiftChangeRepo := newShiftChangeRepositoryStatefulMock(repo)
 		shiftChangeRepo.requests[57] = &model.ShiftChangeRequest{
@@ -425,12 +565,13 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
 		repo := newPublicationRepositoryStatefulMock()
 		repo.publications[1] = assigningPublication(now)
-		repo.assignments[assignmentKey(1, 7, 11)] = &model.Assignment{
-			ID:              1,
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
-			CreatedAt:       now.Add(-15 * time.Minute),
+		repo.assignments[assignmentKey(1, 7, 21)] = &model.Assignment{
+			ID:            1,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21,
+			PositionID:    101,
+			CreatedAt:     now.Add(-15 * time.Minute),
 		}
 		shiftChangeRepo := newShiftChangeRepositoryStatefulMock(repo)
 		emailer := &emailStub{}
@@ -465,12 +606,13 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
 		repo := newPublicationRepositoryStatefulMock()
 		repo.publications[1] = publishedPublication(now)
-		repo.assignments[assignmentKey(1, 7, 11)] = &model.Assignment{
-			ID:              1,
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
-			CreatedAt:       now.Add(-15 * time.Minute),
+		repo.assignments[assignmentKey(1, 7, 21)] = &model.Assignment{
+			ID:            1,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21,
+			PositionID:    101,
+			CreatedAt:     now.Add(-15 * time.Minute),
 		}
 		shiftChangeRepo := newShiftChangeRepositoryStatefulMock(repo)
 		shiftChangeRepo.invalidateRequestsForAssignmentErr = errors.New("db unavailable")
@@ -524,12 +666,13 @@ func TestPublicationServiceDeleteAssignment(t *testing.T) {
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
 		repo := newPublicationRepositoryStatefulMock()
 		repo.publications[1] = assigningPublication(now)
-		repo.assignments[assignmentKey(1, 7, 11)] = &model.Assignment{
-			ID:              1,
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
-			CreatedAt:       now.Add(-15 * time.Minute),
+		repo.assignments[assignmentKey(1, 7, 21)] = &model.Assignment{
+			ID:            1,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21,
+			PositionID:    101,
+			CreatedAt:     now.Add(-15 * time.Minute),
 		}
 		service := NewPublicationService(repo, fixedClock{now: now})
 
@@ -559,6 +702,9 @@ func TestPublicationServiceDeleteAssignment(t *testing.T) {
 		}
 		if event.Metadata["publication_id"] != int64(1) {
 			t.Fatalf("expected publication_id=1 in metadata, got %+v", event.Metadata)
+		}
+		if event.Metadata["user_id"] != int64(7) || event.Metadata["slot_id"] != int64(21) || event.Metadata["position_id"] != int64(101) {
+			t.Fatalf("expected slot-based metadata, got %+v", event.Metadata)
 		}
 	})
 
@@ -878,7 +1024,7 @@ func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
 		}
 	})
 
-	t.Run("assignment board returns shifts, candidates, non-candidate qualified users, assignments, and zero-candidate shifts", func(t *testing.T) {
+	t.Run("assignment board returns slots, positions, non-candidate qualified users, assignments, and zero-candidate slots", func(t *testing.T) {
 		t.Parallel()
 
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
@@ -907,12 +1053,13 @@ func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
 		}
 		repo.qualifiedByUser[8] = map[int64]struct{}{101: {}}
 		repo.qualifiedByUser[10] = map[int64]struct{}{101: {}}
-		repo.assignments[assignmentKey(1, 8, 11)] = &model.Assignment{
-			ID:              1,
-			PublicationID:   1,
-			UserID:          8,
-			TemplateShiftID: 11,
-			CreatedAt:       now.Add(-30 * time.Minute),
+		repo.assignments[assignmentKey(1, 8, 21)] = &model.Assignment{
+			ID:            1,
+			PublicationID: 1,
+			UserID:        8,
+			SlotID:        21,
+			PositionID:    101,
+			CreatedAt:     now.Add(-30 * time.Minute),
 		}
 		service := NewPublicationService(repo, fixedClock{now: now})
 
@@ -920,29 +1067,34 @@ func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetAssignmentBoard returned error: %v", err)
 		}
-		if len(board.Shifts) != 2 {
-			t.Fatalf("expected 2 board shifts, got %d", len(board.Shifts))
+		if len(board.Slots) != 2 {
+			t.Fatalf("expected 2 board slots, got %d", len(board.Slots))
 		}
-		if board.Shifts[0].Shift.RequiredHeadcount != 2 {
-			t.Fatalf("expected headcount 2, got %d", board.Shifts[0].Shift.RequiredHeadcount)
+		if len(board.Slots[0].Positions) != 1 {
+			t.Fatalf("expected one position in first slot, got %d", len(board.Slots[0].Positions))
 		}
-		if len(board.Shifts[0].Candidates) != 2 {
-			t.Fatalf("expected 2 candidates, got %d", len(board.Shifts[0].Candidates))
+		firstPosition := board.Slots[0].Positions[0]
+		if firstPosition.RequiredHeadcount != 2 {
+			t.Fatalf("expected headcount 2, got %d", firstPosition.RequiredHeadcount)
 		}
-		if board.Shifts[0].Candidates[0].UserID != 7 {
-			t.Fatalf("expected revoked-but-submitted candidate user 7, got %d", board.Shifts[0].Candidates[0].UserID)
+		if len(firstPosition.Candidates) != 2 {
+			t.Fatalf("expected 2 candidates, got %d", len(firstPosition.Candidates))
 		}
-		if len(board.Shifts[0].Assignments) != 1 || board.Shifts[0].Assignments[0].UserID != 8 {
-			t.Fatalf("unexpected assignments: %+v", board.Shifts[0].Assignments)
+		if firstPosition.Candidates[0].UserID != 7 {
+			t.Fatalf("expected revoked-but-submitted candidate user 7, got %d", firstPosition.Candidates[0].UserID)
 		}
-		if len(board.Shifts[0].NonCandidateQualified) != 1 || board.Shifts[0].NonCandidateQualified[0].UserID != 10 {
-			t.Fatalf("unexpected non-candidate qualified users: %+v", board.Shifts[0].NonCandidateQualified)
+		if len(firstPosition.Assignments) != 1 || firstPosition.Assignments[0].UserID != 8 {
+			t.Fatalf("unexpected assignments: %+v", firstPosition.Assignments)
 		}
-		if len(board.Shifts[1].Candidates) != 0 {
-			t.Fatalf("expected zero candidates for second shift, got %d", len(board.Shifts[1].Candidates))
+		if len(firstPosition.NonCandidateQualified) != 1 || firstPosition.NonCandidateQualified[0].UserID != 10 {
+			t.Fatalf("unexpected non-candidate qualified users: %+v", firstPosition.NonCandidateQualified)
 		}
-		if len(board.Shifts[1].NonCandidateQualified) != 0 {
-			t.Fatalf("expected zero non-candidate qualified users for second shift, got %d", len(board.Shifts[1].NonCandidateQualified))
+		secondPosition := board.Slots[1].Positions[0]
+		if len(secondPosition.Candidates) != 0 {
+			t.Fatalf("expected zero candidates for second slot position, got %d", len(secondPosition.Candidates))
+		}
+		if len(secondPosition.NonCandidateQualified) != 0 {
+			t.Fatalf("expected zero non-candidate qualified users for second slot position, got %d", len(secondPosition.NonCandidateQualified))
 		}
 	})
 
@@ -952,28 +1104,29 @@ func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
 		repo := newPublicationRepositoryStatefulMock()
 		repo.publications[1] = activePublication(now)
-		repo.templateShifts[13] = &model.TemplateShift{
-			ID:                13,
-			TemplateID:        1,
-			Weekday:           1,
-			StartTime:         "14:00",
-			EndTime:           "18:00",
-			PositionID:        103,
-			RequiredHeadcount: 1,
+		repo.templateSlots[23] = &model.TemplateSlot{
+			ID:         23,
+			TemplateID: 1,
+			Weekday:    1,
+			StartTime:  "14:00",
+			EndTime:    "18:00",
 		}
-		repo.assignments[assignmentKey(1, 8, 11)] = &model.Assignment{
-			ID:              2,
-			PublicationID:   1,
-			UserID:          8,
-			TemplateShiftID: 11,
-			CreatedAt:       now.Add(-20 * time.Minute),
+		repo.slotPositions[23] = []*model.TemplateSlotPosition{{ID: 13, SlotID: 23, PositionID: 103, RequiredHeadcount: 1}}
+		repo.assignments[assignmentKey(1, 8, 21)] = &model.Assignment{
+			ID:            2,
+			PublicationID: 1,
+			UserID:        8,
+			SlotID:        21,
+			PositionID:    101,
+			CreatedAt:     now.Add(-20 * time.Minute),
 		}
-		repo.assignments[assignmentKey(1, 7, 11)] = &model.Assignment{
-			ID:              1,
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
-			CreatedAt:       now.Add(-30 * time.Minute),
+		repo.assignments[assignmentKey(1, 7, 21)] = &model.Assignment{
+			ID:            1,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21,
+			PositionID:    101,
+			CreatedAt:     now.Add(-30 * time.Minute),
 		}
 		service := NewPublicationService(repo, fixedClock{now: now})
 
@@ -984,18 +1137,18 @@ func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
 		if len(roster.Weekdays) != 7 {
 			t.Fatalf("expected 7 weekdays, got %d", len(roster.Weekdays))
 		}
-		if len(roster.Weekdays[0].Shifts) != 2 {
-			t.Fatalf("expected 2 monday shifts, got %d", len(roster.Weekdays[0].Shifts))
+		if len(roster.Weekdays[0].Slots) != 2 {
+			t.Fatalf("expected 2 monday slots, got %d", len(roster.Weekdays[0].Slots))
 		}
-		if roster.Weekdays[0].Shifts[0].Shift.ID != 11 || roster.Weekdays[0].Shifts[1].Shift.ID != 13 {
-			t.Fatalf("unexpected monday shift order: %+v", roster.Weekdays[0].Shifts)
+		if roster.Weekdays[0].Slots[0].Slot.ID != 21 || roster.Weekdays[0].Slots[1].Slot.ID != 23 {
+			t.Fatalf("unexpected monday slot order: %+v", roster.Weekdays[0].Slots)
 		}
-		assignments := roster.Weekdays[0].Shifts[0].Assignments
+		assignments := roster.Weekdays[0].Slots[0].Positions[0].Assignments
 		if len(assignments) != 2 || assignments[0].UserID != 7 || assignments[1].UserID != 8 {
 			t.Fatalf("expected user_id ordering [7,8], got %+v", assignments)
 		}
-		if len(roster.Weekdays[1].Shifts) != 0 {
-			t.Fatalf("expected empty tuesday shifts, got %d", len(roster.Weekdays[1].Shifts))
+		if len(roster.Weekdays[1].Slots) != 0 {
+			t.Fatalf("expected empty tuesday slots, got %d", len(roster.Weekdays[1].Slots))
 		}
 	})
 

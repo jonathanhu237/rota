@@ -6,12 +6,13 @@ import (
 	"errors"
 
 	"github.com/jonathanhu237/rota/backend/internal/model"
+	"github.com/lib/pq"
 )
 
 var (
-	ErrTemplateLocked        = model.ErrTemplateLocked
-	ErrTemplateNotFound      = errors.New("template not found")
-	ErrTemplateShiftNotFound = errors.New("template shift not found")
+	ErrTemplateLocked      = model.ErrTemplateLocked
+	ErrTemplateNotFound    = errors.New("template not found")
+	ErrTemplateSlotOverlap = model.ErrTemplateSlotOverlap
 )
 
 type ListTemplatesParams struct {
@@ -30,23 +31,19 @@ type UpdateTemplateParams struct {
 	Description string
 }
 
-type CreateTemplateShiftParams struct {
-	TemplateID        int64
-	Weekday           int
-	StartTime         string
-	EndTime           string
-	PositionID        int64
-	RequiredHeadcount int
+type CreateTemplateSlotParams struct {
+	TemplateID int64
+	Weekday    int
+	StartTime  string
+	EndTime    string
 }
 
-type UpdateTemplateShiftParams struct {
-	TemplateID        int64
-	ShiftID           int64
-	Weekday           int
-	StartTime         string
-	EndTime           string
-	PositionID        int64
-	RequiredHeadcount int
+type UpdateTemplateSlotParams struct {
+	TemplateID int64
+	SlotID     int64
+	Weekday    int
+	StartTime  string
+	EndTime    string
 }
 
 type TemplateRepository struct {
@@ -78,7 +75,7 @@ func (r *TemplateRepository) ListPaginated(ctx context.Context, params ListTempl
 			t.updated_at,
 			COALESCE(COUNT(ts.id), 0) AS shift_count
 		FROM templates t
-		LEFT JOIN template_shifts ts ON ts.template_id = t.id
+		LEFT JOIN template_slots ts ON ts.template_id = t.id
 		GROUP BY t.id
 		ORDER BY t.updated_at DESC, t.id DESC
 		LIMIT $1 OFFSET $2;
@@ -119,14 +116,7 @@ func (r *TemplateRepository) GetByID(ctx context.Context, id int64) (*model.Temp
 		return nil, err
 	}
 
-	shifts, err := listTemplateShifts(ctx, r.db, id)
-	if err != nil {
-		return nil, err
-	}
-	template.Shifts = shifts
-	template.ShiftCount = len(shifts)
-
-	return template, nil
+	return template, populateTemplateSlots(ctx, r.db, template)
 }
 
 func (r *TemplateRepository) Create(ctx context.Context, params CreateTemplateParams) (*model.Template, error) {
@@ -238,36 +228,100 @@ func (r *TemplateRepository) Clone(ctx context.Context, id int64, name string) (
 		return nil, err
 	}
 
-	const cloneShiftsQuery = `
-		INSERT INTO template_shifts (
-			template_id,
-			weekday,
-			start_time,
-			end_time,
-			position_id,
-			required_headcount
-		)
-		SELECT
-			$2,
-			weekday,
-			start_time,
-			end_time,
-			position_id,
-			required_headcount
-		FROM template_shifts
-		WHERE template_id = $1;
-	`
-
-	if _, err := tx.ExecContext(ctx, cloneShiftsQuery, id, template.ID); err != nil {
-		return nil, err
-	}
-
-	shifts, err := listTemplateShifts(ctx, tx, template.ID)
+	sourceSlots, err := listTemplateSlots(ctx, tx, id)
 	if err != nil {
 		return nil, err
 	}
-	template.Shifts = shifts
-	template.ShiftCount = len(shifts)
+	template.Slots = make([]*model.TemplateSlot, 0, len(sourceSlots))
+
+	for _, sourceSlot := range sourceSlots {
+		const insertSlotQuery = `
+			INSERT INTO template_slots (
+				template_id,
+				weekday,
+				start_time,
+				end_time
+			)
+			VALUES ($1, $2, $3, $4)
+			RETURNING
+				id,
+				template_id,
+				weekday,
+				TO_CHAR(start_time, 'HH24:MI'),
+				TO_CHAR(end_time, 'HH24:MI'),
+				created_at,
+				updated_at;
+		`
+
+		clonedSlot := &model.TemplateSlot{}
+		err := tx.QueryRowContext(
+			ctx,
+			insertSlotQuery,
+			template.ID,
+			sourceSlot.Weekday,
+			sourceSlot.StartTime,
+			sourceSlot.EndTime,
+		).Scan(
+			&clonedSlot.ID,
+			&clonedSlot.TemplateID,
+			&clonedSlot.Weekday,
+			&clonedSlot.StartTime,
+			&clonedSlot.EndTime,
+			&clonedSlot.CreatedAt,
+			&clonedSlot.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		sourcePositions, err := listTemplateSlotPositions(ctx, tx, sourceSlot.ID)
+		if err != nil {
+			return nil, err
+		}
+		clonedSlot.Positions = make([]*model.TemplateSlotPosition, 0, len(sourcePositions))
+
+		for _, sourcePosition := range sourcePositions {
+			const insertSlotPositionQuery = `
+				INSERT INTO template_slot_positions (
+					slot_id,
+					position_id,
+					required_headcount
+				)
+				VALUES ($1, $2, $3)
+				RETURNING
+					id,
+					slot_id,
+					position_id,
+					required_headcount,
+					created_at,
+					updated_at;
+			`
+
+			clonedPosition := &model.TemplateSlotPosition{}
+			err := tx.QueryRowContext(
+				ctx,
+				insertSlotPositionQuery,
+				clonedSlot.ID,
+				sourcePosition.PositionID,
+				sourcePosition.RequiredHeadcount,
+			).Scan(
+				&clonedPosition.ID,
+				&clonedPosition.SlotID,
+				&clonedPosition.PositionID,
+				&clonedPosition.RequiredHeadcount,
+				&clonedPosition.CreatedAt,
+				&clonedPosition.UpdatedAt,
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			clonedSlot.Positions = append(clonedSlot.Positions, clonedPosition)
+		}
+
+		template.Slots = append(template.Slots, clonedSlot)
+	}
+	template.ShiftCount = len(template.Slots)
 
 	if err := tx.Commit(); err != nil {
 		return nil, err
@@ -276,38 +330,35 @@ func (r *TemplateRepository) Clone(ctx context.Context, id int64, name string) (
 	return template, nil
 }
 
-func (r *TemplateRepository) CreateShift(ctx context.Context, params CreateTemplateShiftParams) (*model.TemplateShift, error) {
+func (r *TemplateRepository) CreateSlot(
+	ctx context.Context,
+	params CreateTemplateSlotParams,
+) (*model.TemplateSlot, error) {
 	const query = `
-		INSERT INTO template_shifts (
+		INSERT INTO template_slots (
 			template_id,
 			weekday,
 			start_time,
-			end_time,
-			position_id,
-			required_headcount
+			end_time
 		)
 		SELECT
 			t.id,
 			$2,
 			$3,
-			$4,
-			$5,
-			$6
+			$4
 		FROM templates t
 		WHERE t.id = $1 AND t.is_locked = FALSE
 		RETURNING
-			template_shifts.id,
-			template_shifts.template_id,
-			template_shifts.weekday,
-			TO_CHAR(template_shifts.start_time, 'HH24:MI'),
-			TO_CHAR(template_shifts.end_time, 'HH24:MI'),
-			template_shifts.position_id,
-			template_shifts.required_headcount,
-			template_shifts.created_at,
-			template_shifts.updated_at;
+			id,
+			template_id,
+			weekday,
+			TO_CHAR(start_time, 'HH24:MI'),
+			TO_CHAR(end_time, 'HH24:MI'),
+			created_at,
+			updated_at;
 	`
 
-	shift := &model.TemplateShift{}
+	slot := &model.TemplateSlot{}
 	err := r.db.QueryRowContext(
 		ctx,
 		query,
@@ -315,101 +366,92 @@ func (r *TemplateRepository) CreateShift(ctx context.Context, params CreateTempl
 		params.Weekday,
 		params.StartTime,
 		params.EndTime,
-		params.PositionID,
-		params.RequiredHeadcount,
 	).Scan(
-		&shift.ID,
-		&shift.TemplateID,
-		&shift.Weekday,
-		&shift.StartTime,
-		&shift.EndTime,
-		&shift.PositionID,
-		&shift.RequiredHeadcount,
-		&shift.CreatedAt,
-		&shift.UpdatedAt,
+		&slot.ID,
+		&slot.TemplateID,
+		&slot.Weekday,
+		&slot.StartTime,
+		&slot.EndTime,
+		&slot.CreatedAt,
+		&slot.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, r.resolveTemplateWriteState(ctx, params.TemplateID)
 	}
 	if err != nil {
-		return nil, err
+		return nil, mapTemplateSlotWriteError(err)
 	}
 
-	return shift, nil
+	return slot, nil
 }
 
-func (r *TemplateRepository) UpdateShift(ctx context.Context, params UpdateTemplateShiftParams) (*model.TemplateShift, error) {
+func (r *TemplateRepository) UpdateSlot(
+	ctx context.Context,
+	params UpdateTemplateSlotParams,
+) (*model.TemplateSlot, error) {
 	const query = `
-		UPDATE template_shifts
+		UPDATE template_slots
 		SET
 			weekday = $3,
 			start_time = $4,
 			end_time = $5,
-			position_id = $6,
-			required_headcount = $7,
 			updated_at = NOW()
 		FROM templates
 		WHERE
-			template_shifts.template_id = $1 AND
-			template_shifts.id = $2 AND
-			templates.id = template_shifts.template_id AND
+			template_slots.template_id = $1 AND
+			template_slots.id = $2 AND
+			templates.id = template_slots.template_id AND
 			templates.is_locked = FALSE
 		RETURNING
-			template_shifts.id,
-			template_shifts.template_id,
-			template_shifts.weekday,
-			TO_CHAR(template_shifts.start_time, 'HH24:MI'),
-			TO_CHAR(template_shifts.end_time, 'HH24:MI'),
-			template_shifts.position_id,
-			template_shifts.required_headcount,
-			template_shifts.created_at,
-			template_shifts.updated_at;
+			template_slots.id,
+			template_slots.template_id,
+			template_slots.weekday,
+			TO_CHAR(template_slots.start_time, 'HH24:MI'),
+			TO_CHAR(template_slots.end_time, 'HH24:MI'),
+			template_slots.created_at,
+			template_slots.updated_at;
 	`
 
-	shift := &model.TemplateShift{}
+	slot := &model.TemplateSlot{}
 	err := r.db.QueryRowContext(
 		ctx,
 		query,
 		params.TemplateID,
-		params.ShiftID,
+		params.SlotID,
 		params.Weekday,
 		params.StartTime,
 		params.EndTime,
-		params.PositionID,
-		params.RequiredHeadcount,
 	).Scan(
-		&shift.ID,
-		&shift.TemplateID,
-		&shift.Weekday,
-		&shift.StartTime,
-		&shift.EndTime,
-		&shift.PositionID,
-		&shift.RequiredHeadcount,
-		&shift.CreatedAt,
-		&shift.UpdatedAt,
+		&slot.ID,
+		&slot.TemplateID,
+		&slot.Weekday,
+		&slot.StartTime,
+		&slot.EndTime,
+		&slot.CreatedAt,
+		&slot.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, r.resolveTemplateShiftWriteState(ctx, params.TemplateID, params.ShiftID)
+		return nil, r.resolveTemplateSlotWriteState(ctx, params.TemplateID, params.SlotID)
 	}
 	if err != nil {
-		return nil, err
+		return nil, mapTemplateSlotWriteError(err)
 	}
 
-	return shift, nil
+	return slot, nil
 }
 
-func (r *TemplateRepository) DeleteShift(ctx context.Context, templateID, shiftID int64) error {
+func (r *TemplateRepository) DeleteSlot(ctx context.Context, templateID, slotID int64) error {
 	const query = `
-		DELETE FROM template_shifts
+		DELETE FROM template_slots
 		USING templates
 		WHERE
-			template_shifts.template_id = $1 AND
-			template_shifts.id = $2 AND
-			templates.id = template_shifts.template_id AND
+			template_slots.template_id = $1 AND
+			template_slots.id = $2 AND
+			templates.id = template_slots.template_id AND
 			templates.is_locked = FALSE;
 	`
 
-	result, err := r.db.ExecContext(ctx, query, templateID, shiftID)
+	result, err := r.db.ExecContext(ctx, query, templateID, slotID)
 	if err != nil {
 		return err
 	}
@@ -419,10 +461,24 @@ func (r *TemplateRepository) DeleteShift(ctx context.Context, templateID, shiftI
 		return err
 	}
 	if rowsAffected == 0 {
-		return r.resolveTemplateShiftWriteState(ctx, templateID, shiftID)
+		return r.resolveTemplateSlotWriteState(ctx, templateID, slotID)
 	}
 
 	return nil
+}
+
+func (r *TemplateRepository) GetSlot(
+	ctx context.Context,
+	templateID, slotID int64,
+) (*model.TemplateSlot, error) {
+	return getTemplateSlotByID(ctx, r.db, templateID, slotID)
+}
+
+func (r *TemplateRepository) ListSlotsByTemplate(
+	ctx context.Context,
+	templateID int64,
+) ([]*model.TemplateSlot, error) {
+	return listTemplateSlots(ctx, r.db, templateID)
 }
 
 type queryer interface {
@@ -441,7 +497,7 @@ func getTemplateByID(ctx context.Context, db queryer, id int64) (*model.Template
 			t.updated_at,
 			COALESCE(COUNT(ts.id), 0) AS shift_count
 		FROM templates t
-		LEFT JOIN template_shifts ts ON ts.template_id = t.id
+		LEFT JOIN template_slots ts ON ts.template_id = t.id
 		WHERE t.id = $1
 		GROUP BY t.id;
 	`
@@ -466,52 +522,24 @@ func getTemplateByID(ctx context.Context, db queryer, id int64) (*model.Template
 	return template, nil
 }
 
-func listTemplateShifts(ctx context.Context, db queryer, templateID int64) ([]*model.TemplateShift, error) {
-	const query = `
-		SELECT
-			id,
-			template_id,
-			weekday,
-			TO_CHAR(start_time, 'HH24:MI'),
-			TO_CHAR(end_time, 'HH24:MI'),
-			position_id,
-			required_headcount,
-			created_at,
-			updated_at
-		FROM template_shifts
-		WHERE template_id = $1
-		ORDER BY weekday ASC, start_time ASC, id ASC;
-	`
-
-	rows, err := db.QueryContext(ctx, query, templateID)
+func populateTemplateSlots(ctx context.Context, db queryer, template *model.Template) error {
+	slots, err := listTemplateSlots(ctx, db, template.ID)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer rows.Close()
 
-	shifts := make([]*model.TemplateShift, 0)
-	for rows.Next() {
-		shift := &model.TemplateShift{}
-		if err := rows.Scan(
-			&shift.ID,
-			&shift.TemplateID,
-			&shift.Weekday,
-			&shift.StartTime,
-			&shift.EndTime,
-			&shift.PositionID,
-			&shift.RequiredHeadcount,
-			&shift.CreatedAt,
-			&shift.UpdatedAt,
-		); err != nil {
-			return nil, err
+	for _, slot := range slots {
+		slotPositions, err := listTemplateSlotPositions(ctx, db, slot.ID)
+		if err != nil {
+			return err
 		}
-		shifts = append(shifts, shift)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+		slot.Positions = slotPositions
 	}
 
-	return shifts, nil
+	template.Slots = slots
+	template.ShiftCount = len(slots)
+
+	return nil
 }
 
 func (r *TemplateRepository) resolveTemplateWriteState(ctx context.Context, templateID int64) error {
@@ -528,43 +556,15 @@ func (r *TemplateRepository) resolveTemplateWriteState(ctx context.Context, temp
 	}
 }
 
-func (r *TemplateRepository) resolveTemplateShiftWriteState(ctx context.Context, templateID, shiftID int64) error {
-	template, err := getTemplateByID(ctx, r.db, templateID)
-	switch {
-	case errors.Is(err, ErrTemplateNotFound):
-		return ErrTemplateNotFound
-	case err != nil:
-		return err
-	case template.IsLocked:
-		return ErrTemplateLocked
-	}
-
-	exists, err := templateShiftExists(ctx, r.db, templateID, shiftID)
-	if err != nil {
+func mapTemplateSlotWriteError(err error) error {
+	var pqErr *pq.Error
+	if !errors.As(err, &pqErr) {
 		return err
 	}
-	if !exists {
-		return ErrTemplateShiftNotFound
+
+	if pqErr.Code == "23P01" {
+		return ErrTemplateSlotOverlap
 	}
 
-	return ErrTemplateShiftNotFound
-}
-
-func templateShiftExists(ctx context.Context, db queryer, templateID, shiftID int64) (bool, error) {
-	const query = `
-		SELECT 1
-		FROM template_shifts
-		WHERE template_id = $1 AND id = $2;
-	`
-
-	var exists int
-	err := db.QueryRowContext(ctx, query, templateID, shiftID).Scan(&exists)
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		return false, nil
-	case err != nil:
-		return false, err
-	default:
-		return true, nil
-	}
+	return err
 }

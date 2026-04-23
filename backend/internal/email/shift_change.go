@@ -27,8 +27,9 @@ const (
 	ShiftChangeOutcomeInvalidated ShiftChangeOutcome = "invalidated"
 )
 
-// ShiftRef describes a single shift in human-readable form for email bodies.
-// Caller assembles this from model.TemplateShift + position name + day label.
+// ShiftRef describes a single slot-position assignment in human-readable
+// form for email bodies. Callers assemble this from slot-based scheduling
+// data plus the display position name.
 type ShiftRef struct {
 	Weekday      string // "Mon", "Tue", …
 	StartTime    string // "09:00"

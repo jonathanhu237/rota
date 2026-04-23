@@ -1,17 +1,27 @@
 package model
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+var (
+	ErrAssignmentTimeConflict      = errors.New("assignment time conflict")
+	ErrAssignmentUserAlreadyInSlot = errors.New("assignment user already in slot")
+)
 
 type Assignment struct {
-	ID              int64
-	PublicationID   int64
-	UserID          int64
-	TemplateShiftID int64
-	CreatedAt       time.Time
+	ID            int64
+	PublicationID int64
+	UserID        int64
+	SlotID        int64
+	PositionID    int64
+	CreatedAt     time.Time
 }
 
 type PublicationShift struct {
 	ID                int64
+	SlotID            int64
 	TemplateID        int64
 	Weekday           int
 	StartTime         string
@@ -24,17 +34,27 @@ type PublicationShift struct {
 }
 
 type AssignmentCandidate struct {
-	TemplateShiftID int64
-	UserID          int64
-	Name            string
-	Email           string
+	SlotID     int64
+	PositionID int64
+	UserID     int64
+	Name       string
+	Email      string
 }
 
 type AssignmentParticipant struct {
-	AssignmentID    int64
-	TemplateShiftID int64
-	UserID          int64
-	Name            string
-	Email           string
-	CreatedAt       time.Time
+	AssignmentID int64
+	SlotID       int64
+	PositionID   int64
+	UserID       int64
+	Name         string
+	Email        string
+	CreatedAt    time.Time
+}
+
+type AssignmentSlotView struct {
+	SlotID     int64
+	PositionID int64
+	Weekday    int
+	StartTime  string
+	EndTime    string
 }

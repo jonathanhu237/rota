@@ -51,14 +51,34 @@ type templateListResponse struct {
 }
 
 type templateResponse struct {
-	ID          int64                   `json:"id"`
-	Name        string                  `json:"name"`
-	Description string                  `json:"description"`
-	IsLocked    bool                    `json:"is_locked"`
-	ShiftCount  int                     `json:"shift_count"`
-	CreatedAt   time.Time               `json:"created_at"`
-	UpdatedAt   time.Time               `json:"updated_at"`
-	Shifts      []templateShiftResponse `json:"shifts"`
+	ID          int64                  `json:"id"`
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	IsLocked    bool                   `json:"is_locked"`
+	ShiftCount  int                    `json:"shift_count"`
+	CreatedAt   time.Time              `json:"created_at"`
+	UpdatedAt   time.Time              `json:"updated_at"`
+	Slots       []templateSlotResponse `json:"slots"`
+}
+
+type templateSlotResponse struct {
+	ID         int64                          `json:"id"`
+	TemplateID int64                          `json:"template_id"`
+	Weekday    int                            `json:"weekday"`
+	StartTime  string                         `json:"start_time"`
+	EndTime    string                         `json:"end_time"`
+	CreatedAt  time.Time                      `json:"created_at"`
+	UpdatedAt  time.Time                      `json:"updated_at"`
+	Positions  []templateSlotPositionResponse `json:"positions"`
+}
+
+type templateSlotPositionResponse struct {
+	ID                int64     `json:"id"`
+	SlotID            int64     `json:"slot_id"`
+	PositionID        int64     `json:"position_id"`
+	RequiredHeadcount int       `json:"required_headcount"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 type templateShiftResponse struct {
@@ -88,17 +108,16 @@ type publicationResponse struct {
 	UpdatedAt         time.Time              `json:"updated_at"`
 }
 
-type publicationShiftResponse struct {
-	ID                int64     `json:"id"`
-	TemplateID        int64     `json:"template_id"`
-	Weekday           int       `json:"weekday"`
-	StartTime         string    `json:"start_time"`
-	EndTime           string    `json:"end_time"`
-	PositionID        int64     `json:"position_id"`
-	PositionName      string    `json:"position_name"`
-	RequiredHeadcount int       `json:"required_headcount"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+type publicationSlotResponse struct {
+	ID        int64  `json:"id"`
+	Weekday   int    `json:"weekday"`
+	StartTime string `json:"start_time"`
+	EndTime   string `json:"end_time"`
+}
+
+type publicationPositionResponse struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
 }
 
 type assignmentCandidateResponse struct {
@@ -114,16 +133,22 @@ type assignmentResponse struct {
 	Email        string `json:"email"`
 }
 
-type assignmentBoardShiftResponse struct {
-	Shift                 publicationShiftResponse      `json:"shift"`
+type assignmentBoardPositionResponse struct {
+	Position              publicationPositionResponse   `json:"position"`
+	RequiredHeadcount     int                           `json:"required_headcount"`
 	Candidates            []assignmentCandidateResponse `json:"candidates"`
 	NonCandidateQualified []assignmentCandidateResponse `json:"non_candidate_qualified"`
 	Assignments           []assignmentResponse          `json:"assignments"`
 }
 
+type assignmentBoardSlotResponse struct {
+	Slot      publicationSlotResponse           `json:"slot"`
+	Positions []assignmentBoardPositionResponse `json:"positions"`
+}
+
 type assignmentBoardResponse struct {
-	Publication *publicationResponse           `json:"publication"`
-	Shifts      []assignmentBoardShiftResponse `json:"shifts"`
+	Publication *publicationResponse          `json:"publication"`
+	Slots       []assignmentBoardSlotResponse `json:"slots"`
 }
 
 type rosterAssignmentResponse struct {
@@ -131,14 +156,20 @@ type rosterAssignmentResponse struct {
 	Name   string `json:"name"`
 }
 
-type rosterShiftResponse struct {
-	Shift       publicationShiftResponse   `json:"shift"`
-	Assignments []rosterAssignmentResponse `json:"assignments"`
+type rosterPositionResponse struct {
+	Position          publicationPositionResponse `json:"position"`
+	RequiredHeadcount int                         `json:"required_headcount"`
+	Assignments       []rosterAssignmentResponse  `json:"assignments"`
+}
+
+type rosterSlotResponse struct {
+	Slot      publicationSlotResponse  `json:"slot"`
+	Positions []rosterPositionResponse `json:"positions"`
 }
 
 type rosterWeekdayResponse struct {
-	Weekday int                   `json:"weekday"`
-	Shifts  []rosterShiftResponse `json:"shifts"`
+	Weekday int                  `json:"weekday"`
+	Slots   []rosterSlotResponse `json:"slots"`
 }
 
 type rosterResponse struct {
@@ -176,11 +207,11 @@ func newTemplateResponse(template *model.Template) templateResponse {
 		ShiftCount:  template.ShiftCount,
 		CreatedAt:   template.CreatedAt,
 		UpdatedAt:   template.UpdatedAt,
-		Shifts:      make([]templateShiftResponse, 0, len(template.Shifts)),
+		Slots:       make([]templateSlotResponse, 0, len(template.Slots)),
 	}
 
-	for _, shift := range template.Shifts {
-		response.Shifts = append(response.Shifts, newTemplateShiftResponse(shift))
+	for _, slot := range template.Slots {
+		response.Slots = append(response.Slots, newTemplateSlotResponse(slot))
 	}
 
 	return response
@@ -212,6 +243,36 @@ func newTemplateShiftResponse(shift *model.TemplateShift) templateShiftResponse 
 	}
 }
 
+func newTemplateSlotResponse(slot *model.TemplateSlot) templateSlotResponse {
+	response := templateSlotResponse{
+		ID:         slot.ID,
+		TemplateID: slot.TemplateID,
+		Weekday:    slot.Weekday,
+		StartTime:  slot.StartTime,
+		EndTime:    slot.EndTime,
+		CreatedAt:  slot.CreatedAt,
+		UpdatedAt:  slot.UpdatedAt,
+		Positions:  make([]templateSlotPositionResponse, 0, len(slot.Positions)),
+	}
+
+	for _, position := range slot.Positions {
+		response.Positions = append(response.Positions, newTemplateSlotPositionResponse(position))
+	}
+
+	return response
+}
+
+func newTemplateSlotPositionResponse(slotPosition *model.TemplateSlotPosition) templateSlotPositionResponse {
+	return templateSlotPositionResponse{
+		ID:                slotPosition.ID,
+		SlotID:            slotPosition.SlotID,
+		PositionID:        slotPosition.PositionID,
+		RequiredHeadcount: slotPosition.RequiredHeadcount,
+		CreatedAt:         slotPosition.CreatedAt,
+		UpdatedAt:         slotPosition.UpdatedAt,
+	}
+}
+
 func newPublicationResponse(publication *model.Publication) *publicationResponse {
 	if publication == nil {
 		return nil
@@ -233,22 +294,27 @@ func newPublicationResponse(publication *model.Publication) *publicationResponse
 	}
 }
 
-func newPublicationShiftResponse(shift *model.PublicationShift) publicationShiftResponse {
-	if shift == nil {
-		return publicationShiftResponse{}
+func newPublicationSlotResponse(slot *model.TemplateSlot) publicationSlotResponse {
+	if slot == nil {
+		return publicationSlotResponse{}
 	}
 
-	return publicationShiftResponse{
-		ID:                shift.ID,
-		TemplateID:        shift.TemplateID,
-		Weekday:           shift.Weekday,
-		StartTime:         shift.StartTime,
-		EndTime:           shift.EndTime,
-		PositionID:        shift.PositionID,
-		PositionName:      shift.PositionName,
-		RequiredHeadcount: shift.RequiredHeadcount,
-		CreatedAt:         shift.CreatedAt,
-		UpdatedAt:         shift.UpdatedAt,
+	return publicationSlotResponse{
+		ID:        slot.ID,
+		Weekday:   slot.Weekday,
+		StartTime: slot.StartTime,
+		EndTime:   slot.EndTime,
+	}
+}
+
+func newPublicationPositionResponse(position *model.Position) publicationPositionResponse {
+	if position == nil {
+		return publicationPositionResponse{}
+	}
+
+	return publicationPositionResponse{
+		ID:   position.ID,
+		Name: position.Name,
 	}
 }
 

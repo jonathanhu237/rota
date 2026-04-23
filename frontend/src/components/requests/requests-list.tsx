@@ -21,6 +21,7 @@ import {
 } from "@/lib/queries"
 import type {
   PublicationMember,
+  RosterWeekday,
   ShiftChangeRequest,
   ShiftChangeState,
   ShiftChangeType,
@@ -31,6 +32,7 @@ type RequestsListProps = {
   requests: ShiftChangeRequest[]
   members: PublicationMember[]
   currentUserID: number
+  rosterWeekdays?: RosterWeekday[]
 }
 
 type Bucket = "sent" | "waiting" | "pool"
@@ -60,6 +62,16 @@ const stateVariant: Record<
   cancelled: "secondary",
   expired: "secondary",
   invalidated: "destructive",
+}
+
+const weekdayKeyMap: Record<number, string> = {
+  1: "templates.weekday.mon",
+  2: "templates.weekday.tue",
+  3: "templates.weekday.wed",
+  4: "templates.weekday.thu",
+  5: "templates.weekday.fri",
+  6: "templates.weekday.sat",
+  7: "templates.weekday.sun",
 }
 
 function partitionRequests(
@@ -106,6 +118,7 @@ export function RequestsList({
   requests,
   members,
   currentUserID,
+  rosterWeekdays = [],
 }: RequestsListProps) {
   const { t, i18n } = useTranslation()
   const queryClient = useQueryClient()
@@ -120,6 +133,30 @@ export function RequestsList({
     dateStyle: "medium",
     timeStyle: "short",
   })
+  const assignmentLookup = new Map<
+    number,
+    {
+      weekday: number
+      startTime: string
+      endTime: string
+      positionName: string
+    }
+  >()
+
+  for (const weekday of rosterWeekdays) {
+    for (const slot of weekday.slots) {
+      for (const position of slot.positions) {
+        for (const assignment of position.assignments) {
+          assignmentLookup.set(assignment.assignment_id, {
+            weekday: weekday.weekday,
+            startTime: slot.slot.start_time,
+            endTime: slot.slot.end_time,
+            positionName: position.position.name,
+          })
+        }
+      }
+    }
+  }
 
   const invalidateAfterMutation = async () => {
     await Promise.all([
@@ -192,18 +229,31 @@ export function RequestsList({
     memberLookup.get(request.requester_user_id) ??
     t("requests.unknownUser", { defaultValue: `#${request.requester_user_id}` })
 
-  // TODO(v1 simplification): render only shift/assignment IDs here. The backend
-  // emails carry the rich shift context. A follow-up will resolve these IDs to
-  // full shift metadata via the roster/assignment-board data.
-  const renderShiftSummary = (request: ShiftChangeRequest) => {
-    const requesterShift = t("requests.card.shift", {
-      id: request.requester_assignment_id,
+  const renderAssignmentSummary = (assignmentID: number) => {
+    const summary = assignmentLookup.get(assignmentID)
+    if (!summary) {
+      return t("requests.card.shift", {
+        id: assignmentID,
+      })
+    }
+
+    return t("requests.card.shiftSummary", {
+      weekday: t(weekdayKeyMap[summary.weekday]),
+      positionName: summary.positionName,
+      startTime: summary.startTime,
+      endTime: summary.endTime,
     })
+  }
+
+  const renderShiftSummary = (request: ShiftChangeRequest) => {
+    const requesterShift = renderAssignmentSummary(
+      request.requester_assignment_id,
+    )
 
     if (request.type === "swap" && request.counterpart_assignment_id != null) {
-      const counterpartShift = t("requests.card.shift", {
-        id: request.counterpart_assignment_id,
-      })
+      const counterpartShift = renderAssignmentSummary(
+        request.counterpart_assignment_id,
+      )
       return t("requests.card.swapSummary", {
         requesterShift,
         counterpartShift,

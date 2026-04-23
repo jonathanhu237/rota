@@ -16,6 +16,7 @@ import {
   currentPublicationQueryOptions,
   currentUserQueryOptions,
   publicationMembersQueryOptions,
+  publicationRosterQueryOptions,
   shiftChangeRequestsQueryOptions,
 } from "@/lib/queries"
 
@@ -38,6 +39,10 @@ function RequestsPage() {
   })
   const membersQuery = useQuery({
     ...publicationMembersQueryOptions(publicationID),
+    enabled: isPublished,
+  })
+  const rosterQuery = useQuery({
+    ...publicationRosterQueryOptions(publicationID),
     enabled: isPublished,
   })
 
@@ -99,19 +104,19 @@ function RequestsPage() {
         </CardHeader>
       </Card>
 
-      {requestsQuery.isLoading || membersQuery.isLoading ? (
+      {requestsQuery.isLoading || membersQuery.isLoading || rosterQuery.isLoading ? (
         <div className="grid gap-3">
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-24 w-full" />
         </div>
-      ) : requestsQuery.isError || membersQuery.isError ? (
+      ) : requestsQuery.isError || membersQuery.isError || rosterQuery.isError ? (
         <Card>
           <CardContent className="pt-4">
             <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
               {getTranslatedApiError(
                 t,
-                requestsQuery.error ?? membersQuery.error,
+                requestsQuery.error ?? membersQuery.error ?? rosterQuery.error,
                 "requests.errors",
                 "requests.errors.INTERNAL_ERROR",
               )}
@@ -124,6 +129,7 @@ function RequestsPage() {
           requests={requestsQuery.data ?? []}
           members={membersQuery.data ?? []}
           currentUserID={currentUser.id}
+          rosterWeekdays={rosterQuery.data?.weekdays ?? []}
         />
       ) : null}
     </div>

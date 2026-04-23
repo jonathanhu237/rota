@@ -10,7 +10,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
-import type { Publication, RosterShift, RosterWeekday } from "@/lib/types"
+import type {
+  Publication,
+  PublicationPosition,
+  PublicationSlot,
+  RosterWeekday,
+} from "@/lib/types"
 
 const weekdayKeys = {
   1: "templates.weekday.mon",
@@ -30,7 +35,8 @@ export type WeeklyRosterShiftAction =
 export type WeeklyRosterOwnShift = {
   assignmentID: number
   weekday: number
-  shift: RosterShift["shift"]
+  slot: PublicationSlot
+  position: PublicationPosition
 }
 
 type WeeklyRosterProps = {
@@ -76,112 +82,145 @@ export function WeeklyRoster({
               )}
             </header>
             <div className="grid gap-3 p-4">
-              {weekday.shifts.length === 0 ? (
+              {weekday.slots.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   {t("roster.emptyWeekday")}
                 </p>
               ) : (
-                weekday.shifts.map((shift) => (
-                  <article key={shift.shift.id} className="grid gap-3 rounded-xl border p-3">
+                weekday.slots.map((slotEntry) => (
+                  <article
+                    key={slotEntry.slot.id}
+                    className="grid gap-4 rounded-xl border p-3"
+                  >
                     <div className="grid gap-1">
-                      <div className="font-medium">{shift.shift.position_name}</div>
-                      <div className="text-sm text-muted-foreground">
+                      <div className="font-medium">
                         {t("roster.shiftSummary", {
-                          startTime: shift.shift.start_time,
-                          endTime: shift.shift.end_time,
-                          required: shift.shift.required_headcount,
+                          startTime: slotEntry.slot.start_time,
+                          endTime: slotEntry.slot.end_time,
+                          required: slotEntry.positions.reduce(
+                            (count, position) =>
+                              count + position.required_headcount,
+                            0,
+                          ),
                         })}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {slotEntry.positions.length}
                       </div>
                     </div>
-                    {shift.assignments.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        {t("roster.emptyAssignments")}
-                      </p>
-                    ) : (
-                      <div className="grid gap-2">
-                        {shift.assignments.map((assignment) => {
-                          const isMine =
-                            typeof currentUserID === "number" &&
-                            assignment.user_id === currentUserID
-                          const showActions = canPropose && isMine
-
-                          return (
-                            <div
-                              key={`${shift.shift.id}-${assignment.user_id}`}
-                              className={cn(
-                                "flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm",
-                                isMine &&
-                                  "border-primary/40 bg-primary/10 text-primary",
-                              )}
-                            >
-                              <span>{assignment.name}</span>
-                              {showActions && (
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger
-                                    render={
-                                      <Button
-                                        size="icon-xs"
-                                        variant="ghost"
-                                        aria-label={t("requests.actions.openMenu")}
-                                      />
-                                    }
-                                  >
-                                    <MoreHorizontal />
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem
-                                      onClick={() =>
-                                        onShiftAction!(
-                                          {
-                                            assignmentID:
-                                              assignment.assignment_id,
-                                            weekday: weekday.weekday,
-                                            shift: shift.shift,
-                                          },
-                                          { type: "swap" },
-                                        )
-                                      }
-                                    >
-                                      {t("requests.actions.proposeSwap")}
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      onClick={() =>
-                                        onShiftAction!(
-                                          {
-                                            assignmentID:
-                                              assignment.assignment_id,
-                                            weekday: weekday.weekday,
-                                            shift: shift.shift,
-                                          },
-                                          { type: "give_direct" },
-                                        )
-                                      }
-                                    >
-                                      {t("requests.actions.giveDirect")}
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      onClick={() =>
-                                        onShiftAction!(
-                                          {
-                                            assignmentID:
-                                              assignment.assignment_id,
-                                            weekday: weekday.weekday,
-                                            shift: shift.shift,
-                                          },
-                                          { type: "give_pool" },
-                                        )
-                                      }
-                                    >
-                                      {t("requests.actions.givePool")}
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              )}
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      {slotEntry.positions.map((positionEntry) => (
+                        <div
+                          key={`${slotEntry.slot.id}-${positionEntry.position.id}`}
+                          className="grid gap-3 rounded-xl border border-dashed p-3"
+                        >
+                          <div className="grid gap-1">
+                            <div className="font-medium">
+                              {positionEntry.position.name}
                             </div>
-                          )
-                        })}
-                      </div>
-                    )}
+                            <div className="text-sm text-muted-foreground">
+                              {t("roster.shiftSummary", {
+                                startTime: slotEntry.slot.start_time,
+                                endTime: slotEntry.slot.end_time,
+                                required: positionEntry.required_headcount,
+                              })}
+                            </div>
+                          </div>
+                          {positionEntry.assignments.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">
+                              {t("roster.emptyAssignments")}
+                            </p>
+                          ) : (
+                            <div className="grid gap-2">
+                              {positionEntry.assignments.map((assignment) => {
+                                const isMine =
+                                  typeof currentUserID === "number" &&
+                                  assignment.user_id === currentUserID
+                                const showActions = canPropose && isMine
+
+                                return (
+                                  <div
+                                    key={`${slotEntry.slot.id}-${positionEntry.position.id}-${assignment.user_id}`}
+                                    className={cn(
+                                      "flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm",
+                                      isMine &&
+                                        "border-primary/40 bg-primary/10 text-primary",
+                                    )}
+                                  >
+                                    <span>{assignment.name}</span>
+                                    {showActions && (
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger
+                                          render={
+                                            <Button
+                                              size="icon-xs"
+                                              variant="ghost"
+                                              aria-label={t("requests.actions.openMenu")}
+                                            />
+                                          }
+                                        >
+                                          <MoreHorizontal />
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                          <DropdownMenuItem
+                                            onClick={() =>
+                                              onShiftAction!(
+                                                {
+                                                  assignmentID:
+                                                    assignment.assignment_id,
+                                                  weekday: weekday.weekday,
+                                                  slot: slotEntry.slot,
+                                                  position: positionEntry.position,
+                                                },
+                                                { type: "swap" },
+                                              )
+                                            }
+                                          >
+                                            {t("requests.actions.proposeSwap")}
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem
+                                            onClick={() =>
+                                              onShiftAction!(
+                                                {
+                                                  assignmentID:
+                                                    assignment.assignment_id,
+                                                  weekday: weekday.weekday,
+                                                  slot: slotEntry.slot,
+                                                  position: positionEntry.position,
+                                                },
+                                                { type: "give_direct" },
+                                              )
+                                            }
+                                          >
+                                            {t("requests.actions.giveDirect")}
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem
+                                            onClick={() =>
+                                              onShiftAction!(
+                                                {
+                                                  assignmentID:
+                                                    assignment.assignment_id,
+                                                  weekday: weekday.weekday,
+                                                  slot: slotEntry.slot,
+                                                  position: positionEntry.position,
+                                                },
+                                                { type: "give_pool" },
+                                              )
+                                            }
+                                          >
+                                            {t("requests.actions.givePool")}
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </article>
                 ))
               )}

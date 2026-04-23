@@ -7,7 +7,7 @@ import { WeeklyRoster } from "./weekly-roster"
 
 const weekdays: RosterWeekday[] = Array.from({ length: 7 }, (_, index) => ({
   weekday: index + 1,
-  shifts: [],
+  slots: [],
 }))
 
 describe("WeeklyRoster", () => {
@@ -21,24 +21,30 @@ describe("WeeklyRoster", () => {
 
     const roster: RosterWeekday[] = weekdays.map((weekday) => ({
       ...weekday,
-      shifts: [],
+      slots: [],
     }))
     roster[2] = {
       weekday: 3,
-      shifts: [
+      slots: [
         {
-          shift: {
+          slot: {
             id: 3,
             weekday: 3,
             start_time: "09:00",
             end_time: "12:00",
-            position_id: 101,
-            position_name: "Front Desk",
-            required_headcount: 2,
           },
-          assignments: [
-            { assignment_id: 71, user_id: 7, name: "Alice" },
-            { assignment_id: 81, user_id: 8, name: "Bob" },
+          positions: [
+            {
+              position: {
+                id: 101,
+                name: "Front Desk",
+              },
+              required_headcount: 2,
+              assignments: [
+                { assignment_id: 71, user_id: 7, name: "Alice" },
+                { assignment_id: 81, user_id: 8, name: "Bob" },
+              ],
+            },
           ],
         },
       ],

@@ -1,11 +1,11 @@
-import type { AssignmentBoardShift } from "@/lib/types"
+import type { AssignmentBoardSlot } from "@/lib/types"
 
 export const assignmentBoardWeekdays = [1, 2, 3, 4, 5, 6, 7] as const
 
-export function groupAssignmentBoardShiftsByWeekday(
-  shifts: AssignmentBoardShift[],
+export function groupAssignmentBoardSlotsByWeekday(
+  slots: AssignmentBoardSlot[],
 ) {
-  const grouped: Record<number, AssignmentBoardShift[]> = {
+  const grouped: Record<number, AssignmentBoardSlot[]> = {
     1: [],
     2: [],
     3: [],
@@ -15,21 +15,21 @@ export function groupAssignmentBoardShiftsByWeekday(
     7: [],
   }
 
-  for (const entry of shifts) {
-    if (!(entry.shift.weekday in grouped)) {
+  for (const entry of slots) {
+    if (!(entry.slot.weekday in grouped)) {
       continue
     }
 
-    grouped[entry.shift.weekday].push(entry)
+    grouped[entry.slot.weekday].push(entry)
   }
 
   for (const weekday of Object.keys(grouped)) {
     grouped[Number(weekday)].sort((left, right) => {
-      if (left.shift.start_time !== right.shift.start_time) {
-        return left.shift.start_time.localeCompare(right.shift.start_time)
+      if (left.slot.start_time !== right.slot.start_time) {
+        return left.slot.start_time.localeCompare(right.slot.start_time)
       }
 
-      return left.shift.id - right.shift.id
+      return left.slot.id - right.slot.id
     })
   }
 

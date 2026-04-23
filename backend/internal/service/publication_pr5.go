@@ -34,13 +34,14 @@ func (s *PublicationService) AutoAssignPublication(
 		return nil, mapPublicationRepositoryError(err)
 	}
 
-	solverShifts := make([]AutoAssignShift, 0, len(shifts))
+	solverSlotPositions := make([]AutoAssignSlotPosition, 0, len(shifts))
 	for _, shift := range shifts {
 		if shift == nil {
 			continue
 		}
-		solverShifts = append(solverShifts, AutoAssignShift{
-			ID:                shift.ID,
+		solverSlotPositions = append(solverSlotPositions, AutoAssignSlotPosition{
+			SlotID:            shift.SlotID,
+			PositionID:        shift.PositionID,
 			Weekday:           shift.Weekday,
 			StartTime:         shift.StartTime,
 			EndTime:           shift.EndTime,
@@ -54,12 +55,13 @@ func (s *PublicationService) AutoAssignPublication(
 			continue
 		}
 		solverCandidates = append(solverCandidates, AutoAssignCandidate{
-			UserID:          candidate.UserID,
-			TemplateShiftID: candidate.TemplateShiftID,
+			UserID:     candidate.UserID,
+			SlotID:     candidate.SlotID,
+			PositionID: candidate.PositionID,
 		})
 	}
 
-	solvedAssignments, err := SolveAutoAssignments(solverShifts, solverCandidates)
+	solvedAssignments, err := SolveAutoAssignments(solverSlotPositions, solverCandidates)
 	if err != nil {
 		return nil, err
 	}
@@ -67,8 +69,9 @@ func (s *PublicationService) AutoAssignPublication(
 	replacementAssignments := make([]repository.ReplaceAssignmentParams, 0, len(solvedAssignments))
 	for _, assignment := range solvedAssignments {
 		replacementAssignments = append(replacementAssignments, repository.ReplaceAssignmentParams{
-			UserID:          assignment.UserID,
-			TemplateShiftID: assignment.TemplateShiftID,
+			UserID:     assignment.UserID,
+			SlotID:     assignment.SlotID,
+			PositionID: assignment.PositionID,
 		})
 	}
 

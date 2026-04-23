@@ -111,7 +111,8 @@ function RosterPage() {
     ? {
         assignmentID: activeShift.assignmentID,
         weekday: activeShift.weekday,
-        shift: activeShift.shift,
+        slot: activeShift.slot,
+        position: activeShift.position,
       }
     : null
 

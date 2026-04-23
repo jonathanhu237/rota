@@ -247,7 +247,7 @@
   },
   "templates": {
     "title": "Template Management",
-    "description": "Create and maintain reusable weekly shift blueprints.",
+    "description": "Create and maintain reusable weekly slot blueprints.",
     "createTemplate": "Create Template",
     "name": "Name",
     "descriptionLabel": "Description",
@@ -275,13 +275,19 @@
       "submittingEdit": "Saving..."
     },
     "detail": {
-      "description": "Update the template details and manage its weekly shifts.",
+      "description": "Update the template details and manage its weekly slots and positions.",
       "loadErrorTitle": "Failed to load template",
       "loadErrorDescription": "The template could not be loaded right now."
     },
     "actions": {
       "clone": "Clone",
       "delete": "Delete",
+      "addSlot": "Add Slot",
+      "editSlot": "Edit Slot",
+      "deleteSlot": "Delete Slot",
+      "addPosition": "Add Position",
+      "editPosition": "Edit Position",
+      "deletePosition": "Delete Position",
       "addShift": "Add Shift",
       "editShift": "Edit Shift",
       "deleteShift": "Delete Shift"
@@ -298,6 +304,20 @@
       "confirm": "Delete Template",
       "submitting": "Deleting..."
     },
+    "deleteSlotDialog": {
+      "title": "Delete slot",
+      "description": "Delete {{summary}}? This action cannot be undone.",
+      "summary": "{{weekday}} · {{startTime}}-{{endTime}}",
+      "confirm": "Delete Slot",
+      "submitting": "Deleting..."
+    },
+    "deletePositionDialog": {
+      "title": "Delete slot position",
+      "description": "Delete {{summary}}? This action cannot be undone.",
+      "summary": "{{positionName}} · {{startTime}}-{{endTime}} · {{headcount}} staff needed",
+      "confirm": "Delete Position",
+      "submitting": "Deleting..."
+    },
     "deleteShiftDialog": {
       "title": "Delete shift",
       "description": "Delete {{summary}}? This action cannot be undone.",
@@ -305,13 +325,50 @@
       "confirm": "Delete Shift",
       "submitting": "Deleting..."
     },
+    "slotsTitle": "Weekly Slots",
+    "slotsDescription": "Manage the template's time slots and the position mix inside each slot.",
+    "noSlotsForWeekday": "No slots scheduled for this weekday yet.",
+    "noPositionsForSlot": "No positions have been added to this slot yet.",
     "shiftsTitle": "Weekly Shifts",
     "shiftsDescription": "Manage the template's shifts grouped by weekday.",
-    "positionsLoadError": "Failed to load positions for the shift editor.",
-    "noPositions": "Create positions before adding template shifts.",
+    "positionsLoadError": "Failed to load positions for the slot editor.",
+    "noPositions": "Create positions before adding slot positions.",
     "noShiftsForWeekday": "No shifts scheduled for this weekday yet.",
     "unknownPosition": "Unknown position",
     "lockedBanner": "This template is locked and cannot be edited or deleted. Clone it to make changes.",
+    "slot": {
+      "weekday": "Weekday",
+      "startTime": "Start Time",
+      "endTime": "End Time",
+      "summary": "{{startTime}}-{{endTime}}",
+      "positionsCount": "{{count}} positions"
+    },
+    "position": {
+      "position": "Position",
+      "requiredHeadcount": "Required Headcount",
+      "summary": "{{headcount}} staff needed"
+    },
+    "slotDialog": {
+      "createTitle": "Add slot",
+      "createDescription": "Add a weekly time slot to this template.",
+      "editTitle": "Edit slot",
+      "editDescription": "Update the selected weekly slot.",
+      "submitCreate": "Create Slot",
+      "submitEdit": "Save Slot",
+      "submittingCreate": "Creating...",
+      "submittingEdit": "Saving..."
+    },
+    "positionDialog": {
+      "createTitle": "Add slot position",
+      "createDescription": "Add a position requirement to this slot.",
+      "editTitle": "Edit slot position",
+      "editDescription": "Update the selected position requirement.",
+      "submitCreate": "Create Position",
+      "submitEdit": "Save Position",
+      "submittingCreate": "Creating...",
+      "submittingEdit": "Saving...",
+      "selectPosition": "Select a position"
+    },
     "shift": {
       "weekday": "Weekday",
       "startTime": "Start Time",
@@ -355,6 +412,12 @@
       "updated": "Template updated successfully.",
       "deleted": "Template deleted successfully.",
       "cloned": "Template cloned successfully.",
+      "slotCreated": "Slot created successfully.",
+      "slotUpdated": "Slot updated successfully.",
+      "slotDeleted": "Slot deleted successfully.",
+      "positionCreated": "Slot position created successfully.",
+      "positionUpdated": "Slot position updated successfully.",
+      "positionDeleted": "Slot position deleted successfully.",
       "shiftCreated": "Shift created successfully.",
       "shiftUpdated": "Shift updated successfully.",
       "shiftDeleted": "Shift deleted successfully."
@@ -369,6 +432,9 @@
       "POSITION_NOT_FOUND": "Position not found",
       "TEMPLATE_LOCKED": "Template is locked",
       "TEMPLATE_NOT_FOUND": "Template not found",
+      "TEMPLATE_SLOT_NOT_FOUND": "Template slot not found",
+      "TEMPLATE_SLOT_OVERLAP": "This slot overlaps with an existing slot on the same day.",
+      "TEMPLATE_SLOT_POSITION_NOT_FOUND": "Template slot position not found",
       "TEMPLATE_SHIFT_NOT_FOUND": "Template shift not found",
       "UNAUTHORIZED": "Unauthorized"
     }
@@ -536,6 +602,8 @@
       "PUBLICATION_NOT_FOUND": "Publication not found",
       "TEMPLATE_NOT_FOUND": "Template not found",
       "TEMPLATE_SHIFT_NOT_FOUND": "Template shift not found",
+      "ASSIGNMENT_USER_ALREADY_IN_SLOT": "This user is already assigned to another position in this slot.",
+      "ASSIGNMENT_TIME_CONFLICT": "This assignment overlaps with another slot the user is already assigned to.",
       "NOT_QUALIFIED": "You are not qualified for this shift.",
       "USER_DISABLED": "This user is disabled.",
       "USER_NOT_FOUND": "User not found",
@@ -690,6 +758,7 @@
     },
     "card": {
       "shift": "Shift #{{id}}",
+      "shiftSummary": "{{weekday}} · {{positionName}} · {{startTime}}-{{endTime}}",
       "swapSummary": "{{requesterShift}} ↔ {{counterpartShift}}",
       "metadata": "Requested by {{requester}} · {{createdAt}}"
     },

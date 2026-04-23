@@ -25,6 +25,8 @@ var (
 	integrationSeedCount  atomic.Int64
 )
 
+const integrationDBLockKey int64 = 2026042301
+
 func openIntegrationDB(t testing.TB) *sql.DB {
 	t.Helper()
 
@@ -44,12 +46,6 @@ func openIntegrationDB(t testing.TB) *sql.DB {
 			return
 		}
 
-		if err := resetIntegrationDB(ctx, db); err != nil {
-			_ = db.Close()
-			integrationDBSetupErr = fmt.Errorf("reset integration database: %w", err)
-			return
-		}
-
 		integrationDB = db
 	})
 
@@ -63,7 +59,13 @@ func openIntegrationDB(t testing.TB) *sql.DB {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	lockConn, err := acquireIntegrationDBLock(ctx, integrationDB)
+	if err != nil {
+		t.Fatalf("acquire integration database lock: %v", err)
+	}
+
 	if err := resetIntegrationDB(ctx, integrationDB); err != nil {
+		_ = releaseIntegrationDBLock(context.Background(), lockConn)
 		t.Fatalf("reset integration database before test: %v", err)
 	}
 
@@ -73,29 +75,102 @@ func openIntegrationDB(t testing.TB) *sql.DB {
 		if err := resetIntegrationDB(ctx, integrationDB); err != nil {
 			t.Fatalf("reset integration database after test: %v", err)
 		}
+		if err := releaseIntegrationDBLock(ctx, lockConn); err != nil {
+			t.Fatalf("release integration database lock: %v", err)
+		}
 	})
 
 	return integrationDB
 }
 
-func resetIntegrationDB(ctx context.Context, db *sql.DB) error {
-	const query = `
-		TRUNCATE TABLE
-			audit_logs,
-			shift_change_requests,
-			assignments,
-			availability_submissions,
-			publications,
-			template_shifts,
-			user_setup_tokens,
-			user_positions,
-			templates,
-			positions,
-			users
-		RESTART IDENTITY CASCADE;
-	`
+func acquireIntegrationDBLock(ctx context.Context, db *sql.DB) (*sql.Conn, error) {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return nil, err
+	}
 
-	_, err := db.ExecContext(ctx, query)
+	var locked bool
+	if err := conn.QueryRowContext(
+		ctx,
+		`SELECT pg_advisory_lock($1) IS NOT NULL;`,
+		integrationDBLockKey,
+	).Scan(&locked); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+
+	return conn, nil
+}
+
+func releaseIntegrationDBLock(ctx context.Context, conn *sql.Conn) error {
+	if conn == nil {
+		return nil
+	}
+
+	var unlocked bool
+	err := conn.QueryRowContext(
+		ctx,
+		`SELECT pg_advisory_unlock($1);`,
+		integrationDBLockKey,
+	).Scan(&unlocked)
+	closeErr := conn.Close()
+	if err != nil {
+		return err
+	}
+	return closeErr
+}
+
+func resetIntegrationDB(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT tablename
+		FROM pg_tables
+		WHERE schemaname = 'public';
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	existing := make(map[string]struct{})
+	for rows.Next() {
+		var table string
+		if err := rows.Scan(&table); err != nil {
+			return err
+		}
+		existing[table] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	ordered := []string{
+		"audit_logs",
+		"shift_change_requests",
+		"assignments",
+		"availability_submissions",
+		"template_slot_positions",
+		"template_slots",
+		"template_shifts",
+		"user_setup_tokens",
+		"publications",
+		"user_positions",
+		"templates",
+		"positions",
+		"users",
+	}
+
+	tables := make([]string, 0, len(ordered))
+	for _, table := range ordered {
+		if _, ok := existing[table]; ok {
+			tables = append(tables, table)
+		}
+	}
+	if len(tables) == 0 {
+		return nil
+	}
+
+	query := "TRUNCATE TABLE " + strings.Join(tables, ", ") + " RESTART IDENTITY CASCADE;"
+	_, err = db.ExecContext(ctx, query)
 	return err
 }
 
@@ -306,56 +381,21 @@ func seedTemplateShift(t testing.TB, db *sql.DB, seed templateShiftSeed) *model.
 		seed.RequiredHeadcount = 1
 	}
 
-	const query = `
-		INSERT INTO template_shifts (
-			template_id,
-			weekday,
-			start_time,
-			end_time,
-			position_id,
-			required_headcount,
-			created_at,
-			updated_at
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
-		RETURNING
-			id,
-			template_id,
-			weekday,
-			TO_CHAR(start_time, 'HH24:MI'),
-			TO_CHAR(end_time, 'HH24:MI'),
-			position_id,
-			required_headcount,
-			created_at,
-			updated_at;
-	`
+	slotID := seedTemplateSlot(t, db, seed.TemplateID, seed.Weekday, seed.StartTime, seed.EndTime)
+	entryID := seedTemplateSlotPosition(t, db, slotID, seed.PositionID, seed.RequiredHeadcount)
 
-	shift := &model.TemplateShift{}
-	if err := db.QueryRowContext(
-		context.Background(),
-		query,
-		seed.TemplateID,
-		seed.Weekday,
-		seed.StartTime,
-		seed.EndTime,
-		seed.PositionID,
-		seed.RequiredHeadcount,
-		testTime(),
-	).Scan(
-		&shift.ID,
-		&shift.TemplateID,
-		&shift.Weekday,
-		&shift.StartTime,
-		&shift.EndTime,
-		&shift.PositionID,
-		&shift.RequiredHeadcount,
-		&shift.CreatedAt,
-		&shift.UpdatedAt,
-	); err != nil {
-		t.Fatalf("seed template shift: %v", err)
+	now := testTime()
+	return &model.TemplateShift{
+		ID:                entryID,
+		TemplateID:        seed.TemplateID,
+		Weekday:           seed.Weekday,
+		StartTime:         seed.StartTime,
+		EndTime:           seed.EndTime,
+		PositionID:        seed.PositionID,
+		RequiredHeadcount: seed.RequiredHeadcount,
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}
-
-	return shift
 }
 
 type publicationSeed struct {
@@ -481,15 +521,32 @@ func seedSubmission(
 ) *model.AvailabilitySubmission {
 	t.Helper()
 
+	var (
+		slotID     int64
+		positionID int64
+	)
+	if err := db.QueryRowContext(
+		context.Background(),
+		`
+			SELECT slot_id, position_id
+			FROM template_slot_positions
+			WHERE id = $1;
+		`,
+		templateShiftID,
+	).Scan(&slotID, &positionID); err != nil {
+		t.Fatalf("resolve submission slot-position: %v", err)
+	}
+
 	const query = `
 		INSERT INTO availability_submissions (
 			publication_id,
 			user_id,
-			template_shift_id,
+			slot_id,
+			position_id,
 			created_at
 		)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, publication_id, user_id, template_shift_id, created_at;
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, publication_id, user_id, slot_id, position_id, created_at, $6;
 	`
 
 	submission := &model.AvailabilitySubmission{}
@@ -498,14 +555,18 @@ func seedSubmission(
 		query,
 		publicationID,
 		userID,
-		templateShiftID,
+		slotID,
+		positionID,
 		createdAt,
+		templateShiftID,
 	).Scan(
 		&submission.ID,
 		&submission.PublicationID,
 		&submission.UserID,
-		&submission.TemplateShiftID,
+		&slotID,
+		&positionID,
 		&submission.CreatedAt,
+		&submission.TemplateShiftID,
 	); err != nil {
 		t.Fatalf("seed submission: %v", err)
 	}
@@ -521,15 +582,32 @@ func seedAssignment(
 ) *model.Assignment {
 	t.Helper()
 
+	var (
+		slotID     int64
+		positionID int64
+	)
+	if err := db.QueryRowContext(
+		context.Background(),
+		`
+			SELECT slot_id, position_id
+			FROM template_slot_positions
+			WHERE id = $1;
+		`,
+		templateShiftID,
+	).Scan(&slotID, &positionID); err != nil {
+		t.Fatalf("resolve assignment slot-position: %v", err)
+	}
+
 	const query = `
 		INSERT INTO assignments (
 			publication_id,
 			user_id,
-			template_shift_id,
+			slot_id,
+			position_id,
 			created_at
 		)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, publication_id, user_id, template_shift_id, created_at;
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, publication_id, user_id, slot_id, position_id, created_at;
 	`
 
 	assignment := &model.Assignment{}
@@ -538,13 +616,15 @@ func seedAssignment(
 		query,
 		publicationID,
 		userID,
-		templateShiftID,
+		slotID,
+		positionID,
 		createdAt,
 	).Scan(
 		&assignment.ID,
 		&assignment.PublicationID,
 		&assignment.UserID,
-		&assignment.TemplateShiftID,
+		&assignment.SlotID,
+		&assignment.PositionID,
 		&assignment.CreatedAt,
 	); err != nil {
 		t.Fatalf("seed assignment: %v", err)

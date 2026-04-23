@@ -21,12 +21,15 @@ const (
 )
 
 var (
-	ErrInvalidHeadcount      = model.ErrInvalidHeadcount
-	ErrInvalidShiftTime      = model.ErrInvalidShiftTime
-	ErrInvalidWeekday        = model.ErrInvalidWeekday
-	ErrTemplateLocked        = model.ErrTemplateLocked
-	ErrTemplateNotFound      = model.ErrTemplateNotFound
-	ErrTemplateShiftNotFound = model.ErrTemplateShiftNotFound
+	ErrInvalidHeadcount             = model.ErrInvalidHeadcount
+	ErrInvalidShiftTime             = model.ErrInvalidShiftTime
+	ErrInvalidWeekday               = model.ErrInvalidWeekday
+	ErrTemplateLocked               = model.ErrTemplateLocked
+	ErrTemplateNotFound             = model.ErrTemplateNotFound
+	ErrTemplateSlotOverlap          = model.ErrTemplateSlotOverlap
+	ErrTemplateShiftNotFound        = model.ErrTemplateShiftNotFound
+	ErrTemplateSlotNotFound         = model.ErrTemplateSlotNotFound
+	ErrTemplateSlotPositionNotFound = model.ErrTemplateSlotPositionNotFound
 )
 
 type templateRepository interface {
@@ -36,9 +39,12 @@ type templateRepository interface {
 	Update(ctx context.Context, params repository.UpdateTemplateParams) (*model.Template, error)
 	Delete(ctx context.Context, id int64) error
 	Clone(ctx context.Context, id int64, name string) (*model.Template, error)
-	CreateShift(ctx context.Context, params repository.CreateTemplateShiftParams) (*model.TemplateShift, error)
-	UpdateShift(ctx context.Context, params repository.UpdateTemplateShiftParams) (*model.TemplateShift, error)
-	DeleteShift(ctx context.Context, templateID, shiftID int64) error
+	CreateSlot(ctx context.Context, params repository.CreateTemplateSlotParams) (*model.TemplateSlot, error)
+	UpdateSlot(ctx context.Context, params repository.UpdateTemplateSlotParams) (*model.TemplateSlot, error)
+	DeleteSlot(ctx context.Context, templateID, slotID int64) error
+	CreateSlotPosition(ctx context.Context, params repository.CreateTemplateSlotPositionParams) (*model.TemplateSlotPosition, error)
+	UpdateSlotPosition(ctx context.Context, params repository.UpdateTemplateSlotPositionParams) (*model.TemplateSlotPosition, error)
+	DeleteSlotPosition(ctx context.Context, templateID, slotID, slotPositionID int64) error
 }
 
 type positionLookupRepository interface {
@@ -74,21 +80,32 @@ type UpdateTemplateInput struct {
 	Description string
 }
 
-type CreateTemplateShiftInput struct {
+type CreateTemplateSlotInput struct {
+	TemplateID int64
+	Weekday    int
+	StartTime  string
+	EndTime    string
+}
+
+type UpdateTemplateSlotInput struct {
+	TemplateID int64
+	SlotID     int64
+	Weekday    int
+	StartTime  string
+	EndTime    string
+}
+
+type CreateTemplateSlotPositionInput struct {
 	TemplateID        int64
-	Weekday           int
-	StartTime         string
-	EndTime           string
+	SlotID            int64
 	PositionID        int64
 	RequiredHeadcount int
 }
 
-type UpdateTemplateShiftInput struct {
+type UpdateTemplateSlotPositionInput struct {
 	TemplateID        int64
-	ShiftID           int64
-	Weekday           int
-	StartTime         string
-	EndTime           string
+	SlotID            int64
+	SlotPositionID    int64
 	PositionID        int64
 	RequiredHeadcount int
 }
@@ -166,7 +183,7 @@ func (s *TemplateService) GetTemplateByID(ctx context.Context, id int64) (*model
 		return nil, mapTemplateRepositoryError(err)
 	}
 
-	sortTemplateShifts(template.Shifts)
+	sortTemplateSlots(template.Slots)
 	return template, nil
 }
 
@@ -266,7 +283,7 @@ func (s *TemplateService) CloneTemplate(ctx context.Context, id int64) (*model.T
 		return nil, mapTemplateRepositoryError(err)
 	}
 
-	sortTemplateShifts(clone.Shifts)
+	sortTemplateSlots(clone.Slots)
 
 	targetID := clone.ID
 	audit.Record(ctx, audit.Event{
@@ -282,66 +299,74 @@ func (s *TemplateService) CloneTemplate(ctx context.Context, id int64) (*model.T
 	return clone, nil
 }
 
-func (s *TemplateService) CreateTemplateShift(ctx context.Context, input CreateTemplateShiftInput) (*model.TemplateShift, error) {
-	if input.TemplateID <= 0 || input.PositionID <= 0 {
+func (s *TemplateService) CreateTemplateSlot(ctx context.Context, input CreateTemplateSlotInput) (*model.TemplateSlot, error) {
+	if input.TemplateID <= 0 {
 		return nil, ErrInvalidInput
 	}
 
-	normalizedShiftInput, err := normalizeShiftInput(
-		input.Weekday,
-		input.StartTime,
-		input.EndTime,
-		input.RequiredHeadcount,
-	)
+	normalizedSlotInput, err := normalizeSlotInput(input.Weekday, input.StartTime, input.EndTime)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := s.ensurePositionExists(ctx, input.PositionID); err != nil {
-		return nil, err
-	}
-
-	shift, err := s.templateRepo.CreateShift(ctx, repository.CreateTemplateShiftParams{
-		TemplateID:        input.TemplateID,
-		Weekday:           normalizedShiftInput.Weekday,
-		StartTime:         normalizedShiftInput.StartTime,
-		EndTime:           normalizedShiftInput.EndTime,
-		PositionID:        input.PositionID,
-		RequiredHeadcount: normalizedShiftInput.RequiredHeadcount,
+	slot, err := s.templateRepo.CreateSlot(ctx, repository.CreateTemplateSlotParams{
+		TemplateID: input.TemplateID,
+		Weekday:    normalizedSlotInput.Weekday,
+		StartTime:  normalizedSlotInput.StartTime,
+		EndTime:    normalizedSlotInput.EndTime,
 	})
 	if err != nil {
 		return nil, mapTemplateRepositoryError(err)
 	}
 
-	targetID := shift.ID
-	audit.Record(ctx, audit.Event{
-		Action:     audit.ActionTemplateShiftCreate,
-		TargetType: audit.TargetTypeTemplateShift,
-		TargetID:   &targetID,
-		Metadata: map[string]any{
-			"template_id":        shift.TemplateID,
-			"weekday":            shift.Weekday,
-			"start_time":         shift.StartTime,
-			"end_time":           shift.EndTime,
-			"position_id":        shift.PositionID,
-			"required_headcount": shift.RequiredHeadcount,
-		},
-	})
-
-	return shift, nil
+	return slot, nil
 }
 
-func (s *TemplateService) UpdateTemplateShift(ctx context.Context, input UpdateTemplateShiftInput) (*model.TemplateShift, error) {
-	if input.TemplateID <= 0 || input.ShiftID <= 0 || input.PositionID <= 0 {
+func (s *TemplateService) UpdateTemplateSlot(ctx context.Context, input UpdateTemplateSlotInput) (*model.TemplateSlot, error) {
+	if input.TemplateID <= 0 || input.SlotID <= 0 {
 		return nil, ErrInvalidInput
 	}
 
-	normalizedShiftInput, err := normalizeShiftInput(
-		input.Weekday,
-		input.StartTime,
-		input.EndTime,
-		input.RequiredHeadcount,
-	)
+	normalizedSlotInput, err := normalizeSlotInput(input.Weekday, input.StartTime, input.EndTime)
+	if err != nil {
+		return nil, err
+	}
+
+	slot, err := s.templateRepo.UpdateSlot(ctx, repository.UpdateTemplateSlotParams{
+		TemplateID: input.TemplateID,
+		SlotID:     input.SlotID,
+		Weekday:    normalizedSlotInput.Weekday,
+		StartTime:  normalizedSlotInput.StartTime,
+		EndTime:    normalizedSlotInput.EndTime,
+	})
+	if err != nil {
+		return nil, mapTemplateRepositoryError(err)
+	}
+
+	return slot, nil
+}
+
+func (s *TemplateService) DeleteTemplateSlot(ctx context.Context, templateID, slotID int64) error {
+	if templateID <= 0 || slotID <= 0 {
+		return ErrInvalidInput
+	}
+
+	if err := s.templateRepo.DeleteSlot(ctx, templateID, slotID); err != nil {
+		return mapTemplateRepositoryError(err)
+	}
+
+	return nil
+}
+
+func (s *TemplateService) CreateTemplateSlotPosition(
+	ctx context.Context,
+	input CreateTemplateSlotPositionInput,
+) (*model.TemplateSlotPosition, error) {
+	if input.TemplateID <= 0 || input.SlotID <= 0 || input.PositionID <= 0 {
+		return nil, ErrInvalidInput
+	}
+
+	requiredHeadcount, err := normalizeRequiredHeadcount(input.RequiredHeadcount)
 	if err != nil {
 		return nil, err
 	}
@@ -350,57 +375,92 @@ func (s *TemplateService) UpdateTemplateShift(ctx context.Context, input UpdateT
 		return nil, err
 	}
 
-	// Best-effort capture of the previous shift state so the audit event can
-	// include a field-level diff. If the lookup fails we still allow the
-	// update to proceed; the repository call is the authoritative check.
-	var previous *model.TemplateShift
+	slotPosition, err := s.templateRepo.CreateSlotPosition(ctx, repository.CreateTemplateSlotPositionParams{
+		TemplateID:        input.TemplateID,
+		SlotID:            input.SlotID,
+		PositionID:        input.PositionID,
+		RequiredHeadcount: requiredHeadcount,
+	})
+	if err != nil {
+		return nil, mapTemplateRepositoryError(err)
+	}
+
+	targetID := slotPosition.ID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionTemplateShiftCreate,
+		TargetType: audit.TargetTypeTemplateShift,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"template_id":        input.TemplateID,
+			"slot_id":            slotPosition.SlotID,
+			"position_id":        slotPosition.PositionID,
+			"required_headcount": slotPosition.RequiredHeadcount,
+		},
+	})
+
+	return slotPosition, nil
+}
+
+func (s *TemplateService) UpdateTemplateSlotPosition(
+	ctx context.Context,
+	input UpdateTemplateSlotPositionInput,
+) (*model.TemplateSlotPosition, error) {
+	if input.TemplateID <= 0 || input.SlotID <= 0 || input.SlotPositionID <= 0 || input.PositionID <= 0 {
+		return nil, ErrInvalidInput
+	}
+
+	requiredHeadcount, err := normalizeRequiredHeadcount(input.RequiredHeadcount)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.ensurePositionExists(ctx, input.PositionID); err != nil {
+		return nil, err
+	}
+
+	var previous *model.TemplateSlotPosition
 	if prev, prevErr := s.templateRepo.GetByID(ctx, input.TemplateID); prevErr == nil {
-		for _, candidate := range prev.Shifts {
-			if candidate.ID == input.ShiftID {
-				previous = candidate
-				break
+		for _, slot := range prev.Slots {
+			if slot.ID != input.SlotID {
+				continue
+			}
+			for _, candidate := range slot.Positions {
+				if candidate.ID == input.SlotPositionID {
+					previous = candidate
+					break
+				}
 			}
 		}
 	}
 
-	shift, err := s.templateRepo.UpdateShift(ctx, repository.UpdateTemplateShiftParams{
+	slotPosition, err := s.templateRepo.UpdateSlotPosition(ctx, repository.UpdateTemplateSlotPositionParams{
 		TemplateID:        input.TemplateID,
-		ShiftID:           input.ShiftID,
-		Weekday:           normalizedShiftInput.Weekday,
-		StartTime:         normalizedShiftInput.StartTime,
-		EndTime:           normalizedShiftInput.EndTime,
+		SlotID:            input.SlotID,
+		SlotPositionID:    input.SlotPositionID,
 		PositionID:        input.PositionID,
-		RequiredHeadcount: normalizedShiftInput.RequiredHeadcount,
+		RequiredHeadcount: requiredHeadcount,
 	})
 	if err != nil {
 		return nil, mapTemplateRepositoryError(err)
 	}
 
 	changes := map[string]any{
-		"template_id": shift.TemplateID,
+		"template_id": input.TemplateID,
+		"slot_id":     input.SlotID,
 	}
 	if previous != nil {
-		if previous.Weekday != shift.Weekday {
-			changes["weekday"] = map[string]any{"from": previous.Weekday, "to": shift.Weekday}
+		if previous.PositionID != slotPosition.PositionID {
+			changes["position_id"] = map[string]any{"from": previous.PositionID, "to": slotPosition.PositionID}
 		}
-		if previous.StartTime != shift.StartTime {
-			changes["start_time"] = map[string]any{"from": previous.StartTime, "to": shift.StartTime}
-		}
-		if previous.EndTime != shift.EndTime {
-			changes["end_time"] = map[string]any{"from": previous.EndTime, "to": shift.EndTime}
-		}
-		if previous.PositionID != shift.PositionID {
-			changes["position_id"] = map[string]any{"from": previous.PositionID, "to": shift.PositionID}
-		}
-		if previous.RequiredHeadcount != shift.RequiredHeadcount {
+		if previous.RequiredHeadcount != slotPosition.RequiredHeadcount {
 			changes["required_headcount"] = map[string]any{
 				"from": previous.RequiredHeadcount,
-				"to":   shift.RequiredHeadcount,
+				"to":   slotPosition.RequiredHeadcount,
 			}
 		}
 	}
 
-	targetID := shift.ID
+	targetID := slotPosition.ID
 	audit.Record(ctx, audit.Event{
 		Action:     audit.ActionTemplateShiftUpdate,
 		TargetType: audit.TargetTypeTemplateShift,
@@ -408,25 +468,29 @@ func (s *TemplateService) UpdateTemplateShift(ctx context.Context, input UpdateT
 		Metadata:   changes,
 	})
 
-	return shift, nil
+	return slotPosition, nil
 }
 
-func (s *TemplateService) DeleteTemplateShift(ctx context.Context, templateID, shiftID int64) error {
-	if templateID <= 0 || shiftID <= 0 {
+func (s *TemplateService) DeleteTemplateSlotPosition(
+	ctx context.Context,
+	templateID, slotID, slotPositionID int64,
+) error {
+	if templateID <= 0 || slotID <= 0 || slotPositionID <= 0 {
 		return ErrInvalidInput
 	}
 
-	if err := s.templateRepo.DeleteShift(ctx, templateID, shiftID); err != nil {
+	if err := s.templateRepo.DeleteSlotPosition(ctx, templateID, slotID, slotPositionID); err != nil {
 		return mapTemplateRepositoryError(err)
 	}
 
-	targetID := shiftID
+	targetID := slotPositionID
 	audit.Record(ctx, audit.Event{
 		Action:     audit.ActionTemplateShiftDelete,
 		TargetType: audit.TargetTypeTemplateShift,
 		TargetID:   &targetID,
 		Metadata: map[string]any{
 			"template_id": templateID,
+			"slot_id":     slotID,
 		},
 	})
 
@@ -459,19 +523,15 @@ func normalizeTemplateInput(name, description string) (string, string, error) {
 	return normalizedName, normalizedDescription, nil
 }
 
-type normalizedTemplateShiftInput struct {
-	Weekday           int
-	StartTime         string
-	EndTime           string
-	RequiredHeadcount int
+type normalizedTemplateSlotInput struct {
+	Weekday   int
+	StartTime string
+	EndTime   string
 }
 
-func normalizeShiftInput(weekday int, startTime, endTime string, requiredHeadcount int) (*normalizedTemplateShiftInput, error) {
+func normalizeSlotInput(weekday int, startTime, endTime string) (*normalizedTemplateSlotInput, error) {
 	if weekday < 1 || weekday > 7 {
 		return nil, ErrInvalidWeekday
-	}
-	if requiredHeadcount <= 0 {
-		return nil, ErrInvalidHeadcount
 	}
 
 	parsedStartTime, err := time.Parse(timeLayoutHourMinute, startTime)
@@ -486,24 +546,45 @@ func normalizeShiftInput(weekday int, startTime, endTime string, requiredHeadcou
 		return nil, ErrInvalidShiftTime
 	}
 
-	return &normalizedTemplateShiftInput{
-		Weekday:           weekday,
-		StartTime:         parsedStartTime.Format(timeLayoutHourMinute),
-		EndTime:           parsedEndTime.Format(timeLayoutHourMinute),
-		RequiredHeadcount: requiredHeadcount,
+	return &normalizedTemplateSlotInput{
+		Weekday:   weekday,
+		StartTime: parsedStartTime.Format(timeLayoutHourMinute),
+		EndTime:   parsedEndTime.Format(timeLayoutHourMinute),
 	}, nil
 }
 
-func sortTemplateShifts(shifts []*model.TemplateShift) {
-	sort.Slice(shifts, func(i, j int) bool {
-		if shifts[i].Weekday != shifts[j].Weekday {
-			return shifts[i].Weekday < shifts[j].Weekday
+func normalizeRequiredHeadcount(requiredHeadcount int) (int, error) {
+	if requiredHeadcount <= 0 {
+		return 0, ErrInvalidHeadcount
+	}
+
+	return requiredHeadcount, nil
+}
+
+func sortTemplateSlots(slots []*model.TemplateSlot) {
+	for _, slot := range slots {
+		sortTemplateSlotPositions(slot.Positions)
+	}
+
+	sort.Slice(slots, func(i, j int) bool {
+		if slots[i].Weekday != slots[j].Weekday {
+			return slots[i].Weekday < slots[j].Weekday
 		}
-		if shifts[i].StartTime != shifts[j].StartTime {
-			return shifts[i].StartTime < shifts[j].StartTime
+		if slots[i].StartTime != slots[j].StartTime {
+			return slots[i].StartTime < slots[j].StartTime
 		}
 
-		return shifts[i].ID < shifts[j].ID
+		return slots[i].ID < slots[j].ID
+	})
+}
+
+func sortTemplateSlotPositions(slotPositions []*model.TemplateSlotPosition) {
+	sort.Slice(slotPositions, func(i, j int) bool {
+		if slotPositions[i].PositionID != slotPositions[j].PositionID {
+			return slotPositions[i].PositionID < slotPositions[j].PositionID
+		}
+
+		return slotPositions[i].ID < slotPositions[j].ID
 	})
 }
 
@@ -513,6 +594,12 @@ func mapTemplateRepositoryError(err error) error {
 		return ErrTemplateLocked
 	case errors.Is(err, repository.ErrTemplateNotFound):
 		return ErrTemplateNotFound
+	case errors.Is(err, repository.ErrTemplateSlotOverlap):
+		return ErrTemplateSlotOverlap
+	case errors.Is(err, repository.ErrTemplateSlotNotFound):
+		return ErrTemplateSlotNotFound
+	case errors.Is(err, repository.ErrTemplateSlotPositionNotFound):
+		return ErrTemplateSlotPositionNotFound
 	case errors.Is(err, repository.ErrTemplateShiftNotFound):
 		return ErrTemplateShiftNotFound
 	default:

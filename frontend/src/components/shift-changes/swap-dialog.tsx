@@ -23,7 +23,8 @@ import {
 } from "@/lib/queries"
 import type {
   PublicationMember,
-  PublicationShift,
+  PublicationPosition,
+  PublicationSlot,
   RosterWeekday,
 } from "@/lib/types"
 
@@ -36,7 +37,8 @@ import {
 export type SwapDialogMyShift = {
   assignmentID: number
   weekday: number
-  shift: PublicationShift
+  slot: PublicationSlot
+  position: PublicationPosition
 }
 
 type SwapDialogProps = {
@@ -187,12 +189,12 @@ export function SwapDialog({
             </div>
             <div className="mt-1 font-medium">
               {t(weekdayKeyMap[myShift.weekday])} ·{" "}
-              {myShift.shift.position_name}
+              {myShift.position.name}
             </div>
             <div className="text-sm text-muted-foreground">
               {t("requests.swapDialog.shiftSummary", {
-                startTime: myShift.shift.start_time,
-                endTime: myShift.shift.end_time,
+                startTime: myShift.slot.start_time,
+                endTime: myShift.slot.end_time,
               })}
             </div>
           </div>
@@ -261,10 +263,10 @@ export function SwapDialog({
                       value={option.assignmentID}
                     >
                       {t(weekdayKeyMap[option.weekday])} ·{" "}
-                      {option.shift.position_name} ·{" "}
+                      {option.position.name} ·{" "}
                       {t("requests.swapDialog.shiftSummary", {
-                        startTime: option.shift.start_time,
-                        endTime: option.shift.end_time,
+                        startTime: option.slot.start_time,
+                        endTime: option.slot.end_time,
                       })}
                     </option>
                   ))}

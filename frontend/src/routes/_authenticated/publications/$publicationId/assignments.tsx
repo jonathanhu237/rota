@@ -64,13 +64,19 @@ function PublicationAssignmentsPage() {
   const updateAssignmentMutation = useMutation({
     mutationFn: async (
       action:
-        | { type: "assign"; userID: number; templateShiftID: number }
+        | {
+            type: "assign"
+            userID: number
+            slotID: number
+            positionID: number
+          }
         | { type: "unassign"; assignmentID: number },
     ) => {
       if (action.type === "assign") {
         await createAssignment(numericPublicationID, {
           user_id: action.userID,
-          template_shift_id: action.templateShiftID,
+          slot_id: action.slotID,
+          position_id: action.positionID,
         })
         return
       }
@@ -198,14 +204,15 @@ function PublicationAssignmentsPage() {
               </div>
             )}
             <AssignmentBoard
-              shifts={board.shifts}
+              slots={board.slots}
               isPending={isPending}
               isReadOnly={isReadOnly}
-              onAssign={(userID, templateShiftID) =>
+              onAssign={(userID, slotID, positionID) =>
                 updateAssignmentMutation.mutate({
                   type: "assign",
                   userID,
-                  templateShiftID,
+                  slotID,
+                  positionID,
                 })
               }
               onUnassign={(assignmentID) =>

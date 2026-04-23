@@ -1,9 +1,14 @@
-import type { RosterShift, RosterWeekday } from "@/lib/types"
+import type {
+  PublicationPosition,
+  PublicationSlot,
+  RosterWeekday,
+} from "@/lib/types"
 
 export type MemberShiftOption = {
   assignmentID: number
   weekday: number
-  shift: RosterShift["shift"]
+  slot: PublicationSlot
+  position: PublicationPosition
 }
 
 /**
@@ -21,14 +26,17 @@ export function findShiftsForMember(
   const options: MemberShiftOption[] = []
 
   for (const weekday of rosterWeekdays) {
-    for (const shift of weekday.shifts) {
-      for (const assignment of shift.assignments) {
-        if (assignment.user_id === userID) {
-          options.push({
-            assignmentID: assignment.assignment_id,
-            weekday: weekday.weekday,
-            shift: shift.shift,
-          })
+    for (const slot of weekday.slots) {
+      for (const position of slot.positions) {
+        for (const assignment of position.assignments) {
+          if (assignment.user_id === userID) {
+            options.push({
+              assignmentID: assignment.assignment_id,
+              weekday: weekday.weekday,
+              slot: slot.slot,
+              position: position.position,
+            })
+          }
         }
       }
     }
@@ -38,7 +46,7 @@ export function findShiftsForMember(
     if (a.weekday !== b.weekday) {
       return a.weekday - b.weekday
     }
-    return a.shift.start_time.localeCompare(b.shift.start_time)
+    return a.slot.start_time.localeCompare(b.slot.start_time)
   })
 
   return options

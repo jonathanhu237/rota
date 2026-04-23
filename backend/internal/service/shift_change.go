@@ -41,13 +41,12 @@ type shiftChangeRepository interface {
 
 // shiftChangeDeps groups the other repositories the service depends on.
 // The publication service already owns a rich repo with most of what we
-// need (Publication, TemplateShift, Assignment, UserPosition) — we bind
-// that same repository interface here for consistency.
+// need (Publication, slot-position assignment rows, user qualification) —
+// we bind that same repository interface here for consistency.
 type shiftChangeDeps interface {
 	GetByID(ctx context.Context, id int64) (*model.Publication, error)
 	GetUserByID(ctx context.Context, id int64) (*model.User, error)
 	GetAssignment(ctx context.Context, id int64) (*model.Assignment, error)
-	GetTemplateShift(ctx context.Context, templateID, shiftID int64) (*model.TemplateShift, error)
 	IsUserQualifiedForPosition(ctx context.Context, userID, positionID int64) (bool, error)
 	ListPublicationShifts(ctx context.Context, publicationID int64) ([]*model.PublicationShift, error)
 	ListPublicationAssignments(ctx context.Context, publicationID int64) ([]*model.AssignmentParticipant, error)
@@ -136,13 +135,17 @@ func (s *ShiftChangeService) CreateShiftChangeRequest(
 		return nil, ErrShiftChangeNotOwner
 	}
 
-	requesterShift, err := s.publicationRepo.GetTemplateShift(ctx, publication.TemplateID, requesterAssignment.TemplateShiftID)
+	shiftIndex, err := s.loadShiftIndex(ctx, input.PublicationID)
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
+	requesterShift := findPublicationShiftForAssignment(shiftIndex, requesterAssignment)
+	if requesterShift == nil {
+		return nil, ErrTemplateSlotPositionNotFound
+	}
 
 	var counterpartAssignment *model.Assignment
-	var counterpartShift *model.TemplateShift
+	var counterpartShift *model.PublicationShift
 
 	switch input.Type {
 	case model.ShiftChangeTypeSwap:
@@ -165,11 +168,11 @@ func (s *ShiftChangeService) CreateShiftChangeRequest(
 		if counterpartAssignment.UserID != *input.CounterpartUserID {
 			return nil, ErrShiftChangeNotFound
 		}
-		counterpartShift, err = s.publicationRepo.GetTemplateShift(ctx, publication.TemplateID, counterpartAssignment.TemplateShiftID)
-		if err != nil {
-			return nil, mapPublicationRepositoryError(err)
+		counterpartShift = findPublicationShiftForAssignment(shiftIndex, counterpartAssignment)
+		if counterpartShift == nil {
+			return nil, ErrTemplateSlotPositionNotFound
 		}
-		if err := s.mutuallyQualified(ctx, input.RequesterUserID, *input.CounterpartUserID, requesterShift.PositionID, counterpartShift.PositionID); err != nil {
+		if err := s.mutuallyQualified(ctx, input.RequesterUserID, *input.CounterpartUserID, requesterAssignment.PositionID, counterpartAssignment.PositionID); err != nil {
 			return nil, err
 		}
 
@@ -183,7 +186,7 @@ func (s *ShiftChangeService) CreateShiftChangeRequest(
 		if *input.CounterpartUserID == input.RequesterUserID {
 			return nil, ErrShiftChangeSelf
 		}
-		qualified, err := s.publicationRepo.IsUserQualifiedForPosition(ctx, *input.CounterpartUserID, requesterShift.PositionID)
+		qualified, err := s.publicationRepo.IsUserQualifiedForPosition(ctx, *input.CounterpartUserID, requesterAssignment.PositionID)
 		if err != nil {
 			return nil, err
 		}
@@ -220,7 +223,7 @@ func (s *ShiftChangeService) CreateShiftChangeRequest(
 	})
 
 	if input.Type == model.ShiftChangeTypeSwap || input.Type == model.ShiftChangeTypeGiveDirect {
-		s.notifyRequestCreated(ctx, created, publication, requesterShift, counterpartShift)
+		s.notifyRequestCreated(ctx, created, requesterShift, counterpartShift)
 	}
 
 	return created, nil
@@ -454,13 +457,17 @@ func (s *ShiftChangeService) ApproveShiftChangeRequest(
 		return ErrShiftChangeInvalidated
 	}
 
-	requesterShift, err := s.publicationRepo.GetTemplateShift(ctx, publication.TemplateID, requesterAssignment.TemplateShiftID)
+	shiftIndex, err := s.loadShiftIndex(ctx, req.PublicationID)
 	if err != nil {
 		return mapPublicationRepositoryError(err)
 	}
+	requesterShift := findPublicationShiftForAssignment(shiftIndex, requesterAssignment)
+	if requesterShift == nil {
+		return ErrTemplateSlotPositionNotFound
+	}
 
 	var receiverUserID int64
-	var counterpartShift *model.TemplateShift
+	var counterpartShift *model.PublicationShift
 	switch req.Type {
 	case model.ShiftChangeTypeSwap:
 		if req.CounterpartAssignmentID == nil {
@@ -478,12 +485,12 @@ func (s *ShiftChangeService) ApproveShiftChangeRequest(
 			_ = s.shiftChangeRepo.MarkInvalidated(ctx, req.ID, now)
 			return ErrShiftChangeInvalidated
 		}
-		counterpartShift, err = s.publicationRepo.GetTemplateShift(ctx, publication.TemplateID, counterpartAssignment.TemplateShiftID)
-		if err != nil {
-			return mapPublicationRepositoryError(err)
+		counterpartShift = findPublicationShiftForAssignment(shiftIndex, counterpartAssignment)
+		if counterpartShift == nil {
+			return ErrTemplateSlotPositionNotFound
 		}
 		receiverUserID = *req.CounterpartUserID
-		if err := s.mutuallyQualified(ctx, req.RequesterUserID, receiverUserID, requesterShift.PositionID, counterpartShift.PositionID); err != nil {
+		if err := s.mutuallyQualified(ctx, req.RequesterUserID, receiverUserID, requesterAssignment.PositionID, counterpartAssignment.PositionID); err != nil {
 			return err
 		}
 		if err := s.ensureSwapFitsSchedule(ctx, req.PublicationID, req.RequesterUserID, receiverUserID, requesterAssignment, counterpartAssignment, requesterShift, counterpartShift); err != nil {
@@ -491,7 +498,7 @@ func (s *ShiftChangeService) ApproveShiftChangeRequest(
 		}
 	case model.ShiftChangeTypeGiveDirect:
 		receiverUserID = viewerUserID
-		qualified, err := s.publicationRepo.IsUserQualifiedForPosition(ctx, receiverUserID, requesterShift.PositionID)
+		qualified, err := s.publicationRepo.IsUserQualifiedForPosition(ctx, receiverUserID, requesterAssignment.PositionID)
 		if err != nil {
 			return err
 		}
@@ -503,7 +510,7 @@ func (s *ShiftChangeService) ApproveShiftChangeRequest(
 		}
 	case model.ShiftChangeTypeGivePool:
 		receiverUserID = viewerUserID
-		qualified, err := s.publicationRepo.IsUserQualifiedForPosition(ctx, receiverUserID, requesterShift.PositionID)
+		qualified, err := s.publicationRepo.IsUserQualifiedForPosition(ctx, receiverUserID, requesterAssignment.PositionID)
 		if err != nil {
 			return err
 		}
@@ -673,7 +680,7 @@ func (s *ShiftChangeService) ensureSwapFitsSchedule(
 	ctx context.Context,
 	publicationID, userA, userB int64,
 	assignmentA, assignmentB *model.Assignment,
-	shiftA, shiftB *model.TemplateShift,
+	shiftA, shiftB *model.PublicationShift,
 ) error {
 	shifts, err := s.loadShiftIndex(ctx, publicationID)
 	if err != nil {
@@ -686,8 +693,8 @@ func (s *ShiftChangeService) ensureSwapFitsSchedule(
 
 	// Build the final schedule: user A loses shiftA, gains shiftB; user B
 	// loses shiftB, gains shiftA.
-	finalA := collectUserShifts(assignments, shifts, userA, []int64{assignmentA.ID}, []*model.TemplateShift{shiftB})
-	finalB := collectUserShifts(assignments, shifts, userB, []int64{assignmentB.ID}, []*model.TemplateShift{shiftA})
+	finalA := collectUserShifts(assignments, shifts, userA, []int64{assignmentA.ID}, []*model.PublicationShift{shiftB})
+	finalB := collectUserShifts(assignments, shifts, userB, []int64{assignmentB.ID}, []*model.PublicationShift{shiftA})
 	if hasOverlapInSet(finalA) || hasOverlapInSet(finalB) {
 		return ErrShiftChangeTimeConflict
 	}
@@ -700,7 +707,7 @@ func (s *ShiftChangeService) ensureGiveFitsSchedule(
 	ctx context.Context,
 	publicationID, receiverUserID int64,
 	requesterAssignment *model.Assignment,
-	requesterShift *model.TemplateShift,
+	requesterShift *model.PublicationShift,
 ) error {
 	shifts, err := s.loadShiftIndex(ctx, publicationID)
 	if err != nil {
@@ -710,7 +717,7 @@ func (s *ShiftChangeService) ensureGiveFitsSchedule(
 	if err != nil {
 		return err
 	}
-	final := collectUserShifts(assignments, shifts, receiverUserID, nil, []*model.TemplateShift{requesterShift})
+	final := collectUserShifts(assignments, shifts, receiverUserID, nil, []*model.PublicationShift{requesterShift})
 	if hasOverlapInSet(final) {
 		return ErrShiftChangeTimeConflict
 	}
@@ -723,74 +730,12 @@ func (s *ShiftChangeService) ensureGiveFitsSchedule(
 func (s *ShiftChangeService) loadShiftIndex(
 	ctx context.Context,
 	publicationID int64,
-) (map[int64]*model.TemplateShift, error) {
+) (map[slotPositionKey]*model.PublicationShift, error) {
 	shifts, err := s.publicationRepo.ListPublicationShifts(ctx, publicationID)
 	if err != nil {
 		return nil, err
 	}
-	index := make(map[int64]*model.TemplateShift, len(shifts))
-	for _, sh := range shifts {
-		index[sh.ID] = &model.TemplateShift{
-			ID:                sh.ID,
-			TemplateID:        sh.TemplateID,
-			Weekday:           sh.Weekday,
-			StartTime:         sh.StartTime,
-			EndTime:           sh.EndTime,
-			PositionID:        sh.PositionID,
-			RequiredHeadcount: sh.RequiredHeadcount,
-			CreatedAt:         sh.CreatedAt,
-			UpdatedAt:         sh.UpdatedAt,
-		}
-	}
-	return index, nil
-}
-
-// collectUserShifts rebuilds the set of TemplateShifts a user would be
-// assigned to after applying the swap: start from their current
-// assignments, drop the ones in excludeAssignmentIDs, and add
-// addShifts.
-func collectUserShifts(
-	assignments []*model.AssignmentParticipant,
-	shiftIndex map[int64]*model.TemplateShift,
-	userID int64,
-	excludeAssignmentIDs []int64,
-	addShifts []*model.TemplateShift,
-) []*model.TemplateShift {
-	excluded := make(map[int64]struct{}, len(excludeAssignmentIDs))
-	for _, id := range excludeAssignmentIDs {
-		excluded[id] = struct{}{}
-	}
-
-	final := make([]*model.TemplateShift, 0)
-	for _, a := range assignments {
-		if a.UserID != userID {
-			continue
-		}
-		if _, skip := excluded[a.AssignmentID]; skip {
-			continue
-		}
-		if sh, ok := shiftIndex[a.TemplateShiftID]; ok {
-			final = append(final, sh)
-		}
-	}
-	final = append(final, addShifts...)
-	return final
-}
-
-// hasOverlapInSet reports whether any pair in the slice shares the same
-// weekday and overlapping time windows (HH:MM comparison).
-func hasOverlapInSet(shifts []*model.TemplateShift) bool {
-	for i := 0; i < len(shifts); i++ {
-		for j := i + 1; j < len(shifts); j++ {
-			if shifts[i].Weekday != shifts[j].Weekday {
-				continue
-			}
-			if shifts[i].StartTime < shifts[j].EndTime && shifts[j].StartTime < shifts[i].EndTime {
-				return true
-			}
-		}
-	}
-	return false
+	return buildPublicationShiftIndex(shifts), nil
 }
 
 // mapApplyError coerces repository-layer errors from ApplySwap/ApplyGive
@@ -819,8 +764,7 @@ func (s *ShiftChangeService) mapApplyError(
 func (s *ShiftChangeService) notifyRequestCreated(
 	ctx context.Context,
 	req *model.ShiftChangeRequest,
-	publication *model.Publication,
-	requesterShift, counterpartShift *model.TemplateShift,
+	requesterShift, counterpartShift *model.PublicationShift,
 ) {
 	if s.emailer == nil || req.CounterpartUserID == nil {
 		return
@@ -841,11 +785,11 @@ func (s *ShiftChangeService) notifyRequestCreated(
 		RecipientName:  counterpart.Name,
 		RequesterName:  requester.Name,
 		Type:           email.ShiftChangeType(req.Type),
-		RequesterShift: toShiftRef(requesterShift, publication),
+		RequesterShift: toShiftRef(requesterShift),
 		BaseURL:        s.appBaseURL,
 	}
 	if counterpartShift != nil {
-		ref := toShiftRef(counterpartShift, publication)
+		ref := toShiftRef(counterpartShift)
 		data.CounterpartShift = &ref
 	}
 	msg := email.BuildShiftChangeRequestReceivedMessage(data)
@@ -868,9 +812,9 @@ func (s *ShiftChangeService) notifyRequestResolved(
 		s.logger.Warn("shift_change: load requester for resolved email", "error", err)
 		return
 	}
-	publication, err := s.publicationRepo.GetByID(ctx, req.PublicationID)
+	shiftIndex, err := s.loadShiftIndex(ctx, req.PublicationID)
 	if err != nil {
-		s.logger.Warn("shift_change: load publication for resolved email", "error", err)
+		s.logger.Warn("shift_change: load shift index for resolved email", "error", err)
 		return
 	}
 	responder, err := s.publicationRepo.GetUserByID(ctx, responderID)
@@ -884,9 +828,9 @@ func (s *ShiftChangeService) notifyRequestResolved(
 		s.logger.Warn("shift_change: load requester assignment for resolved email", "error", err)
 		return
 	}
-	requesterShift, err := s.publicationRepo.GetTemplateShift(ctx, publication.TemplateID, requesterAssignment.TemplateShiftID)
-	if err != nil {
-		s.logger.Warn("shift_change: load requester shift for resolved email", "error", err)
+	requesterShift := findPublicationShiftForAssignment(shiftIndex, requesterAssignment)
+	if requesterShift == nil {
+		s.logger.Warn("shift_change: missing requester shift for resolved email", "assignment_id", req.RequesterAssignmentID)
 		return
 	}
 
@@ -896,15 +840,14 @@ func (s *ShiftChangeService) notifyRequestResolved(
 		Outcome:        outcome,
 		Type:           email.ShiftChangeType(req.Type),
 		ResponderName:  responder.Name,
-		RequesterShift: toShiftRef(requesterShift, publication),
+		RequesterShift: toShiftRef(requesterShift),
 		BaseURL:        s.appBaseURL,
 	}
 	if req.CounterpartAssignmentID != nil {
 		counterpartAssignment, err := s.publicationRepo.GetAssignment(ctx, *req.CounterpartAssignmentID)
 		if err == nil {
-			counterpartShift, err := s.publicationRepo.GetTemplateShift(ctx, publication.TemplateID, counterpartAssignment.TemplateShiftID)
-			if err == nil {
-				ref := toShiftRef(counterpartShift, publication)
+			if counterpartShift := findPublicationShiftForAssignment(shiftIndex, counterpartAssignment); counterpartShift != nil {
+				ref := toShiftRef(counterpartShift)
 				data.CounterpartShift = &ref
 			}
 		}
@@ -912,15 +855,6 @@ func (s *ShiftChangeService) notifyRequestResolved(
 	msg := email.BuildShiftChangeResolvedMessage(data)
 	if err := s.emailer.Send(ctx, msg); err != nil {
 		s.logger.Warn("shift_change: send resolved email", "error", err)
-	}
-}
-
-func toShiftRef(shift *model.TemplateShift, _ *model.Publication) email.ShiftRef {
-	return email.ShiftRef{
-		Weekday:      weekdayLabel(shift.Weekday),
-		StartTime:    shift.StartTime,
-		EndTime:      shift.EndTime,
-		PositionName: "", // Position name is not fetched here to avoid an extra round trip; the recipient still sees time + weekday.
 	}
 }
 

@@ -510,10 +510,11 @@ func TestPublicationHandler(t *testing.T) {
 		}
 		response := decodeJSONResponse[assignmentBoardResponse](t, recorder)
 		if response.Publication == nil ||
-			len(response.Shifts) != 1 ||
-			len(response.Shifts[0].Candidates) != 1 ||
-			len(response.Shifts[0].NonCandidateQualified) != 1 ||
-			len(response.Shifts[0].Assignments) != 1 {
+			len(response.Slots) != 1 ||
+			len(response.Slots[0].Positions) != 1 ||
+			len(response.Slots[0].Positions[0].Candidates) != 1 ||
+			len(response.Slots[0].Positions[0].NonCandidateQualified) != 1 ||
+			len(response.Slots[0].Positions[0].Assignments) != 1 {
 			t.Fatalf("unexpected response: %+v", response)
 		}
 	})
@@ -540,17 +541,18 @@ func TestPublicationHandler(t *testing.T) {
 		handler := NewPublicationHandler(&stubPublicationService{
 			createAssignmentFunc: func(ctx context.Context, input service.CreateAssignmentInput) (*model.Assignment, error) {
 				return &model.Assignment{
-					ID:              1,
-					PublicationID:   input.PublicationID,
-					UserID:          input.UserID,
-					TemplateShiftID: input.TemplateShiftID,
-					CreatedAt:       samplePublicationTime(),
+					ID:            1,
+					PublicationID: input.PublicationID,
+					UserID:        input.UserID,
+					SlotID:        input.SlotID,
+					PositionID:    input.PositionID,
+					CreatedAt:     samplePublicationTime(),
 				}, nil
 			},
 		})
 		recorder := httptest.NewRecorder()
 		req := requestWithPathValues(jsonRequest(t, http.MethodPost, "/publications/1/assignments", map[string]any{
-			"user_id": 1, "template_shift_id": 2,
+			"user_id": 1, "slot_id": 21, "position_id": 101,
 		}), map[string]string{"id": "1"})
 
 		handler.CreateAssignment(recorder, req)
@@ -572,6 +574,8 @@ func TestPublicationHandler(t *testing.T) {
 			{name: "publication not assigning", err: service.ErrPublicationNotAssigning, status: http.StatusConflict, code: "PUBLICATION_NOT_ASSIGNING"},
 			{name: "user not found", err: service.ErrUserNotFound, status: http.StatusNotFound, code: "USER_NOT_FOUND"},
 			{name: "user disabled", err: service.ErrUserDisabled, status: http.StatusConflict, code: "USER_DISABLED"},
+			{name: "user already in slot", err: service.ErrAssignmentUserAlreadyInSlot, status: http.StatusConflict, code: "ASSIGNMENT_USER_ALREADY_IN_SLOT"},
+			{name: "time conflict", err: service.ErrAssignmentTimeConflict, status: http.StatusConflict, code: "ASSIGNMENT_TIME_CONFLICT"},
 		}
 
 		for _, tc := range cases {
@@ -586,7 +590,7 @@ func TestPublicationHandler(t *testing.T) {
 				})
 				recorder := httptest.NewRecorder()
 				req := requestWithPathValues(jsonRequest(t, http.MethodPost, "/publications/1/assignments", map[string]any{
-					"user_id": 1, "template_shift_id": 2,
+					"user_id": 1, "slot_id": 21, "position_id": 101,
 				}), map[string]string{"id": "1"})
 
 				handler.CreateAssignment(recorder, req)
@@ -594,6 +598,20 @@ func TestPublicationHandler(t *testing.T) {
 				assertErrorResponse(t, recorder, tc.status, tc.code)
 			})
 		}
+	})
+
+	t.Run("CreateAssignment rejects legacy template_shift_id body", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{})
+		recorder := httptest.NewRecorder()
+		req := requestWithPathValues(jsonRequest(t, http.MethodPost, "/publications/1/assignments", map[string]any{
+			"user_id": 1, "template_shift_id": 2,
+		}), map[string]string{"id": "1"})
+
+		handler.CreateAssignment(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusBadRequest, "INVALID_REQUEST")
 	})
 
 	t.Run("DeleteAssignment returns no content", func(t *testing.T) {
@@ -729,7 +747,7 @@ func TestPublicationHandler(t *testing.T) {
 			t.Fatalf("expected status 200, got %d", recorder.Code)
 		}
 		response := decodeJSONResponse[rosterResponse](t, recorder)
-		if response.Publication == nil || len(response.Weekdays) != 1 || len(response.Weekdays[0].Shifts) != 1 {
+		if response.Publication == nil || len(response.Weekdays) != 1 || len(response.Weekdays[0].Slots) != 1 {
 			t.Fatalf("unexpected response: %+v", response)
 		}
 	})
@@ -788,7 +806,7 @@ func TestPublicationHandler(t *testing.T) {
 			t.Fatalf("expected status 200, got %d", recorder.Code)
 		}
 		response := decodeJSONResponse[assignmentBoardResponse](t, recorder)
-		if response.Publication == nil || len(response.Shifts) != 1 {
+		if response.Publication == nil || len(response.Slots) != 1 {
 			t.Fatalf("unexpected response: %+v", response)
 		}
 	})
@@ -826,52 +844,65 @@ func samplePublication() *model.Publication {
 	}
 }
 
-func samplePublicationShift() *model.PublicationShift {
+func samplePublicationSlot() *model.TemplateSlot {
 	now := samplePublicationTime()
-	return &model.PublicationShift{
-		ID:                2,
-		TemplateID:        1,
-		Weekday:           1,
-		StartTime:         "09:00",
-		EndTime:           "12:00",
-		PositionID:        7,
-		PositionName:      "Front Desk",
-		RequiredHeadcount: 2,
-		CreatedAt:         now,
-		UpdatedAt:         now,
+	return &model.TemplateSlot{
+		ID:         21,
+		TemplateID: 1,
+		Weekday:    1,
+		StartTime:  "09:00",
+		EndTime:    "12:00",
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+}
+
+func samplePublicationPosition() *model.Position {
+	return &model.Position{
+		ID:   7,
+		Name: "Front Desk",
 	}
 }
 
 func sampleAssignmentBoardResult() *service.AssignmentBoardResult {
 	return &service.AssignmentBoardResult{
 		Publication: samplePublication(),
-		Shifts: []*service.AssignmentBoardShiftResult{
+		Slots: []*service.AssignmentBoardSlotResult{
 			{
-				Shift: samplePublicationShift(),
-				Candidates: []*model.AssignmentCandidate{
+				Slot: samplePublicationSlot(),
+				Positions: []*service.AssignmentBoardPositionResult{
 					{
-						TemplateShiftID: 2,
-						UserID:          1,
-						Name:            "Worker",
-						Email:           "worker@example.com",
-					},
-				},
-				NonCandidateQualified: []*model.AssignmentCandidate{
-					{
-						TemplateShiftID: 2,
-						UserID:          2,
-						Name:            "Available",
-						Email:           "available@example.com",
-					},
-				},
-				Assignments: []*model.AssignmentParticipant{
-					{
-						AssignmentID:    3,
-						TemplateShiftID: 2,
-						UserID:          1,
-						Name:            "Worker",
-						Email:           "worker@example.com",
-						CreatedAt:       samplePublicationTime(),
+						Position:          samplePublicationPosition(),
+						RequiredHeadcount: 2,
+						Candidates: []*model.AssignmentCandidate{
+							{
+								SlotID:     21,
+								PositionID: 7,
+								UserID:     1,
+								Name:       "Worker",
+								Email:      "worker@example.com",
+							},
+						},
+						NonCandidateQualified: []*model.AssignmentCandidate{
+							{
+								SlotID:     21,
+								PositionID: 7,
+								UserID:     2,
+								Name:       "Available",
+								Email:      "available@example.com",
+							},
+						},
+						Assignments: []*model.AssignmentParticipant{
+							{
+								AssignmentID: 3,
+								SlotID:       21,
+								PositionID:   7,
+								UserID:       1,
+								Name:         "Worker",
+								Email:        "worker@example.com",
+								CreatedAt:    samplePublicationTime(),
+							},
+						},
 					},
 				},
 			},
@@ -885,17 +916,24 @@ func sampleRosterResult() *service.RosterResult {
 		Weekdays: []*service.RosterWeekdayResult{
 			{
 				Weekday: 1,
-				Shifts: []*service.RosterShiftResult{
+				Slots: []*service.RosterSlotResult{
 					{
-						Shift: samplePublicationShift(),
-						Assignments: []*model.AssignmentParticipant{
+						Slot: samplePublicationSlot(),
+						Positions: []*service.RosterPositionResult{
 							{
-								AssignmentID:    3,
-								TemplateShiftID: 2,
-								UserID:          1,
-								Name:            "Worker",
-								Email:           "worker@example.com",
-								CreatedAt:       samplePublicationTime(),
+								Position:          samplePublicationPosition(),
+								RequiredHeadcount: 2,
+								Assignments: []*model.AssignmentParticipant{
+									{
+										AssignmentID: 3,
+										SlotID:       21,
+										PositionID:   7,
+										UserID:       1,
+										Name:         "Worker",
+										Email:        "worker@example.com",
+										CreatedAt:    samplePublicationTime(),
+									},
+								},
 							},
 						},
 					},

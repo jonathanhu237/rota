@@ -9,15 +9,15 @@ import (
 	"github.com/jonathanhu237/rota/backend/internal/service"
 )
 
-func TestTemplateDetailResponseIncludesEmptyShiftsArray(t *testing.T) {
+func TestTemplateDetailResponseIncludesEmptySlotsArray(t *testing.T) {
 	t.Parallel()
 
 	payload, err := json.Marshal(templateDetailResponse{
 		Template: newTemplateResponse(&model.Template{
 			ID:          1,
 			Name:        "Empty Template",
-			Description: "No shifts yet",
-			Shifts:      []*model.TemplateShift{},
+			Description: "No slots yet",
+			Slots:       []*model.TemplateSlot{},
 		}),
 	})
 	if err != nil {
@@ -27,17 +27,17 @@ func TestTemplateDetailResponseIncludesEmptyShiftsArray(t *testing.T) {
 	if string(payload) == "" {
 		t.Fatal("expected non-empty payload")
 	}
-	shifts, ok := getTemplateField(payload, "shifts")
+	slots, ok := getTemplateField(payload, "slots")
 	if !ok {
-		t.Fatalf("expected detail response to include shifts field, got %s", payload)
+		t.Fatalf("expected detail response to include slots field, got %s", payload)
 	}
 
-	shiftsSlice, ok := shifts.([]any)
+	slotsSlice, ok := slots.([]any)
 	if !ok {
-		t.Fatalf("expected shifts to marshal as an array, got %T", shifts)
+		t.Fatalf("expected slots to marshal as an array, got %T", slots)
 	}
-	if len(shiftsSlice) != 0 {
-		t.Fatalf("expected shifts array to be empty, got %v", shiftsSlice)
+	if len(slotsSlice) != 0 {
+		t.Fatalf("expected slots array to be empty, got %v", slotsSlice)
 	}
 }
 
@@ -149,25 +149,32 @@ func TestRosterResponseOmitsAssignmentEmail(t *testing.T) {
 		Weekdays: []*service.RosterWeekdayResult{
 			{
 				Weekday: 1,
-				Shifts: []*service.RosterShiftResult{
+				Slots: []*service.RosterSlotResult{
 					{
-						Shift: &model.PublicationShift{
-							ID:                11,
-							TemplateID:        3,
-							Weekday:           1,
-							StartTime:         "09:00",
-							EndTime:           "12:00",
-							PositionID:        101,
-							PositionName:      "Front Desk",
-							RequiredHeadcount: 2,
+						Slot: &model.TemplateSlot{
+							ID:         11,
+							TemplateID: 3,
+							Weekday:    1,
+							StartTime:  "09:00",
+							EndTime:    "12:00",
 						},
-						Assignments: []*model.AssignmentParticipant{
+						Positions: []*service.RosterPositionResult{
 							{
-								AssignmentID:    1,
-								TemplateShiftID: 11,
-								UserID:          7,
-								Name:            "Alice",
-								Email:           "alice@example.com",
+								Position: &model.Position{
+									ID:   101,
+									Name: "Front Desk",
+								},
+								RequiredHeadcount: 2,
+								Assignments: []*model.AssignmentParticipant{
+									{
+										AssignmentID: 1,
+										SlotID:       11,
+										PositionID:   101,
+										UserID:       7,
+										Name:         "Alice",
+										Email:        "alice@example.com",
+									},
+								},
 							},
 						},
 					},
@@ -193,18 +200,27 @@ func TestRosterResponseOmitsAssignmentEmail(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected weekday object, got %T", weekdays[0])
 	}
-	shifts, ok := weekday["shifts"].([]any)
-	if !ok || len(shifts) != 1 {
-		t.Fatalf("expected one shift, got %v", weekday["shifts"])
+	slots, ok := weekday["slots"].([]any)
+	if !ok || len(slots) != 1 {
+		t.Fatalf("expected one slot, got %v", weekday["slots"])
 	}
 
-	shift, ok := shifts[0].(map[string]any)
+	slot, ok := slots[0].(map[string]any)
 	if !ok {
-		t.Fatalf("expected shift object, got %T", shifts[0])
+		t.Fatalf("expected slot object, got %T", slots[0])
 	}
-	assignments, ok := shift["assignments"].([]any)
+	positions, ok := slot["positions"].([]any)
+	if !ok || len(positions) != 1 {
+		t.Fatalf("expected one position, got %v", slot["positions"])
+	}
+
+	position, ok := positions[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected position object, got %T", positions[0])
+	}
+	assignments, ok := position["assignments"].([]any)
 	if !ok || len(assignments) != 1 {
-		t.Fatalf("expected one assignment, got %v", shift["assignments"])
+		t.Fatalf("expected one assignment, got %v", position["assignments"])
 	}
 
 	assignment, ok := assignments[0].(map[string]any)

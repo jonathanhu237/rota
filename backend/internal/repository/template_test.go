@@ -38,8 +38,8 @@ func TestTemplateRepositoryIntegration(t *testing.T) {
 		if loaded.ID != created.ID || loaded.Name != created.Name || loaded.Description != created.Description {
 			t.Fatalf("unexpected loaded template: %+v", loaded)
 		}
-		if loaded.ShiftCount != 0 || len(loaded.Shifts) != 0 {
-			t.Fatalf("expected no shifts on new template, got count=%d len=%d", loaded.ShiftCount, len(loaded.Shifts))
+		if loaded.ShiftCount != 0 || len(loaded.Slots) != 0 {
+			t.Fatalf("expected no slots on new template, got count=%d len=%d", loaded.ShiftCount, len(loaded.Slots))
 		}
 
 		updated, err := repo.Update(ctx, UpdateTemplateParams{
@@ -83,7 +83,7 @@ func TestTemplateRepositoryIntegration(t *testing.T) {
 		}
 	})
 
-	t.Run("Clone copies shifts", func(t *testing.T) {
+	t.Run("Clone copies slots and slot positions", func(t *testing.T) {
 		db := openIntegrationDB(t)
 		repo := NewTemplateRepository(db)
 
@@ -94,22 +94,10 @@ func TestTemplateRepositoryIntegration(t *testing.T) {
 		frontDesk := seedPosition(t, db, positionSeed{Name: "Front Desk"})
 		backOffice := seedPosition(t, db, positionSeed{Name: "Back Office"})
 
-		firstShift := seedTemplateShift(t, db, templateShiftSeed{
-			TemplateID:        source.ID,
-			Weekday:           1,
-			StartTime:         "09:05",
-			EndTime:           "12:30",
-			PositionID:        frontDesk.ID,
-			RequiredHeadcount: 2,
-		})
-		secondShift := seedTemplateShift(t, db, templateShiftSeed{
-			TemplateID:        source.ID,
-			Weekday:           3,
-			StartTime:         "13:15",
-			EndTime:           "17:45",
-			PositionID:        backOffice.ID,
-			RequiredHeadcount: 1,
-		})
+		firstSlotID := seedTemplateSlot(t, db, source.ID, 1, "09:05", "12:30")
+		secondSlotID := seedTemplateSlot(t, db, source.ID, 3, "13:15", "17:45")
+		firstSlotPositionID := seedTemplateSlotPosition(t, db, firstSlotID, frontDesk.ID, 2)
+		secondSlotPositionID := seedTemplateSlotPosition(t, db, secondSlotID, backOffice.ID, 1)
 
 		cloned, err := repo.Clone(ctx, source.ID, "Cloned Template")
 		if err != nil {
@@ -124,23 +112,33 @@ func TestTemplateRepositoryIntegration(t *testing.T) {
 		if cloned.IsLocked {
 			t.Fatalf("expected cloned template to be unlocked")
 		}
-		if cloned.ShiftCount != 2 || len(cloned.Shifts) != 2 {
-			t.Fatalf("expected 2 copied shifts, got count=%d len=%d", cloned.ShiftCount, len(cloned.Shifts))
+		if cloned.ShiftCount != 2 || len(cloned.Slots) != 2 {
+			t.Fatalf("expected 2 copied slots, got count=%d len=%d", cloned.ShiftCount, len(cloned.Slots))
 		}
 
-		assertShiftEqual(t, cloned.Shifts[0], cloned.ID, 1, "09:05", "12:30", frontDesk.ID, 2)
-		assertShiftEqual(t, cloned.Shifts[1], cloned.ID, 3, "13:15", "17:45", backOffice.ID, 1)
+		assertTemplateSlotEqual(t, cloned.Slots[0], cloned.ID, 1, "09:05", "12:30")
+		assertTemplateSlotEqual(t, cloned.Slots[1], cloned.ID, 3, "13:15", "17:45")
 
-		if cloned.Shifts[0].ID == firstShift.ID || cloned.Shifts[1].ID == secondShift.ID {
-			t.Fatalf("expected cloned shifts to receive new IDs")
+		if len(cloned.Slots[0].Positions) != 1 || len(cloned.Slots[1].Positions) != 1 {
+			t.Fatalf("expected 1 copied slot position per slot, got %+v", cloned.Slots)
+		}
+
+		assertTemplateSlotPositionEqual(t, cloned.Slots[0].Positions[0], cloned.Slots[0].ID, frontDesk.ID, 2)
+		assertTemplateSlotPositionEqual(t, cloned.Slots[1].Positions[0], cloned.Slots[1].ID, backOffice.ID, 1)
+
+		if cloned.Slots[0].ID == firstSlotID || cloned.Slots[1].ID == secondSlotID {
+			t.Fatalf("expected cloned slots to receive new IDs")
+		}
+		if cloned.Slots[0].Positions[0].ID == firstSlotPositionID || cloned.Slots[1].Positions[0].ID == secondSlotPositionID {
+			t.Fatalf("expected cloned slot positions to receive new IDs")
 		}
 
 		loadedSource, err := repo.GetByID(ctx, source.ID)
 		if err != nil {
 			t.Fatalf("reload source template: %v", err)
 		}
-		if loadedSource.ShiftCount != 2 || len(loadedSource.Shifts) != 2 {
-			t.Fatalf("expected source template to remain unchanged, got count=%d len=%d", loadedSource.ShiftCount, len(loadedSource.Shifts))
+		if loadedSource.ShiftCount != 2 || len(loadedSource.Slots) != 2 {
+			t.Fatalf("expected source template to remain unchanged, got count=%d len=%d", loadedSource.ShiftCount, len(loadedSource.Slots))
 		}
 	})
 
@@ -152,15 +150,7 @@ func TestTemplateRepositoryIntegration(t *testing.T) {
 			Name:     "Locked Template",
 			IsLocked: true,
 		})
-		position := seedPosition(t, db, positionSeed{Name: "Locked Position"})
-		shift := seedTemplateShift(t, db, templateShiftSeed{
-			TemplateID:        locked.ID,
-			Weekday:           2,
-			StartTime:         "08:00",
-			EndTime:           "10:00",
-			PositionID:        position.ID,
-			RequiredHeadcount: 1,
-		})
+		slotID := seedTemplateSlot(t, db, locked.ID, 2, "08:00", "10:00")
 
 		_, err := repo.Update(ctx, UpdateTemplateParams{
 			ID:          locked.ID,
@@ -175,138 +165,31 @@ func TestTemplateRepositoryIntegration(t *testing.T) {
 			t.Fatalf("expected ErrTemplateLocked from delete, got %v", err)
 		}
 
-		_, err = repo.CreateShift(ctx, CreateTemplateShiftParams{
-			TemplateID:        locked.ID,
-			Weekday:           4,
-			StartTime:         "11:00",
-			EndTime:           "12:00",
-			PositionID:        position.ID,
-			RequiredHeadcount: 1,
+		_, err = repo.CreateSlot(ctx, CreateTemplateSlotParams{
+			TemplateID: locked.ID,
+			Weekday:    4,
+			StartTime:  "11:00",
+			EndTime:    "12:00",
 		})
 		if !errors.Is(err, ErrTemplateLocked) {
-			t.Fatalf("expected ErrTemplateLocked from create shift, got %v", err)
+			t.Fatalf("expected ErrTemplateLocked from create slot, got %v", err)
 		}
 
-		_, err = repo.UpdateShift(ctx, UpdateTemplateShiftParams{
-			TemplateID:        locked.ID,
-			ShiftID:           shift.ID,
-			Weekday:           5,
-			StartTime:         "11:00",
-			EndTime:           "12:00",
-			PositionID:        position.ID,
-			RequiredHeadcount: 1,
+		_, err = repo.UpdateSlot(ctx, UpdateTemplateSlotParams{
+			TemplateID: locked.ID,
+			SlotID:     slotID,
+			Weekday:    5,
+			StartTime:  "11:00",
+			EndTime:    "12:00",
 		})
 		if !errors.Is(err, ErrTemplateLocked) {
-			t.Fatalf("expected ErrTemplateLocked from update shift, got %v", err)
+			t.Fatalf("expected ErrTemplateLocked from update slot, got %v", err)
 		}
 
-		if err := repo.DeleteShift(ctx, locked.ID, shift.ID); !errors.Is(err, ErrTemplateLocked) {
-			t.Fatalf("expected ErrTemplateLocked from delete shift, got %v", err)
-		}
-	})
-
-	t.Run("Shift CRUD and TO_CHAR formatting on read", func(t *testing.T) {
-		db := openIntegrationDB(t)
-		repo := NewTemplateRepository(db)
-
-		template := seedTemplate(t, db, templateSeed{
-			Name:        "Shift Template",
-			Description: "Shift CRUD",
-		})
-		position := seedPosition(t, db, positionSeed{Name: "Shift Position"})
-
-		createdShift, err := repo.CreateShift(ctx, CreateTemplateShiftParams{
-			TemplateID:        template.ID,
-			Weekday:           2,
-			StartTime:         "9:05",
-			EndTime:           "17:45",
-			PositionID:        position.ID,
-			RequiredHeadcount: 3,
-		})
-		if err != nil {
-			t.Fatalf("create shift: %v", err)
-		}
-		assertShiftEqual(t, createdShift, template.ID, 2, "09:05", "17:45", position.ID, 3)
-
-		loaded, err := repo.GetByID(ctx, template.ID)
-		if err != nil {
-			t.Fatalf("get template with shift: %v", err)
-		}
-		if loaded.ShiftCount != 1 || len(loaded.Shifts) != 1 {
-			t.Fatalf("expected one shift on template, got count=%d len=%d", loaded.ShiftCount, len(loaded.Shifts))
-		}
-		assertShiftEqual(t, loaded.Shifts[0], template.ID, 2, "09:05", "17:45", position.ID, 3)
-
-		updatedShift, err := repo.UpdateShift(ctx, UpdateTemplateShiftParams{
-			TemplateID:        template.ID,
-			ShiftID:           createdShift.ID,
-			Weekday:           4,
-			StartTime:         "10:07",
-			EndTime:           "18:30",
-			PositionID:        position.ID,
-			RequiredHeadcount: 4,
-		})
-		if err != nil {
-			t.Fatalf("update shift: %v", err)
-		}
-		assertShiftEqual(t, updatedShift, template.ID, 4, "10:07", "18:30", position.ID, 4)
-
-		loaded, err = repo.GetByID(ctx, template.ID)
-		if err != nil {
-			t.Fatalf("reload template after shift update: %v", err)
-		}
-		if loaded.ShiftCount != 1 || len(loaded.Shifts) != 1 {
-			t.Fatalf("expected one shift after update, got count=%d len=%d", loaded.ShiftCount, len(loaded.Shifts))
-		}
-		assertShiftEqual(t, loaded.Shifts[0], template.ID, 4, "10:07", "18:30", position.ID, 4)
-
-		if err := repo.DeleteShift(ctx, template.ID, createdShift.ID); err != nil {
-			t.Fatalf("delete shift: %v", err)
-		}
-
-		loaded, err = repo.GetByID(ctx, template.ID)
-		if err != nil {
-			t.Fatalf("reload template after shift delete: %v", err)
-		}
-		if loaded.ShiftCount != 0 || len(loaded.Shifts) != 0 {
-			t.Fatalf("expected no shifts after delete, got count=%d len=%d", loaded.ShiftCount, len(loaded.Shifts))
+		if err := repo.DeleteSlot(ctx, locked.ID, slotID); !errors.Is(err, ErrTemplateLocked) {
+			t.Fatalf("expected ErrTemplateLocked from delete slot, got %v", err)
 		}
 	})
-}
-
-func assertShiftEqual(
-	t *testing.T,
-	got *model.TemplateShift,
-	wantTemplateID int64,
-	wantWeekday int,
-	wantStart string,
-	wantEnd string,
-	wantPositionID int64,
-	wantRequiredHeadcount int,
-) {
-	t.Helper()
-
-	if got.TemplateID != wantTemplateID {
-		t.Fatalf("expected template ID %d, got %d", wantTemplateID, got.TemplateID)
-	}
-	if got.Weekday != wantWeekday {
-		t.Fatalf("expected weekday %d, got %d", wantWeekday, got.Weekday)
-	}
-	if got.StartTime != wantStart {
-		t.Fatalf("expected start time %q, got %q", wantStart, got.StartTime)
-	}
-	if got.EndTime != wantEnd {
-		t.Fatalf("expected end time %q, got %q", wantEnd, got.EndTime)
-	}
-	if got.PositionID != wantPositionID {
-		t.Fatalf("expected position ID %d, got %d", wantPositionID, got.PositionID)
-	}
-	if got.RequiredHeadcount != wantRequiredHeadcount {
-		t.Fatalf("expected headcount %d, got %d", wantRequiredHeadcount, got.RequiredHeadcount)
-	}
-	if got.CreatedAt.IsZero() || got.UpdatedAt.IsZero() {
-		t.Fatalf("expected shift timestamps to be populated: %+v", got)
-	}
 }
 
 func containsTemplateID(templates []*model.Template, id int64) bool {

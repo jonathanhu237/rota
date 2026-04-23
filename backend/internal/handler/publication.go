@@ -69,8 +69,10 @@ type createSubmissionRequest struct {
 }
 
 type createAssignmentRequest struct {
-	UserID          int64 `json:"user_id"`
-	TemplateShiftID int64 `json:"template_shift_id"`
+	UserID          int64  `json:"user_id"`
+	SlotID          int64  `json:"slot_id"`
+	PositionID      int64  `json:"position_id"`
+	TemplateShiftID *int64 `json:"template_shift_id"`
 }
 
 func NewPublicationHandler(publicationService publicationService) *PublicationHandler {
@@ -347,15 +349,16 @@ func (h *PublicationHandler) CreateAssignment(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
 		return
 	}
-	if req.UserID <= 0 || req.TemplateShiftID <= 0 {
+	if req.TemplateShiftID != nil || req.UserID <= 0 || req.SlotID <= 0 || req.PositionID <= 0 {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
 		return
 	}
 
 	if _, err := h.publicationService.CreateAssignment(r.Context(), service.CreateAssignmentInput{
-		PublicationID:   publicationID,
-		UserID:          req.UserID,
-		TemplateShiftID: req.TemplateShiftID,
+		PublicationID: publicationID,
+		UserID:        req.UserID,
+		SlotID:        req.SlotID,
+		PositionID:    req.PositionID,
 	}); err != nil {
 		h.writePublicationServiceError(w, err)
 		return
@@ -469,47 +472,63 @@ func (h *PublicationHandler) GetCurrentRoster(w http.ResponseWriter, r *http.Req
 }
 
 func newAssignmentBoardResponse(result *service.AssignmentBoardResult) assignmentBoardResponse {
-	responseShifts := make([]assignmentBoardShiftResponse, 0, len(result.Shifts))
-	for _, shiftResult := range result.Shifts {
-		candidates := make([]assignmentCandidateResponse, 0, len(shiftResult.Candidates))
-		for _, candidate := range shiftResult.Candidates {
-			candidates = append(candidates, assignmentCandidateResponse{
-				UserID: candidate.UserID,
-				Name:   candidate.Name,
-				Email:  candidate.Email,
+	if result == nil {
+		return assignmentBoardResponse{
+			Publication: nil,
+			Slots:       make([]assignmentBoardSlotResponse, 0),
+		}
+	}
+
+	responseSlots := make([]assignmentBoardSlotResponse, 0, len(result.Slots))
+	for _, slotResult := range result.Slots {
+		positions := make([]assignmentBoardPositionResponse, 0, len(slotResult.Positions))
+		for _, positionResult := range slotResult.Positions {
+			candidates := make([]assignmentCandidateResponse, 0, len(positionResult.Candidates))
+			for _, candidate := range positionResult.Candidates {
+				candidates = append(candidates, assignmentCandidateResponse{
+					UserID: candidate.UserID,
+					Name:   candidate.Name,
+					Email:  candidate.Email,
+				})
+			}
+
+			nonCandidateQualified := make([]assignmentCandidateResponse, 0, len(positionResult.NonCandidateQualified))
+			for _, candidate := range positionResult.NonCandidateQualified {
+				nonCandidateQualified = append(nonCandidateQualified, assignmentCandidateResponse{
+					UserID: candidate.UserID,
+					Name:   candidate.Name,
+					Email:  candidate.Email,
+				})
+			}
+
+			assignments := make([]assignmentResponse, 0, len(positionResult.Assignments))
+			for _, assignment := range positionResult.Assignments {
+				assignments = append(assignments, assignmentResponse{
+					AssignmentID: assignment.AssignmentID,
+					UserID:       assignment.UserID,
+					Name:         assignment.Name,
+					Email:        assignment.Email,
+				})
+			}
+
+			positions = append(positions, assignmentBoardPositionResponse{
+				Position:              newPublicationPositionResponse(positionResult.Position),
+				RequiredHeadcount:     positionResult.RequiredHeadcount,
+				Candidates:            candidates,
+				NonCandidateQualified: nonCandidateQualified,
+				Assignments:           assignments,
 			})
 		}
 
-		nonCandidateQualified := make([]assignmentCandidateResponse, 0, len(shiftResult.NonCandidateQualified))
-		for _, candidate := range shiftResult.NonCandidateQualified {
-			nonCandidateQualified = append(nonCandidateQualified, assignmentCandidateResponse{
-				UserID: candidate.UserID,
-				Name:   candidate.Name,
-				Email:  candidate.Email,
-			})
-		}
-
-		assignments := make([]assignmentResponse, 0, len(shiftResult.Assignments))
-		for _, assignment := range shiftResult.Assignments {
-			assignments = append(assignments, assignmentResponse{
-				AssignmentID: assignment.AssignmentID,
-				UserID:       assignment.UserID,
-				Name:         assignment.Name,
-				Email:        assignment.Email,
-			})
-		}
-
-		responseShifts = append(responseShifts, assignmentBoardShiftResponse{
-			Shift:                 newPublicationShiftResponse(shiftResult.Shift),
-			Candidates:            candidates,
-			NonCandidateQualified: nonCandidateQualified,
-			Assignments:           assignments,
+		responseSlots = append(responseSlots, assignmentBoardSlotResponse{
+			Slot:      newPublicationSlotResponse(slotResult.Slot),
+			Positions: positions,
 		})
 	}
 
 	return assignmentBoardResponse{
 		Publication: newPublicationResponse(result.Publication),
-		Shifts:      responseShifts,
+		Slots:       responseSlots,
 	}
 }
 
@@ -523,25 +542,34 @@ func newRosterResponse(result *service.RosterResult) rosterResponse {
 
 	weekdays := make([]rosterWeekdayResponse, 0, len(result.Weekdays))
 	for _, weekday := range result.Weekdays {
-		shifts := make([]rosterShiftResponse, 0, len(weekday.Shifts))
-		for _, shiftResult := range weekday.Shifts {
-			assignments := make([]rosterAssignmentResponse, 0, len(shiftResult.Assignments))
-			for _, assignment := range shiftResult.Assignments {
-				assignments = append(assignments, rosterAssignmentResponse{
-					UserID: assignment.UserID,
-					Name:   assignment.Name,
+		slots := make([]rosterSlotResponse, 0, len(weekday.Slots))
+		for _, slotResult := range weekday.Slots {
+			positions := make([]rosterPositionResponse, 0, len(slotResult.Positions))
+			for _, positionResult := range slotResult.Positions {
+				assignments := make([]rosterAssignmentResponse, 0, len(positionResult.Assignments))
+				for _, assignment := range positionResult.Assignments {
+					assignments = append(assignments, rosterAssignmentResponse{
+						UserID: assignment.UserID,
+						Name:   assignment.Name,
+					})
+				}
+
+				positions = append(positions, rosterPositionResponse{
+					Position:          newPublicationPositionResponse(positionResult.Position),
+					RequiredHeadcount: positionResult.RequiredHeadcount,
+					Assignments:       assignments,
 				})
 			}
 
-			shifts = append(shifts, rosterShiftResponse{
-				Shift:       newPublicationShiftResponse(shiftResult.Shift),
-				Assignments: assignments,
+			slots = append(slots, rosterSlotResponse{
+				Slot:      newPublicationSlotResponse(slotResult.Slot),
+				Positions: positions,
 			})
 		}
 
 		weekdays = append(weekdays, rosterWeekdayResponse{
 			Weekday: weekday.Weekday,
-			Shifts:  shifts,
+			Slots:   slots,
 		})
 	}
 
@@ -577,10 +605,18 @@ func (h *PublicationHandler) writePublicationServiceError(w http.ResponseWriter,
 		writeError(w, http.StatusNotFound, "TEMPLATE_NOT_FOUND", "Template not found")
 	case errors.Is(err, service.ErrTemplateShiftNotFound):
 		writeError(w, http.StatusNotFound, "TEMPLATE_SHIFT_NOT_FOUND", "Template shift not found")
+	case errors.Is(err, service.ErrTemplateSlotNotFound):
+		writeError(w, http.StatusNotFound, "TEMPLATE_SLOT_NOT_FOUND", "Template slot not found")
+	case errors.Is(err, service.ErrTemplateSlotPositionNotFound):
+		writeError(w, http.StatusNotFound, "TEMPLATE_SLOT_POSITION_NOT_FOUND", "Template slot position not found")
 	case errors.Is(err, service.ErrUserNotFound):
 		writeError(w, http.StatusNotFound, "USER_NOT_FOUND", "User not found")
 	case errors.Is(err, service.ErrUserDisabled):
 		writeError(w, http.StatusConflict, "USER_DISABLED", "User is disabled")
+	case errors.Is(err, service.ErrAssignmentUserAlreadyInSlot):
+		writeError(w, http.StatusConflict, "ASSIGNMENT_USER_ALREADY_IN_SLOT", "User is already assigned in this slot")
+	case errors.Is(err, service.ErrAssignmentTimeConflict):
+		writeError(w, http.StatusConflict, "ASSIGNMENT_TIME_CONFLICT", "Assignment time conflict")
 	case errors.Is(err, service.ErrNotQualified):
 		writeError(w, http.StatusForbidden, "NOT_QUALIFIED", "User is not qualified for this shift")
 	default:

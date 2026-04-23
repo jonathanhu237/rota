@@ -6,14 +6,16 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
 import { CloneTemplateDialog } from "@/components/templates/clone-template-dialog"
-import { DeleteTemplateShiftDialog } from "@/components/templates/delete-template-shift-dialog"
+import { DeleteTemplateEntryDialog } from "@/components/templates/delete-template-entry-dialog"
 import { DeleteTemplateDialog } from "@/components/templates/delete-template-dialog"
-import { groupTemplateShiftsByWeekday } from "@/components/templates/group-template-shifts"
-import { TemplateShiftDialog } from "@/components/templates/template-shift-dialog"
+import { groupTemplateSlotsByWeekday } from "@/components/templates/group-template-slots"
+import { TemplateSlotDialog } from "@/components/templates/template-slot-dialog"
+import { TemplateSlotPositionDialog } from "@/components/templates/template-slot-position-dialog"
 import {
   createTemplateSchema,
   type TemplateFormValues,
-  type TemplateShiftFormValues,
+  type TemplateSlotFormValues,
+  type TemplateSlotPositionFormValues,
 } from "@/components/templates/template-schemas"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -33,15 +35,18 @@ import { getTranslatedApiError } from "@/lib/api-error"
 import {
   allPositionsQueryOptions,
   cloneTemplate,
-  createTemplateShift,
+  createTemplateSlot,
+  createTemplateSlotPosition,
   currentUserQueryOptions,
   deleteTemplate,
-  deleteTemplateShift,
+  deleteTemplateSlot,
+  deleteTemplateSlotPosition,
   templateQueryOptions,
   updateTemplate,
-  updateTemplateShift,
+  updateTemplateSlot,
+  updateTemplateSlotPosition,
 } from "@/lib/queries"
-import type { TemplateShift } from "@/lib/types"
+import type { TemplateSlot, TemplateSlotPosition } from "@/lib/types"
 
 export const Route = createFileRoute("/_authenticated/templates/$templateId")({
   beforeLoad: async ({ context }) => {
@@ -53,10 +58,16 @@ export const Route = createFileRoute("/_authenticated/templates/$templateId")({
   component: TemplateDetailPage,
 })
 
-type ShiftDialogState = {
+type SlotDialogState = {
   mode: "create" | "edit"
   initialWeekday?: number
-  shift: TemplateShift | null
+  slot: TemplateSlot | null
+}
+
+type SlotPositionDialogState = {
+  mode: "create" | "edit"
+  slot: TemplateSlot
+  positionEntry: TemplateSlotPosition | null
 }
 
 function TemplateDetailPage() {
@@ -70,12 +81,18 @@ function TemplateDetailPage() {
 
   const [isCloneDialogOpen, setIsCloneDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
-  const [shiftPendingDeletion, setShiftPendingDeletion] = useState<TemplateShift | null>(
+  const [slotPendingDeletion, setSlotPendingDeletion] = useState<TemplateSlot | null>(
     null,
   )
-  const [shiftDialogState, setShiftDialogState] = useState<ShiftDialogState | null>(
+  const [slotPositionPendingDeletion, setSlotPositionPendingDeletion] = useState<{
+    slot: TemplateSlot
+    positionEntry: TemplateSlotPosition
+  } | null>(null)
+  const [slotDialogState, setSlotDialogState] = useState<SlotDialogState | null>(
     null,
   )
+  const [slotPositionDialogState, setSlotPositionDialogState] =
+    useState<SlotPositionDialogState | null>(null)
 
   const { data: currentUser } = useQuery(currentUserQueryOptions)
   const templateQuery = useQuery(templateQueryOptions(numericTemplateID))
@@ -132,6 +149,18 @@ function TemplateDetailPage() {
     ])
   }
 
+  const showTemplateError = (error: unknown) => {
+    toast({
+      variant: "destructive",
+      description: getTranslatedApiError(
+        t,
+        error,
+        "templates.errors",
+        "templates.errors.INTERNAL_ERROR",
+      ),
+    })
+  }
+
   const updateTemplateMutation = useMutation({
     mutationFn: (values: TemplateFormValues) =>
       updateTemplate(numericTemplateID, values),
@@ -142,17 +171,7 @@ function TemplateDetailPage() {
         description: t("templates.success.updated"),
       })
     },
-    onError: (error) => {
-      toast({
-        variant: "destructive",
-        description: getTranslatedApiError(
-          t,
-          error,
-          "templates.errors",
-          "templates.errors.INTERNAL_ERROR",
-        ),
-      })
-    },
+    onError: showTemplateError,
   })
 
   const cloneTemplateMutation = useMutation({
@@ -169,17 +188,7 @@ function TemplateDetailPage() {
         params: { templateId: String(clonedTemplate.id) },
       })
     },
-    onError: (error) => {
-      toast({
-        variant: "destructive",
-        description: getTranslatedApiError(
-          t,
-          error,
-          "templates.errors",
-          "templates.errors.INTERNAL_ERROR",
-        ),
-      })
-    },
+    onError: showTemplateError,
   })
 
   const deleteTemplateMutation = useMutation({
@@ -193,93 +202,119 @@ function TemplateDetailPage() {
       })
       navigate({ to: "/templates" })
     },
-    onError: (error) => {
-      toast({
-        variant: "destructive",
-        description: getTranslatedApiError(
-          t,
-          error,
-          "templates.errors",
-          "templates.errors.INTERNAL_ERROR",
-        ),
-      })
-    },
+    onError: showTemplateError,
   })
 
-  const createShiftMutation = useMutation({
-    mutationFn: (values: TemplateShiftFormValues) =>
-      createTemplateShift(numericTemplateID, values),
+  const createSlotMutation = useMutation({
+    mutationFn: (values: TemplateSlotFormValues) =>
+      createTemplateSlot(numericTemplateID, values),
     onSuccess: async () => {
-      setShiftDialogState(null)
+      setSlotDialogState(null)
       await invalidateTemplateDetail()
       toast({
         variant: "default",
-        description: t("templates.success.shiftCreated"),
+        description: t("templates.success.slotCreated"),
       })
     },
-    onError: (error) => {
-      toast({
-        variant: "destructive",
-        description: getTranslatedApiError(
-          t,
-          error,
-          "templates.errors",
-          "templates.errors.INTERNAL_ERROR",
-        ),
-      })
-    },
+    onError: showTemplateError,
   })
 
-  const updateShiftMutation = useMutation({
+  const updateSlotMutation = useMutation({
     mutationFn: ({
-      shiftID,
+      slotID,
       values,
     }: {
-      shiftID: number
-      values: TemplateShiftFormValues
-    }) => updateTemplateShift(numericTemplateID, shiftID, values),
+      slotID: number
+      values: TemplateSlotFormValues
+    }) => updateTemplateSlot(numericTemplateID, slotID, values),
     onSuccess: async () => {
-      setShiftDialogState(null)
+      setSlotDialogState(null)
       await invalidateTemplateDetail()
       toast({
         variant: "default",
-        description: t("templates.success.shiftUpdated"),
+        description: t("templates.success.slotUpdated"),
       })
     },
-    onError: (error) => {
-      toast({
-        variant: "destructive",
-        description: getTranslatedApiError(
-          t,
-          error,
-          "templates.errors",
-          "templates.errors.INTERNAL_ERROR",
-        ),
-      })
-    },
+    onError: showTemplateError,
   })
 
-  const deleteShiftMutation = useMutation({
-    mutationFn: (shiftID: number) => deleteTemplateShift(numericTemplateID, shiftID),
+  const deleteSlotMutation = useMutation({
+    mutationFn: (slotID: number) => deleteTemplateSlot(numericTemplateID, slotID),
     onSuccess: async () => {
-      setShiftPendingDeletion(null)
+      setSlotPendingDeletion(null)
       await invalidateTemplateDetail()
       toast({
         variant: "default",
-        description: t("templates.success.shiftDeleted"),
+        description: t("templates.success.slotDeleted"),
       })
     },
-    onError: (error) => {
+    onError: showTemplateError,
+  })
+
+  const createSlotPositionMutation = useMutation({
+    mutationFn: ({
+      slotID,
+      values,
+    }: {
+      slotID: number
+      values: TemplateSlotPositionFormValues
+    }) => createTemplateSlotPosition(numericTemplateID, slotID, values),
+    onSuccess: async () => {
+      setSlotPositionDialogState(null)
+      await invalidateTemplateDetail()
       toast({
-        variant: "destructive",
-        description: getTranslatedApiError(
-          t,
-          error,
-          "templates.errors",
-          "templates.errors.INTERNAL_ERROR",
-        ),
+        variant: "default",
+        description: t("templates.success.positionCreated"),
       })
     },
+    onError: showTemplateError,
+  })
+
+  const updateSlotPositionMutation = useMutation({
+    mutationFn: ({
+      slotID,
+      positionEntryID,
+      values,
+    }: {
+      slotID: number
+      positionEntryID: number
+      values: TemplateSlotPositionFormValues
+    }) =>
+      updateTemplateSlotPosition(
+        numericTemplateID,
+        slotID,
+        positionEntryID,
+        values,
+      ),
+    onSuccess: async () => {
+      setSlotPositionDialogState(null)
+      await invalidateTemplateDetail()
+      toast({
+        variant: "default",
+        description: t("templates.success.positionUpdated"),
+      })
+    },
+    onError: showTemplateError,
+  })
+
+  const deleteSlotPositionMutation = useMutation({
+    mutationFn: ({
+      slotID,
+      positionEntryID,
+    }: {
+      slotID: number
+      positionEntryID: number
+    }) =>
+      deleteTemplateSlotPosition(numericTemplateID, slotID, positionEntryID),
+    onSuccess: async () => {
+      setSlotPositionPendingDeletion(null)
+      await invalidateTemplateDetail()
+      toast({
+        variant: "default",
+        description: t("templates.success.positionDeleted"),
+      })
+    },
+    onError: showTemplateError,
   })
 
   if (templateQuery.isLoading) {
@@ -305,21 +340,37 @@ function TemplateDetailPage() {
   const positionsByID = new Map(
     (positionsQuery.data ?? []).map((position) => [position.id, position]),
   )
-  const groupedShifts = groupTemplateShiftsByWeekday(template.shifts ?? [])
+  const groupedSlots = groupTemplateSlotsByWeekday(template.slots ?? [])
   const isLocked = template.is_locked
-  const shiftMutationPending =
-    createShiftMutation.isPending || updateShiftMutation.isPending
+  const canManagePositions =
+    !positionsQuery.isLoading &&
+    !positionsQuery.isError &&
+    (positionsQuery.data?.length ?? 0) > 0
+  const slotMutationPending =
+    createSlotMutation.isPending || updateSlotMutation.isPending
+  const slotPositionMutationPending =
+    createSlotPositionMutation.isPending || updateSlotPositionMutation.isPending
 
-  const getShiftSummary = (shift: TemplateShift) => {
+  const getSlotSummary = (slot: TemplateSlot) =>
+    t("templates.deleteSlotDialog.summary", {
+      weekday: t(weekdayKeyMap[slot.weekday]),
+      startTime: slot.start_time,
+      endTime: slot.end_time,
+    })
+
+  const getSlotPositionSummary = (
+    slot: TemplateSlot,
+    positionEntry: TemplateSlotPosition,
+  ) => {
     const positionName =
-      positionsByID.get(shift.position_id)?.name ?? t("templates.unknownPosition")
+      positionsByID.get(positionEntry.position_id)?.name ??
+      t("templates.unknownPosition")
 
-    return t("templates.deleteShiftDialog.summary", {
+    return t("templates.deletePositionDialog.summary", {
       positionName,
-      weekday: t(weekdayKeyMap[shift.weekday]),
-      startTime: shift.start_time,
-      endTime: shift.end_time,
-      headcount: shift.required_headcount,
+      startTime: slot.start_time,
+      endTime: slot.end_time,
+      headcount: positionEntry.required_headcount,
     })
   }
 
@@ -414,26 +465,21 @@ function TemplateDetailPage() {
         <Card>
           <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-1">
-              <CardTitle>{t("templates.shiftsTitle")}</CardTitle>
-              <CardDescription>{t("templates.shiftsDescription")}</CardDescription>
+              <CardTitle>{t("templates.slotsTitle")}</CardTitle>
+              <CardDescription>{t("templates.slotsDescription")}</CardDescription>
             </div>
             <Button
               type="button"
               onClick={() =>
-                setShiftDialogState({
+                setSlotDialogState({
                   mode: "create",
                   initialWeekday: 1,
-                  shift: null,
+                  slot: null,
                 })
               }
-              disabled={
-                isLocked ||
-                positionsQuery.isLoading ||
-                positionsQuery.isError ||
-                (positionsQuery.data?.length ?? 0) === 0
-              }
+              disabled={isLocked}
             >
-              {t("templates.actions.addShift")}
+              {t("templates.actions.addSlot")}
             </Button>
           </CardHeader>
           <CardContent className="grid gap-6">
@@ -442,13 +488,13 @@ function TemplateDetailPage() {
                 {t("templates.positionsLoadError")}
               </p>
             )}
-            {(positionsQuery.data?.length ?? 0) === 0 && !positionsQuery.isLoading && (
+            {!canManagePositions && !positionsQuery.isLoading && (
               <p className="text-sm text-muted-foreground">
                 {t("templates.noPositions")}
               </p>
             )}
             {weekdayList.map((weekday) => {
-              const shifts = groupedShifts[weekday]
+              const slots = groupedSlots[weekday]
 
               return (
                 <section key={weekday} className="grid gap-3">
@@ -461,45 +507,41 @@ function TemplateDetailPage() {
                       variant="outline"
                       size="sm"
                       onClick={() =>
-                        setShiftDialogState({
+                        setSlotDialogState({
                           mode: "create",
                           initialWeekday: weekday,
-                          shift: null,
+                          slot: null,
                         })
                       }
-                      disabled={
-                        isLocked ||
-                        positionsQuery.isLoading ||
-                        positionsQuery.isError ||
-                        (positionsQuery.data?.length ?? 0) === 0
-                      }
+                      disabled={isLocked}
                     >
-                      {t("templates.actions.addShift")}
+                      {t("templates.actions.addSlot")}
                     </Button>
                   </div>
-                  {shifts.length === 0 && (
+                  {slots.length === 0 && (
                     <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                      {t("templates.noShiftsForWeekday")}
+                      {t("templates.noSlotsForWeekday")}
                     </div>
                   )}
-                  {shifts.map((shift) => {
-                    const position = positionsByID.get(shift.position_id)
-
-                    return (
-                      <div
-                        key={shift.id}
-                        className="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between"
-                      >
+                  {slots.map((slot) => (
+                    <article
+                      key={slot.id}
+                      className="grid gap-4 rounded-xl border p-4"
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="grid gap-1">
                           <div className="font-medium">
-                            {position?.name ?? t("templates.unknownPosition")}
+                            {t("templates.slot.summary", {
+                              startTime: slot.start_time,
+                              endTime: slot.end_time,
+                            })}
                           </div>
                           <div className="text-sm text-muted-foreground">
-                            {t("templates.shift.summary", {
-                              startTime: shift.start_time,
-                              endTime: shift.end_time,
-                              headcount: shift.required_headcount,
-                            })}
+                            {slot.positions.length === 0
+                              ? t("templates.noPositionsForSlot")
+                              : t("templates.slot.positionsCount", {
+                                  count: slot.positions.length,
+                                })}
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -509,28 +551,106 @@ function TemplateDetailPage() {
                             variant="outline"
                             disabled={isLocked}
                             onClick={() =>
-                              setShiftDialogState({
+                              setSlotDialogState({
                                 mode: "edit",
-                                initialWeekday: shift.weekday,
-                                shift,
+                                initialWeekday: slot.weekday,
+                                slot,
                               })
                             }
                           >
-                            {t("templates.actions.editShift")}
+                            {t("templates.actions.editSlot")}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={isLocked || !canManagePositions}
+                            onClick={() =>
+                              setSlotPositionDialogState({
+                                mode: "create",
+                                slot,
+                                positionEntry: null,
+                              })
+                            }
+                          >
+                            {t("templates.actions.addPosition")}
                           </Button>
                           <Button
                             type="button"
                             size="sm"
                             variant="destructive"
-                            disabled={isLocked || deleteShiftMutation.isPending}
-                            onClick={() => setShiftPendingDeletion(shift)}
+                            disabled={isLocked || deleteSlotMutation.isPending}
+                            onClick={() => setSlotPendingDeletion(slot)}
                           >
-                            {t("templates.actions.deleteShift")}
+                            {t("templates.actions.deleteSlot")}
                           </Button>
                         </div>
                       </div>
-                    )
-                  })}
+
+                      {slot.positions.length === 0 ? (
+                        <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                          {t("templates.noPositionsForSlot")}
+                        </div>
+                      ) : (
+                        <div className="grid gap-3">
+                          {slot.positions.map((positionEntry) => {
+                            const positionName =
+                              positionsByID.get(positionEntry.position_id)?.name ??
+                              t("templates.unknownPosition")
+
+                            return (
+                              <div
+                                key={positionEntry.id}
+                                className="flex flex-col gap-3 rounded-xl border border-dashed p-4 sm:flex-row sm:items-center sm:justify-between"
+                              >
+                                <div className="grid gap-1">
+                                  <div className="font-medium">{positionName}</div>
+                                  <div className="text-sm text-muted-foreground">
+                                    {t("templates.position.summary", {
+                                      headcount: positionEntry.required_headcount,
+                                    })}
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={isLocked || !canManagePositions}
+                                    onClick={() =>
+                                      setSlotPositionDialogState({
+                                        mode: "edit",
+                                        slot,
+                                        positionEntry,
+                                      })
+                                    }
+                                  >
+                                    {t("templates.actions.editPosition")}
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="destructive"
+                                    disabled={
+                                      isLocked || deleteSlotPositionMutation.isPending
+                                    }
+                                    onClick={() =>
+                                      setSlotPositionPendingDeletion({
+                                        slot,
+                                        positionEntry,
+                                      })
+                                    }
+                                  >
+                                    {t("templates.actions.deletePosition")}
+                                  </Button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </article>
+                  ))}
                 </section>
               )
             })}
@@ -538,28 +658,62 @@ function TemplateDetailPage() {
         </Card>
       </div>
 
-      <TemplateShiftDialog
-        mode={shiftDialogState?.mode ?? "create"}
-        open={shiftDialogState !== null}
-        initialWeekday={shiftDialogState?.initialWeekday}
-        positions={positionsQuery.data ?? []}
-        shift={shiftDialogState?.shift ?? null}
-        isPending={shiftMutationPending}
+      <TemplateSlotDialog
+        mode={slotDialogState?.mode ?? "create"}
+        open={slotDialogState !== null}
+        initialWeekday={slotDialogState?.initialWeekday}
+        slot={slotDialogState?.slot ?? null}
+        isPending={slotMutationPending}
         onOpenChange={(open) => {
           if (!open) {
-            setShiftDialogState(null)
+            setSlotDialogState(null)
           }
         }}
         onSubmit={(values) => {
-          if (shiftDialogState?.mode === "edit" && shiftDialogState.shift) {
-            updateShiftMutation.mutate({
-              shiftID: shiftDialogState.shift.id,
+          if (slotDialogState?.mode === "edit" && slotDialogState.slot) {
+            updateSlotMutation.mutate({
+              slotID: slotDialogState.slot.id,
               values,
             })
             return
           }
 
-          createShiftMutation.mutate(values)
+          createSlotMutation.mutate(values)
+        }}
+      />
+
+      <TemplateSlotPositionDialog
+        mode={slotPositionDialogState?.mode ?? "create"}
+        open={slotPositionDialogState !== null}
+        positions={positionsQuery.data ?? []}
+        positionEntry={slotPositionDialogState?.positionEntry ?? null}
+        isPending={slotPositionMutationPending}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSlotPositionDialogState(null)
+          }
+        }}
+        onSubmit={(values) => {
+          if (!slotPositionDialogState) {
+            return
+          }
+
+          if (
+            slotPositionDialogState.mode === "edit" &&
+            slotPositionDialogState.positionEntry
+          ) {
+            updateSlotPositionMutation.mutate({
+              slotID: slotPositionDialogState.slot.id,
+              positionEntryID: slotPositionDialogState.positionEntry.id,
+              values,
+            })
+            return
+          }
+
+          createSlotPositionMutation.mutate({
+            slotID: slotPositionDialogState.slot.id,
+            values,
+          })
         }}
       />
 
@@ -571,22 +725,56 @@ function TemplateDetailPage() {
         onOpenChange={setIsCloneDialogOpen}
       />
 
-      <DeleteTemplateShiftDialog
-        open={shiftPendingDeletion !== null}
-        isPending={deleteShiftMutation.isPending}
-        summary={
-          shiftPendingDeletion ? getShiftSummary(shiftPendingDeletion) : ""
-        }
+      <DeleteTemplateEntryDialog
+        open={slotPendingDeletion !== null}
+        isPending={deleteSlotMutation.isPending}
+        titleKey="templates.deleteSlotDialog.title"
+        descriptionKey="templates.deleteSlotDialog.description"
+        confirmKey="templates.deleteSlotDialog.confirm"
+        pendingKey="templates.deleteSlotDialog.submitting"
+        summary={slotPendingDeletion ? getSlotSummary(slotPendingDeletion) : ""}
         onConfirm={() => {
-          if (!shiftPendingDeletion) {
+          if (!slotPendingDeletion) {
             return
           }
 
-          deleteShiftMutation.mutate(shiftPendingDeletion.id)
+          deleteSlotMutation.mutate(slotPendingDeletion.id)
         }}
         onOpenChange={(open) => {
           if (!open) {
-            setShiftPendingDeletion(null)
+            setSlotPendingDeletion(null)
+          }
+        }}
+      />
+
+      <DeleteTemplateEntryDialog
+        open={slotPositionPendingDeletion !== null}
+        isPending={deleteSlotPositionMutation.isPending}
+        titleKey="templates.deletePositionDialog.title"
+        descriptionKey="templates.deletePositionDialog.description"
+        confirmKey="templates.deletePositionDialog.confirm"
+        pendingKey="templates.deletePositionDialog.submitting"
+        summary={
+          slotPositionPendingDeletion
+            ? getSlotPositionSummary(
+                slotPositionPendingDeletion.slot,
+                slotPositionPendingDeletion.positionEntry,
+              )
+            : ""
+        }
+        onConfirm={() => {
+          if (!slotPositionPendingDeletion) {
+            return
+          }
+
+          deleteSlotPositionMutation.mutate({
+            slotID: slotPositionPendingDeletion.slot.id,
+            positionEntryID: slotPositionPendingDeletion.positionEntry.id,
+          })
+        }}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSlotPositionPendingDeletion(null)
           }
         }}
       />

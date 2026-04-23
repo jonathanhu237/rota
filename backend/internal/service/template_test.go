@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/jonathanhu237/rota/backend/internal/audit"
 	"github.com/jonathanhu237/rota/backend/internal/audit/audittest"
@@ -14,15 +13,18 @@ import (
 )
 
 type templateRepositoryMock struct {
-	listPaginatedFunc func(ctx context.Context, params repository.ListTemplatesParams) ([]*model.Template, int, error)
-	getByIDFunc       func(ctx context.Context, id int64) (*model.Template, error)
-	createFunc        func(ctx context.Context, params repository.CreateTemplateParams) (*model.Template, error)
-	updateFunc        func(ctx context.Context, params repository.UpdateTemplateParams) (*model.Template, error)
-	deleteFunc        func(ctx context.Context, id int64) error
-	cloneFunc         func(ctx context.Context, id int64, name string) (*model.Template, error)
-	createShiftFunc   func(ctx context.Context, params repository.CreateTemplateShiftParams) (*model.TemplateShift, error)
-	updateShiftFunc   func(ctx context.Context, params repository.UpdateTemplateShiftParams) (*model.TemplateShift, error)
-	deleteShiftFunc   func(ctx context.Context, templateID, shiftID int64) error
+	listPaginatedFunc      func(ctx context.Context, params repository.ListTemplatesParams) ([]*model.Template, int, error)
+	getByIDFunc            func(ctx context.Context, id int64) (*model.Template, error)
+	createFunc             func(ctx context.Context, params repository.CreateTemplateParams) (*model.Template, error)
+	updateFunc             func(ctx context.Context, params repository.UpdateTemplateParams) (*model.Template, error)
+	deleteFunc             func(ctx context.Context, id int64) error
+	cloneFunc              func(ctx context.Context, id int64, name string) (*model.Template, error)
+	createSlotFunc         func(ctx context.Context, params repository.CreateTemplateSlotParams) (*model.TemplateSlot, error)
+	updateSlotFunc         func(ctx context.Context, params repository.UpdateTemplateSlotParams) (*model.TemplateSlot, error)
+	deleteSlotFunc         func(ctx context.Context, templateID, slotID int64) error
+	createSlotPositionFunc func(ctx context.Context, params repository.CreateTemplateSlotPositionParams) (*model.TemplateSlotPosition, error)
+	updateSlotPositionFunc func(ctx context.Context, params repository.UpdateTemplateSlotPositionParams) (*model.TemplateSlotPosition, error)
+	deleteSlotPositionFunc func(ctx context.Context, templateID, slotID, slotPositionID int64) error
 }
 
 func (m *templateRepositoryMock) ListPaginated(ctx context.Context, params repository.ListTemplatesParams) ([]*model.Template, int, error) {
@@ -52,16 +54,28 @@ func (m *templateRepositoryMock) Clone(ctx context.Context, id int64, name strin
 	return m.cloneFunc(ctx, id, name)
 }
 
-func (m *templateRepositoryMock) CreateShift(ctx context.Context, params repository.CreateTemplateShiftParams) (*model.TemplateShift, error) {
-	return m.createShiftFunc(ctx, params)
+func (m *templateRepositoryMock) CreateSlot(ctx context.Context, params repository.CreateTemplateSlotParams) (*model.TemplateSlot, error) {
+	return m.createSlotFunc(ctx, params)
 }
 
-func (m *templateRepositoryMock) UpdateShift(ctx context.Context, params repository.UpdateTemplateShiftParams) (*model.TemplateShift, error) {
-	return m.updateShiftFunc(ctx, params)
+func (m *templateRepositoryMock) UpdateSlot(ctx context.Context, params repository.UpdateTemplateSlotParams) (*model.TemplateSlot, error) {
+	return m.updateSlotFunc(ctx, params)
 }
 
-func (m *templateRepositoryMock) DeleteShift(ctx context.Context, templateID, shiftID int64) error {
-	return m.deleteShiftFunc(ctx, templateID, shiftID)
+func (m *templateRepositoryMock) DeleteSlot(ctx context.Context, templateID, slotID int64) error {
+	return m.deleteSlotFunc(ctx, templateID, slotID)
+}
+
+func (m *templateRepositoryMock) CreateSlotPosition(ctx context.Context, params repository.CreateTemplateSlotPositionParams) (*model.TemplateSlotPosition, error) {
+	return m.createSlotPositionFunc(ctx, params)
+}
+
+func (m *templateRepositoryMock) UpdateSlotPosition(ctx context.Context, params repository.UpdateTemplateSlotPositionParams) (*model.TemplateSlotPosition, error) {
+	return m.updateSlotPositionFunc(ctx, params)
+}
+
+func (m *templateRepositoryMock) DeleteSlotPosition(ctx context.Context, templateID, slotID, slotPositionID int64) error {
+	return m.deleteSlotPositionFunc(ctx, templateID, slotID, slotPositionID)
 }
 
 type positionLookupRepositoryMock struct {
@@ -230,7 +244,7 @@ func TestTemplateServiceCreateTemplate(t *testing.T) {
 }
 
 func TestTemplateServiceGetTemplateByID(t *testing.T) {
-	t.Run("sorts shifts by weekday then start time", func(t *testing.T) {
+	t.Run("sorts slots by weekday, start time, and nested position id", func(t *testing.T) {
 		t.Parallel()
 
 		service := NewTemplateService(
@@ -239,10 +253,25 @@ func TestTemplateServiceGetTemplateByID(t *testing.T) {
 					return &model.Template{
 						ID:   id,
 						Name: "Weekday",
-						Shifts: []*model.TemplateShift{
-							{ID: 3, Weekday: 3, StartTime: "11:00"},
-							{ID: 2, Weekday: 1, StartTime: "12:00"},
-							{ID: 1, Weekday: 1, StartTime: "09:00"},
+						Slots: []*model.TemplateSlot{
+							{
+								ID:        3,
+								Weekday:   3,
+								StartTime: "11:00",
+								Positions: []*model.TemplateSlotPosition{{ID: 31, PositionID: 4}, {ID: 32, PositionID: 2}},
+							},
+							{
+								ID:        2,
+								Weekday:   1,
+								StartTime: "12:00",
+								Positions: []*model.TemplateSlotPosition{{ID: 21, PositionID: 8}},
+							},
+							{
+								ID:        1,
+								Weekday:   1,
+								StartTime: "09:00",
+								Positions: []*model.TemplateSlotPosition{{ID: 12, PositionID: 7}, {ID: 11, PositionID: 3}},
+							},
 						},
 					}, nil
 				},
@@ -256,15 +285,18 @@ func TestTemplateServiceGetTemplateByID(t *testing.T) {
 		}
 
 		gotIDs := []int64{
-			template.Shifts[0].ID,
-			template.Shifts[1].ID,
-			template.Shifts[2].ID,
+			template.Slots[0].ID,
+			template.Slots[1].ID,
+			template.Slots[2].ID,
 		}
 		wantIDs := []int64{1, 2, 3}
 		for i := range wantIDs {
 			if gotIDs[i] != wantIDs[i] {
-				t.Fatalf("expected shift order %v, got %v", wantIDs, gotIDs)
+				t.Fatalf("expected slot order %v, got %v", wantIDs, gotIDs)
 			}
+		}
+		if template.Slots[0].Positions[0].PositionID != 3 || template.Slots[0].Positions[1].PositionID != 7 {
+			t.Fatalf("expected positions to be sorted by position id, got %+v", template.Slots[0].Positions)
 		}
 	})
 
@@ -478,8 +510,8 @@ func TestTemplateServiceCloneTemplate(t *testing.T) {
 						ID:       10,
 						Name:     name,
 						IsLocked: false,
-						Shifts: []*model.TemplateShift{
-							{ID: 1, Weekday: 1},
+						Slots: []*model.TemplateSlot{
+							{ID: 1, Weekday: 1, Positions: []*model.TemplateSlotPosition{{ID: 2, PositionID: 5}}},
 						},
 					}, nil
 				},
@@ -500,8 +532,8 @@ func TestTemplateServiceCloneTemplate(t *testing.T) {
 		if clone.IsLocked {
 			t.Fatal("expected clone to be unlocked")
 		}
-		if len(clone.Shifts) != 1 {
-			t.Fatalf("expected shifts to be cloned, got %+v", clone.Shifts)
+		if len(clone.Slots) != 1 || len(clone.Slots[0].Positions) != 1 {
+			t.Fatalf("expected slots to be cloned, got %+v", clone.Slots)
 		}
 
 		event := stub.FindByAction(audit.ActionTemplateClone)
@@ -618,109 +650,39 @@ func TestTemplateServiceCloneTemplate(t *testing.T) {
 	})
 }
 
-func TestTemplateServiceCreateTemplateShift(t *testing.T) {
+func TestTemplateServiceCreateTemplateSlot(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		now := time.Now()
 		service := NewTemplateService(
 			&templateRepositoryMock{
-				getByIDFunc: func(ctx context.Context, id int64) (*model.Template, error) {
-					return &model.Template{ID: id, IsLocked: false}, nil
-				},
-				createShiftFunc: func(ctx context.Context, params repository.CreateTemplateShiftParams) (*model.TemplateShift, error) {
-					if params.TemplateID != 5 || params.Weekday != 2 || params.StartTime != "09:00" || params.EndTime != "12:00" || params.PositionID != 7 || params.RequiredHeadcount != 3 {
-						t.Fatalf("unexpected create shift params: %+v", params)
+				createSlotFunc: func(ctx context.Context, params repository.CreateTemplateSlotParams) (*model.TemplateSlot, error) {
+					if params.TemplateID != 5 || params.Weekday != 2 || params.StartTime != "09:00" || params.EndTime != "12:00" {
+						t.Fatalf("unexpected create slot params: %+v", params)
 					}
-					return &model.TemplateShift{
-						ID:                1,
-						TemplateID:        params.TemplateID,
-						Weekday:           params.Weekday,
-						StartTime:         params.StartTime,
-						EndTime:           params.EndTime,
-						PositionID:        params.PositionID,
-						RequiredHeadcount: params.RequiredHeadcount,
-						CreatedAt:         now,
-						UpdatedAt:         now,
+					return &model.TemplateSlot{
+						ID:         1,
+						TemplateID: params.TemplateID,
+						Weekday:    params.Weekday,
+						StartTime:  params.StartTime,
+						EndTime:    params.EndTime,
 					}, nil
 				},
 			},
-			&positionLookupRepositoryMock{
-				getByIDFunc: func(ctx context.Context, id int64) (*model.Position, error) {
-					return &model.Position{ID: id}, nil
-				},
-			},
+			&positionLookupRepositoryMock{},
 		)
 
-		stub := audittest.New()
-		ctx := stub.ContextWith(context.Background())
-
-		shift, err := service.CreateTemplateShift(ctx, CreateTemplateShiftInput{
-			TemplateID:        5,
-			Weekday:           2,
-			StartTime:         "09:00",
-			EndTime:           "12:00",
-			PositionID:        7,
-			RequiredHeadcount: 3,
+		slot, err := service.CreateTemplateSlot(context.Background(), CreateTemplateSlotInput{
+			TemplateID: 5,
+			Weekday:    2,
+			StartTime:  "09:00",
+			EndTime:    "12:00",
 		})
 		if err != nil {
-			t.Fatalf("CreateTemplateShift returned error: %v", err)
+			t.Fatalf("CreateTemplateSlot returned error: %v", err)
 		}
-		if shift.Weekday != 2 || shift.StartTime != "09:00" || shift.EndTime != "12:00" {
-			t.Fatalf("unexpected shift: %+v", shift)
-		}
-
-		event := stub.FindByAction(audit.ActionTemplateShiftCreate)
-		if event == nil {
-			t.Fatalf("expected %q audit event, got %v", audit.ActionTemplateShiftCreate, stub.Actions())
-		}
-		if event.TargetType != audit.TargetTypeTemplateShift {
-			t.Fatalf("unexpected target type: %q", event.TargetType)
-		}
-		if event.TargetID == nil || *event.TargetID != 1 {
-			t.Fatalf("unexpected target id: %v", event.TargetID)
-		}
-		if event.Metadata["template_id"] != int64(5) {
-			t.Fatalf("expected template_id=5, got %+v", event.Metadata)
-		}
-		if event.Metadata["weekday"] != 2 {
-			t.Fatalf("expected weekday=2, got %+v", event.Metadata)
-		}
-		if event.Metadata["start_time"] != "09:00" {
-			t.Fatalf("expected start_time=09:00, got %+v", event.Metadata)
-		}
-		if event.Metadata["end_time"] != "12:00" {
-			t.Fatalf("expected end_time=12:00, got %+v", event.Metadata)
-		}
-		if event.Metadata["position_id"] != int64(7) {
-			t.Fatalf("expected position_id=7, got %+v", event.Metadata)
-		}
-		if event.Metadata["required_headcount"] != 3 {
-			t.Fatalf("expected required_headcount=3, got %+v", event.Metadata)
-		}
-	})
-
-	t.Run("invalid weekday returns ErrInvalidWeekday", func(t *testing.T) {
-		t.Parallel()
-
-		service := NewTemplateService(&templateRepositoryMock{}, &positionLookupRepositoryMock{})
-
-		stub := audittest.New()
-		ctx := stub.ContextWith(context.Background())
-
-		_, err := service.CreateTemplateShift(ctx, CreateTemplateShiftInput{
-			TemplateID:        1,
-			Weekday:           8,
-			StartTime:         "09:00",
-			EndTime:           "10:00",
-			PositionID:        2,
-			RequiredHeadcount: 1,
-		})
-		if !errors.Is(err, ErrInvalidWeekday) {
-			t.Fatalf("expected ErrInvalidWeekday, got %v", err)
-		}
-		if len(stub.Events()) != 0 {
-			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
+		if slot.ID != 1 || slot.Weekday != 2 {
+			t.Fatalf("unexpected slot: %+v", slot)
 		}
 	})
 
@@ -729,158 +691,137 @@ func TestTemplateServiceCreateTemplateShift(t *testing.T) {
 
 		service := NewTemplateService(&templateRepositoryMock{}, &positionLookupRepositoryMock{})
 
-		stub := audittest.New()
-		ctx := stub.ContextWith(context.Background())
-
-		_, err := service.CreateTemplateShift(ctx, CreateTemplateShiftInput{
-			TemplateID:        1,
-			Weekday:           1,
-			StartTime:         "09:00",
-			EndTime:           "09:00",
-			PositionID:        2,
-			RequiredHeadcount: 1,
+		_, err := service.CreateTemplateSlot(context.Background(), CreateTemplateSlotInput{
+			TemplateID: 1,
+			Weekday:    1,
+			StartTime:  "09:00",
+			EndTime:    "09:00",
 		})
 		if !errors.Is(err, ErrInvalidShiftTime) {
 			t.Fatalf("expected ErrInvalidShiftTime, got %v", err)
 		}
-		if len(stub.Events()) != 0 {
-			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
-		}
 	})
+}
 
-	t.Run("invalid headcount returns ErrInvalidHeadcount", func(t *testing.T) {
-		t.Parallel()
-
-		service := NewTemplateService(&templateRepositoryMock{}, &positionLookupRepositoryMock{})
-
-		stub := audittest.New()
-		ctx := stub.ContextWith(context.Background())
-
-		_, err := service.CreateTemplateShift(ctx, CreateTemplateShiftInput{
-			TemplateID:        1,
-			Weekday:           1,
-			StartTime:         "09:00",
-			EndTime:           "10:00",
-			PositionID:        2,
-			RequiredHeadcount: 0,
-		})
-		if !errors.Is(err, ErrInvalidHeadcount) {
-			t.Fatalf("expected ErrInvalidHeadcount, got %v", err)
-		}
-		if len(stub.Events()) != 0 {
-			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
-		}
-	})
-
-	t.Run("position not found", func(t *testing.T) {
+func TestTemplateServiceUpdateTemplateSlot(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
 		service := NewTemplateService(
 			&templateRepositoryMock{
-				getByIDFunc: func(ctx context.Context, id int64) (*model.Template, error) {
-					return &model.Template{ID: id, IsLocked: false}, nil
+				updateSlotFunc: func(ctx context.Context, params repository.UpdateTemplateSlotParams) (*model.TemplateSlot, error) {
+					if params.TemplateID != 4 || params.SlotID != 8 || params.Weekday != 5 || params.StartTime != "13:00" || params.EndTime != "16:00" {
+						t.Fatalf("unexpected update slot params: %+v", params)
+					}
+					return &model.TemplateSlot{
+						ID:         params.SlotID,
+						TemplateID: params.TemplateID,
+						Weekday:    params.Weekday,
+						StartTime:  params.StartTime,
+						EndTime:    params.EndTime,
+					}, nil
 				},
 			},
-			&positionLookupRepositoryMock{
-				getByIDFunc: func(ctx context.Context, id int64) (*model.Position, error) {
-					return nil, repository.ErrPositionNotFound
-				},
-			},
+			&positionLookupRepositoryMock{},
 		)
 
-		stub := audittest.New()
-		ctx := stub.ContextWith(context.Background())
-
-		_, err := service.CreateTemplateShift(ctx, CreateTemplateShiftInput{
-			TemplateID:        1,
-			Weekday:           1,
-			StartTime:         "09:00",
-			EndTime:           "10:00",
-			PositionID:        99,
-			RequiredHeadcount: 1,
+		slot, err := service.UpdateTemplateSlot(context.Background(), UpdateTemplateSlotInput{
+			TemplateID: 4,
+			SlotID:     8,
+			Weekday:    5,
+			StartTime:  "13:00",
+			EndTime:    "16:00",
 		})
-		if !errors.Is(err, ErrPositionNotFound) {
-			t.Fatalf("expected ErrPositionNotFound, got %v", err)
+		if err != nil {
+			t.Fatalf("UpdateTemplateSlot returned error: %v", err)
 		}
-		if len(stub.Events()) != 0 {
-			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
+		if slot.ID != 8 || slot.Weekday != 5 {
+			t.Fatalf("unexpected slot: %+v", slot)
+		}
+	})
+
+	t.Run("slot not in template", func(t *testing.T) {
+		t.Parallel()
+
+		service := NewTemplateService(
+			&templateRepositoryMock{
+				updateSlotFunc: func(ctx context.Context, params repository.UpdateTemplateSlotParams) (*model.TemplateSlot, error) {
+					return nil, repository.ErrTemplateSlotNotFound
+				},
+			},
+			&positionLookupRepositoryMock{},
+		)
+
+		_, err := service.UpdateTemplateSlot(context.Background(), UpdateTemplateSlotInput{
+			TemplateID: 2,
+			SlotID:     99,
+			Weekday:    1,
+			StartTime:  "09:00",
+			EndTime:    "10:00",
+		})
+		if !errors.Is(err, ErrTemplateSlotNotFound) {
+			t.Fatalf("expected ErrTemplateSlotNotFound, got %v", err)
+		}
+	})
+}
+
+func TestTemplateServiceDeleteTemplateSlot(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		var gotTemplateID int64
+		var gotSlotID int64
+		service := NewTemplateService(
+			&templateRepositoryMock{
+				deleteSlotFunc: func(ctx context.Context, templateID, slotID int64) error {
+					gotTemplateID = templateID
+					gotSlotID = slotID
+					return nil
+				},
+			},
+			&positionLookupRepositoryMock{},
+		)
+
+		if err := service.DeleteTemplateSlot(context.Background(), 6, 12); err != nil {
+			t.Fatalf("DeleteTemplateSlot returned error: %v", err)
+		}
+		if gotTemplateID != 6 || gotSlotID != 12 {
+			t.Fatalf("expected delete slot 12 from template 6, got slot %d template %d", gotSlotID, gotTemplateID)
 		}
 	})
 
 	t.Run("locked template rejects", func(t *testing.T) {
 		t.Parallel()
 
-		createCalled := false
 		service := NewTemplateService(
 			&templateRepositoryMock{
-				createShiftFunc: func(ctx context.Context, params repository.CreateTemplateShiftParams) (*model.TemplateShift, error) {
-					createCalled = true
-					return nil, repository.ErrTemplateLocked
+				deleteSlotFunc: func(ctx context.Context, templateID, slotID int64) error {
+					return repository.ErrTemplateLocked
 				},
 			},
-			&positionLookupRepositoryMock{
-				getByIDFunc: func(ctx context.Context, id int64) (*model.Position, error) {
-					return &model.Position{ID: id}, nil
-				},
-			},
+			&positionLookupRepositoryMock{},
 		)
 
-		stub := audittest.New()
-		ctx := stub.ContextWith(context.Background())
-
-		_, err := service.CreateTemplateShift(ctx, CreateTemplateShiftInput{
-			TemplateID:        1,
-			Weekday:           1,
-			StartTime:         "09:00",
-			EndTime:           "10:00",
-			PositionID:        2,
-			RequiredHeadcount: 1,
-		})
+		err := service.DeleteTemplateSlot(context.Background(), 6, 12)
 		if !errors.Is(err, ErrTemplateLocked) {
 			t.Fatalf("expected ErrTemplateLocked, got %v", err)
-		}
-		if !createCalled {
-			t.Fatal("expected create shift to be attempted so repository lock guard can reject it")
-		}
-		if len(stub.Events()) != 0 {
-			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
 		}
 	})
 }
 
-func TestTemplateServiceUpdateTemplateShift(t *testing.T) {
+func TestTemplateServiceCreateTemplateSlotPosition(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
 		service := NewTemplateService(
 			&templateRepositoryMock{
-				getByIDFunc: func(ctx context.Context, id int64) (*model.Template, error) {
-					return &model.Template{
-						ID:       id,
-						IsLocked: false,
-						Shifts: []*model.TemplateShift{
-							{
-								ID:                8,
-								TemplateID:        id,
-								Weekday:           1,
-								StartTime:         "09:00",
-								EndTime:           "12:00",
-								PositionID:        3,
-								RequiredHeadcount: 1,
-							},
-						},
-					}, nil
-				},
-				updateShiftFunc: func(ctx context.Context, params repository.UpdateTemplateShiftParams) (*model.TemplateShift, error) {
-					if params.TemplateID != 4 || params.ShiftID != 8 || params.Weekday != 5 || params.StartTime != "13:00" || params.EndTime != "16:00" || params.PositionID != 7 || params.RequiredHeadcount != 2 {
-						t.Fatalf("unexpected update shift params: %+v", params)
+				createSlotPositionFunc: func(ctx context.Context, params repository.CreateTemplateSlotPositionParams) (*model.TemplateSlotPosition, error) {
+					if params.TemplateID != 5 || params.SlotID != 9 || params.PositionID != 7 || params.RequiredHeadcount != 3 {
+						t.Fatalf("unexpected create slot position params: %+v", params)
 					}
-					return &model.TemplateShift{
-						ID:                params.ShiftID,
-						TemplateID:        params.TemplateID,
-						Weekday:           params.Weekday,
-						StartTime:         params.StartTime,
-						EndTime:           params.EndTime,
+					return &model.TemplateSlotPosition{
+						ID:                1,
+						SlotID:            params.SlotID,
 						PositionID:        params.PositionID,
 						RequiredHeadcount: params.RequiredHeadcount,
 					}, nil
@@ -896,61 +837,116 @@ func TestTemplateServiceUpdateTemplateShift(t *testing.T) {
 		stub := audittest.New()
 		ctx := stub.ContextWith(context.Background())
 
-		shift, err := service.UpdateTemplateShift(ctx, UpdateTemplateShiftInput{
+		slotPosition, err := service.CreateTemplateSlotPosition(ctx, CreateTemplateSlotPositionInput{
+			TemplateID:        5,
+			SlotID:            9,
+			PositionID:        7,
+			RequiredHeadcount: 3,
+		})
+		if err != nil {
+			t.Fatalf("CreateTemplateSlotPosition returned error: %v", err)
+		}
+		if slotPosition.ID != 1 || slotPosition.SlotID != 9 {
+			t.Fatalf("unexpected slot position: %+v", slotPosition)
+		}
+
+		event := stub.FindByAction(audit.ActionTemplateShiftCreate)
+		if event == nil {
+			t.Fatalf("expected %q audit event, got %v", audit.ActionTemplateShiftCreate, stub.Actions())
+		}
+		if event.Metadata["slot_id"] != int64(9) || event.Metadata["position_id"] != int64(7) {
+			t.Fatalf("unexpected audit metadata: %+v", event.Metadata)
+		}
+	})
+
+	t.Run("invalid headcount returns ErrInvalidHeadcount", func(t *testing.T) {
+		t.Parallel()
+
+		service := NewTemplateService(&templateRepositoryMock{}, &positionLookupRepositoryMock{})
+
+		_, err := service.CreateTemplateSlotPosition(context.Background(), CreateTemplateSlotPositionInput{
+			TemplateID:        1,
+			SlotID:            2,
+			PositionID:        3,
+			RequiredHeadcount: 0,
+		})
+		if !errors.Is(err, ErrInvalidHeadcount) {
+			t.Fatalf("expected ErrInvalidHeadcount, got %v", err)
+		}
+	})
+}
+
+func TestTemplateServiceUpdateTemplateSlotPosition(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		service := NewTemplateService(
+			&templateRepositoryMock{
+				getByIDFunc: func(ctx context.Context, id int64) (*model.Template, error) {
+					return &model.Template{
+						ID: id,
+						Slots: []*model.TemplateSlot{
+							{
+								ID: 4,
+								Positions: []*model.TemplateSlotPosition{
+									{ID: 8, PositionID: 3, RequiredHeadcount: 1},
+								},
+							},
+						},
+					}, nil
+				},
+				updateSlotPositionFunc: func(ctx context.Context, params repository.UpdateTemplateSlotPositionParams) (*model.TemplateSlotPosition, error) {
+					if params.TemplateID != 4 || params.SlotID != 4 || params.SlotPositionID != 8 || params.PositionID != 7 || params.RequiredHeadcount != 2 {
+						t.Fatalf("unexpected update slot position params: %+v", params)
+					}
+					return &model.TemplateSlotPosition{
+						ID:                params.SlotPositionID,
+						SlotID:            params.SlotID,
+						PositionID:        params.PositionID,
+						RequiredHeadcount: params.RequiredHeadcount,
+					}, nil
+				},
+			},
+			&positionLookupRepositoryMock{
+				getByIDFunc: func(ctx context.Context, id int64) (*model.Position, error) {
+					return &model.Position{ID: id}, nil
+				},
+			},
+		)
+
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+
+		slotPosition, err := service.UpdateTemplateSlotPosition(ctx, UpdateTemplateSlotPositionInput{
 			TemplateID:        4,
-			ShiftID:           8,
-			Weekday:           5,
-			StartTime:         "13:00",
-			EndTime:           "16:00",
+			SlotID:            4,
+			SlotPositionID:    8,
 			PositionID:        7,
 			RequiredHeadcount: 2,
 		})
 		if err != nil {
-			t.Fatalf("UpdateTemplateShift returned error: %v", err)
+			t.Fatalf("UpdateTemplateSlotPosition returned error: %v", err)
 		}
-		if shift.ID != 8 {
-			t.Fatalf("expected updated shift ID 8, got %d", shift.ID)
+		if slotPosition.ID != 8 || slotPosition.PositionID != 7 {
+			t.Fatalf("unexpected slot position: %+v", slotPosition)
 		}
 
 		event := stub.FindByAction(audit.ActionTemplateShiftUpdate)
 		if event == nil {
 			t.Fatalf("expected %q audit event, got %v", audit.ActionTemplateShiftUpdate, stub.Actions())
 		}
-		if event.TargetType != audit.TargetTypeTemplateShift {
-			t.Fatalf("unexpected target type: %q", event.TargetType)
-		}
-		if event.TargetID == nil || *event.TargetID != 8 {
-			t.Fatalf("unexpected target id: %v", event.TargetID)
-		}
-		if event.Metadata["template_id"] != int64(4) {
-			t.Fatalf("expected template_id=4, got %+v", event.Metadata)
-		}
-		if _, ok := event.Metadata["weekday"]; !ok {
-			t.Fatalf("expected weekday change in metadata, got %+v", event.Metadata)
-		}
-		if _, ok := event.Metadata["start_time"]; !ok {
-			t.Fatalf("expected start_time change in metadata, got %+v", event.Metadata)
-		}
-		if _, ok := event.Metadata["end_time"]; !ok {
-			t.Fatalf("expected end_time change in metadata, got %+v", event.Metadata)
-		}
-		if _, ok := event.Metadata["position_id"]; !ok {
-			t.Fatalf("expected position_id change in metadata, got %+v", event.Metadata)
-		}
-		if _, ok := event.Metadata["required_headcount"]; !ok {
-			t.Fatalf("expected required_headcount change in metadata, got %+v", event.Metadata)
+		if event.Metadata["slot_id"] != int64(4) {
+			t.Fatalf("unexpected audit metadata: %+v", event.Metadata)
 		}
 	})
 
-	t.Run("locked template rejects", func(t *testing.T) {
+	t.Run("slot position not found", func(t *testing.T) {
 		t.Parallel()
 
-		updateCalled := false
 		service := NewTemplateService(
 			&templateRepositoryMock{
-				updateShiftFunc: func(ctx context.Context, params repository.UpdateTemplateShiftParams) (*model.TemplateShift, error) {
-					updateCalled = true
-					return nil, repository.ErrTemplateLocked
+				updateSlotPositionFunc: func(ctx context.Context, params repository.UpdateTemplateSlotPositionParams) (*model.TemplateSlotPosition, error) {
+					return nil, repository.ErrTemplateSlotPositionNotFound
 				},
 			},
 			&positionLookupRepositoryMock{
@@ -960,83 +956,29 @@ func TestTemplateServiceUpdateTemplateShift(t *testing.T) {
 			},
 		)
 
-		stub := audittest.New()
-		ctx := stub.ContextWith(context.Background())
-
-		_, err := service.UpdateTemplateShift(ctx, UpdateTemplateShiftInput{
+		_, err := service.UpdateTemplateSlotPosition(context.Background(), UpdateTemplateSlotPositionInput{
 			TemplateID:        2,
-			ShiftID:           9,
-			Weekday:           1,
-			StartTime:         "09:00",
-			EndTime:           "10:00",
+			SlotID:            4,
+			SlotPositionID:    99,
 			PositionID:        3,
 			RequiredHeadcount: 1,
 		})
-		if !errors.Is(err, ErrTemplateLocked) {
-			t.Fatalf("expected ErrTemplateLocked, got %v", err)
-		}
-		if !updateCalled {
-			t.Fatal("expected update shift to be attempted so repository lock guard can reject it")
-		}
-		if len(stub.Events()) != 0 {
-			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
-		}
-	})
-
-	t.Run("shift not in template", func(t *testing.T) {
-		t.Parallel()
-
-		service := NewTemplateService(
-			&templateRepositoryMock{
-				getByIDFunc: func(ctx context.Context, id int64) (*model.Template, error) {
-					return &model.Template{ID: id, IsLocked: false}, nil
-				},
-				updateShiftFunc: func(ctx context.Context, params repository.UpdateTemplateShiftParams) (*model.TemplateShift, error) {
-					return nil, repository.ErrTemplateShiftNotFound
-				},
-			},
-			&positionLookupRepositoryMock{
-				getByIDFunc: func(ctx context.Context, id int64) (*model.Position, error) {
-					return &model.Position{ID: id}, nil
-				},
-			},
-		)
-
-		stub := audittest.New()
-		ctx := stub.ContextWith(context.Background())
-
-		_, err := service.UpdateTemplateShift(ctx, UpdateTemplateShiftInput{
-			TemplateID:        2,
-			ShiftID:           99,
-			Weekday:           1,
-			StartTime:         "09:00",
-			EndTime:           "10:00",
-			PositionID:        3,
-			RequiredHeadcount: 1,
-		})
-		if !errors.Is(err, ErrTemplateShiftNotFound) {
-			t.Fatalf("expected ErrTemplateShiftNotFound, got %v", err)
-		}
-		if len(stub.Events()) != 0 {
-			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
+		if !errors.Is(err, ErrTemplateSlotPositionNotFound) {
+			t.Fatalf("expected ErrTemplateSlotPositionNotFound, got %v", err)
 		}
 	})
 }
 
-func TestTemplateServiceDeleteTemplateShift(t *testing.T) {
+func TestTemplateServiceDeleteTemplateSlotPosition(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		var gotTemplateID int64
-		var gotShiftID int64
 		service := NewTemplateService(
 			&templateRepositoryMock{
-				getByIDFunc: func(ctx context.Context, id int64) (*model.Template, error) {
-					return &model.Template{ID: id, IsLocked: false}, nil
-				},
-				deleteShiftFunc: func(ctx context.Context, templateID, shiftID int64) error {
-					gotTemplateID = templateID
-					gotShiftID = shiftID
+				deleteSlotPositionFunc: func(ctx context.Context, templateID, slotID, slotPositionID int64) error {
+					if templateID != 6 || slotID != 4 || slotPositionID != 12 {
+						t.Fatalf("unexpected delete slot position target: template=%d slot=%d slotPosition=%d", templateID, slotID, slotPositionID)
+					}
 					return nil
 				},
 			},
@@ -1046,54 +988,34 @@ func TestTemplateServiceDeleteTemplateShift(t *testing.T) {
 		stub := audittest.New()
 		ctx := stub.ContextWith(context.Background())
 
-		if err := service.DeleteTemplateShift(ctx, 6, 12); err != nil {
-			t.Fatalf("DeleteTemplateShift returned error: %v", err)
-		}
-		if gotTemplateID != 6 || gotShiftID != 12 {
-			t.Fatalf("expected delete shift 12 from template 6, got shift %d template %d", gotShiftID, gotTemplateID)
+		if err := service.DeleteTemplateSlotPosition(ctx, 6, 4, 12); err != nil {
+			t.Fatalf("DeleteTemplateSlotPosition returned error: %v", err)
 		}
 
 		event := stub.FindByAction(audit.ActionTemplateShiftDelete)
 		if event == nil {
 			t.Fatalf("expected %q audit event, got %v", audit.ActionTemplateShiftDelete, stub.Actions())
 		}
-		if event.TargetType != audit.TargetTypeTemplateShift {
-			t.Fatalf("unexpected target type: %q", event.TargetType)
-		}
-		if event.TargetID == nil || *event.TargetID != 12 {
-			t.Fatalf("unexpected target id: %v", event.TargetID)
-		}
-		if event.Metadata["template_id"] != int64(6) {
-			t.Fatalf("expected template_id=6, got %+v", event.Metadata)
+		if event.Metadata["slot_id"] != int64(4) {
+			t.Fatalf("unexpected audit metadata: %+v", event.Metadata)
 		}
 	})
 
 	t.Run("locked template rejects", func(t *testing.T) {
 		t.Parallel()
 
-		deleteCalled := false
 		service := NewTemplateService(
 			&templateRepositoryMock{
-				deleteShiftFunc: func(ctx context.Context, templateID, shiftID int64) error {
-					deleteCalled = true
+				deleteSlotPositionFunc: func(ctx context.Context, templateID, slotID, slotPositionID int64) error {
 					return repository.ErrTemplateLocked
 				},
 			},
 			&positionLookupRepositoryMock{},
 		)
 
-		stub := audittest.New()
-		ctx := stub.ContextWith(context.Background())
-
-		err := service.DeleteTemplateShift(ctx, 6, 12)
+		err := service.DeleteTemplateSlotPosition(context.Background(), 6, 4, 12)
 		if !errors.Is(err, ErrTemplateLocked) {
 			t.Fatalf("expected ErrTemplateLocked, got %v", err)
-		}
-		if !deleteCalled {
-			t.Fatal("expected delete shift to be attempted so repository lock guard can reject it")
-		}
-		if len(stub.Events()) != 0 {
-			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
 		}
 	})
 }

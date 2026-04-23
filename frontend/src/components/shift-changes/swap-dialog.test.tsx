@@ -16,18 +16,24 @@ const members: PublicationMember[] = [
 const rosterWeekdays: RosterWeekday[] = [
   {
     weekday: 2,
-    shifts: [
+    slots: [
       {
-        shift: {
+        slot: {
           id: 200,
           weekday: 2,
           start_time: "09:00",
           end_time: "12:00",
-          position_id: 1,
-          position_name: "Front Desk",
-          required_headcount: 1,
         },
-        assignments: [{ assignment_id: 51, user_id: 8, name: "Bob" }],
+        positions: [
+          {
+            position: {
+              id: 1,
+              name: "Front Desk",
+            },
+            required_headcount: 1,
+            assignments: [{ assignment_id: 51, user_id: 8, name: "Bob" }],
+          },
+        ],
       },
     ],
   },
@@ -36,14 +42,15 @@ const rosterWeekdays: RosterWeekday[] = [
 const myShift: SwapDialogMyShift = {
   assignmentID: 1,
   weekday: 1,
-  shift: {
+  slot: {
     id: 100,
     weekday: 1,
     start_time: "09:00",
     end_time: "12:00",
-    position_id: 1,
-    position_name: "Front Desk",
-    required_headcount: 1,
+  },
+  position: {
+    id: 1,
+    name: "Front Desk",
   },
 }
 

@@ -1,30 +1,36 @@
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
-import type { AssignmentBoardShift } from "@/lib/types"
+import type { AssignmentBoardSlot } from "@/lib/types"
 import { renderWithProviders } from "@/test-utils/render"
 
 import { AssignmentBoard } from "./assignment-board"
 
-const shifts: AssignmentBoardShift[] = [
+const slots: AssignmentBoardSlot[] = [
   {
-    shift: {
+    slot: {
       id: 1,
       weekday: 1,
       start_time: "09:00",
       end_time: "11:00",
-      position_id: 101,
-      position_name: "Front Desk",
-      required_headcount: 2,
     },
-    candidates: [
-      { user_id: 10, name: "Alice", email: "alice@example.com" },
-    ],
-    non_candidate_qualified: [
-      { user_id: 12, name: "Dana", email: "dana@example.com" },
-    ],
-    assignments: [
-      { assignment_id: 20, user_id: 11, name: "Bob", email: "bob@example.com" },
+    positions: [
+      {
+        position: {
+          id: 101,
+          name: "Front Desk",
+        },
+        required_headcount: 2,
+        candidates: [
+          { user_id: 10, name: "Alice", email: "alice@example.com" },
+        ],
+        non_candidate_qualified: [
+          { user_id: 12, name: "Dana", email: "dana@example.com" },
+        ],
+        assignments: [
+          { assignment_id: 20, user_id: 11, name: "Bob", email: "bob@example.com" },
+        ],
+      },
     ],
   },
 ]
@@ -41,7 +47,7 @@ describe("AssignmentBoard", () => {
         isReadOnly={false}
         onAssign={onAssign}
         onUnassign={onUnassign}
-        shifts={shifts}
+        slots={slots}
       />,
     )
 
@@ -74,8 +80,8 @@ describe("AssignmentBoard", () => {
 
     await user.click(danaButton as HTMLElement)
 
-    expect(onAssign).toHaveBeenCalledWith(10, 1)
-    expect(onAssign).toHaveBeenCalledWith(12, 1)
+    expect(onAssign).toHaveBeenCalledWith(10, 1, 101)
+    expect(onAssign).toHaveBeenCalledWith(12, 1, 101)
     expect(onUnassign).toHaveBeenCalledWith(20)
   })
 
@@ -90,7 +96,7 @@ describe("AssignmentBoard", () => {
         isReadOnly
         onAssign={onAssign}
         onUnassign={onUnassign}
-        shifts={shifts}
+        slots={slots}
       />,
     )
 

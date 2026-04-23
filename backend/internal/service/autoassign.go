@@ -8,8 +8,9 @@ import (
 	"strings"
 )
 
-type AutoAssignShift struct {
-	ID                int64
+type AutoAssignSlotPosition struct {
+	SlotID            int64
+	PositionID        int64
 	Weekday           int
 	StartTime         string
 	EndTime           string
@@ -17,17 +18,26 @@ type AutoAssignShift struct {
 }
 
 type AutoAssignCandidate struct {
-	UserID          int64
-	TemplateShiftID int64
+	UserID     int64
+	SlotID     int64
+	PositionID int64
 }
 
 type AutoAssignment struct {
-	UserID          int64
-	TemplateShiftID int64
+	UserID     int64
+	SlotID     int64
+	PositionID int64
 }
 
-type preparedAutoAssignShift struct {
-	shift        AutoAssignShift
+type preparedAutoAssignSlotPosition struct {
+	slotPosition AutoAssignSlotPosition
+	startMinutes int
+	endMinutes   int
+}
+
+type preparedAutoAssignSlot struct {
+	slotID       int64
+	weekday      int
 	startMinutes int
 	endMinutes   int
 }
@@ -44,21 +54,21 @@ type autoAssignGraph struct {
 }
 
 type autoAssignAssignmentEdge struct {
-	from      int
-	edgeIndex int
-	userID    int64
-	shiftID   int64
+	from            int
+	edgeIndex       int
+	userID          int64
+	slotPositionKey slotPositionKey
 }
 
 func SolveAutoAssignments(
-	shifts []AutoAssignShift,
+	slotPositions []AutoAssignSlotPosition,
 	candidates []AutoAssignCandidate,
 ) ([]AutoAssignment, error) {
-	if len(shifts) == 0 || len(candidates) == 0 {
+	if len(slotPositions) == 0 || len(candidates) == 0 {
 		return make([]AutoAssignment, 0), nil
 	}
 
-	preparedShifts, totalDemand, err := prepareAutoAssignShifts(shifts)
+	preparedSlotPositions, preparedSlots, totalDemand, err := prepareAutoAssignSlotPositions(slotPositions)
 	if err != nil {
 		return nil, err
 	}
@@ -66,33 +76,43 @@ func SolveAutoAssignments(
 		return make([]AutoAssignment, 0), nil
 	}
 
-	shiftIDsByUser := make(map[int64]map[int64]struct{})
+	slotIDsByUser := make(map[int64]map[int64]struct{})
+	slotPositionKeysByUserSlot := make(map[int64]map[int64]map[slotPositionKey]struct{})
 	for _, candidate := range candidates {
-		if candidate.UserID <= 0 || candidate.TemplateShiftID <= 0 {
+		if candidate.UserID <= 0 || candidate.SlotID <= 0 || candidate.PositionID <= 0 {
 			continue
 		}
-		if _, ok := preparedShifts[candidate.TemplateShiftID]; !ok {
+		key := slotPositionKey{SlotID: candidate.SlotID, PositionID: candidate.PositionID}
+		if _, ok := preparedSlotPositions[key]; !ok {
 			continue
 		}
-		if shiftIDsByUser[candidate.UserID] == nil {
-			shiftIDsByUser[candidate.UserID] = make(map[int64]struct{})
+		if slotIDsByUser[candidate.UserID] == nil {
+			slotIDsByUser[candidate.UserID] = make(map[int64]struct{})
 		}
-		shiftIDsByUser[candidate.UserID][candidate.TemplateShiftID] = struct{}{}
+		slotIDsByUser[candidate.UserID][candidate.SlotID] = struct{}{}
+		if slotPositionKeysByUserSlot[candidate.UserID] == nil {
+			slotPositionKeysByUserSlot[candidate.UserID] = make(map[int64]map[slotPositionKey]struct{})
+		}
+		if slotPositionKeysByUserSlot[candidate.UserID][candidate.SlotID] == nil {
+			slotPositionKeysByUserSlot[candidate.UserID][candidate.SlotID] = make(map[slotPositionKey]struct{})
+		}
+		slotPositionKeysByUserSlot[candidate.UserID][candidate.SlotID][key] = struct{}{}
 	}
-	if len(shiftIDsByUser) == 0 {
+	if len(slotIDsByUser) == 0 {
 		return make([]AutoAssignment, 0), nil
 	}
 
-	userIDs, overlapGroupsByUser := buildAutoAssignOverlapGroups(preparedShifts, shiftIDsByUser)
+	userIDs, overlapGroupsByUser := buildAutoAssignOverlapGroups(preparedSlots, slotIDsByUser)
 	if len(userIDs) == 0 {
 		return make([]AutoAssignment, 0), nil
 	}
 
 	source := 0
 	nodeCount := 1
-	slotNodeIDsByUser := make(map[int64][]int, len(userIDs))
+	seatNodeIDsByUser := make(map[int64][]int, len(userIDs))
 	employeeNodeIDs := make(map[int64]int, len(userIDs))
 	groupNodeIDsByUser := make(map[int64][]int, len(userIDs))
+	userSlotNodeIDsByUser := make(map[int64]map[int64]int, len(userIDs))
 
 	for _, userID := range userIDs {
 		groupCount := len(overlapGroupsByUser[userID])
@@ -100,42 +120,49 @@ func SolveAutoAssignments(
 			continue
 		}
 
-		slotCount := groupCount
-		if slotCount > totalDemand {
-			slotCount = totalDemand
+		seatCount := groupCount
+		if seatCount > totalDemand {
+			seatCount = totalDemand
 		}
 
-		slotNodeIDs := make([]int, 0, slotCount)
-		for range slotCount {
-			slotNodeIDs = append(slotNodeIDs, nodeCount)
+		seatNodeIDs := make([]int, 0, seatCount)
+		for i := 0; i < seatCount; i++ {
+			seatNodeIDs = append(seatNodeIDs, nodeCount)
 			nodeCount++
 		}
-		slotNodeIDsByUser[userID] = slotNodeIDs
+		seatNodeIDsByUser[userID] = seatNodeIDs
 
 		employeeNodeIDs[userID] = nodeCount
 		nodeCount++
 
 		groupNodeIDs := make([]int, 0, groupCount)
-		for range groupCount {
+		for i := 0; i < groupCount; i++ {
 			groupNodeIDs = append(groupNodeIDs, nodeCount)
 			nodeCount++
 		}
 		groupNodeIDsByUser[userID] = groupNodeIDs
+
+		userSlotNodeIDs := make(map[int64]int, len(slotIDsByUser[userID]))
+		for _, slotID := range sortedAutoAssignSlotIDs(preparedSlots, slotIDsByUser[userID]) {
+			userSlotNodeIDs[slotID] = nodeCount
+			nodeCount++
+		}
+		userSlotNodeIDsByUser[userID] = userSlotNodeIDs
 	}
 
-	shiftIDs := make([]int64, 0, len(preparedShifts))
-	for shiftID := range preparedShifts {
-		shiftIDs = append(shiftIDs, shiftID)
+	slotPositionKeys := make([]slotPositionKey, 0, len(preparedSlotPositions))
+	for key := range preparedSlotPositions {
+		slotPositionKeys = append(slotPositionKeys, key)
 	}
-	sort.Slice(shiftIDs, func(i, j int) bool {
-		left := preparedShifts[shiftIDs[i]]
-		right := preparedShifts[shiftIDs[j]]
-		return comparePreparedAutoAssignShift(left, right) < 0
+	sort.Slice(slotPositionKeys, func(i, j int) bool {
+		left := preparedSlotPositions[slotPositionKeys[i]]
+		right := preparedSlotPositions[slotPositionKeys[j]]
+		return comparePreparedAutoAssignSlotPosition(left, right) < 0
 	})
 
-	shiftNodeIDs := make(map[int64]int, len(shiftIDs))
-	for _, shiftID := range shiftIDs {
-		shiftNodeIDs[shiftID] = nodeCount
+	slotPositionNodeIDs := make(map[slotPositionKey]int, len(slotPositionKeys))
+	for _, key := range slotPositionKeys {
+		slotPositionNodeIDs[key] = nodeCount
 		nodeCount++
 	}
 
@@ -147,38 +174,50 @@ func SolveAutoAssignments(
 	assignmentEdges := make([]autoAssignAssignmentEdge, 0)
 
 	for _, userID := range userIDs {
-		slotNodeIDs := slotNodeIDsByUser[userID]
-		if len(slotNodeIDs) == 0 {
+		seatNodeIDs := seatNodeIDsByUser[userID]
+		if len(seatNodeIDs) == 0 {
 			continue
 		}
 
 		employeeNodeID := employeeNodeIDs[userID]
-		for index, slotNodeID := range slotNodeIDs {
-			graph.addEdge(source, slotNodeID, 1, 2*index+1)
-			graph.addEdge(slotNodeID, employeeNodeID, 1, 0)
+		for index, seatNodeID := range seatNodeIDs {
+			graph.addEdge(source, seatNodeID, 1, 2*index+1)
+			graph.addEdge(seatNodeID, employeeNodeID, 1, 0)
 		}
 
 		groupNodeIDs := groupNodeIDsByUser[userID]
+		userSlotNodeIDs := userSlotNodeIDsByUser[userID]
 		for groupIndex, groupNodeID := range groupNodeIDs {
 			graph.addEdge(employeeNodeID, groupNodeID, 1, 0)
 
-			for _, shiftID := range overlapGroupsByUser[userID][groupIndex] {
-				edgeIndex := graph.addEdge(groupNodeID, shiftNodeIDs[shiftID], 1, 0)
-				assignmentEdges = append(assignmentEdges, autoAssignAssignmentEdge{
-					from:      groupNodeID,
-					edgeIndex: edgeIndex,
-					userID:    userID,
-					shiftID:   shiftID,
-				})
+			for _, slotID := range overlapGroupsByUser[userID][groupIndex] {
+				userSlotNodeID, ok := userSlotNodeIDs[slotID]
+				if !ok {
+					continue
+				}
+				graph.addEdge(groupNodeID, userSlotNodeID, 1, 0)
+
+				for _, key := range sortedAutoAssignSlotPositionKeys(
+					preparedSlotPositions,
+					slotPositionKeysByUserSlot[userID][slotID],
+				) {
+					edgeIndex := graph.addEdge(userSlotNodeID, slotPositionNodeIDs[key], 1, 0)
+					assignmentEdges = append(assignmentEdges, autoAssignAssignmentEdge{
+						from:            userSlotNodeID,
+						edgeIndex:       edgeIndex,
+						userID:          userID,
+						slotPositionKey: key,
+					})
+				}
 			}
 		}
 	}
 
-	for _, shiftID := range shiftIDs {
+	for _, key := range slotPositionKeys {
 		graph.addEdge(
-			shiftNodeIDs[shiftID],
+			slotPositionNodeIDs[key],
 			sink,
-			preparedShifts[shiftID].shift.RequiredHeadcount,
+			preparedSlotPositions[key].slotPosition.RequiredHeadcount,
 			-coverageBonus,
 		)
 	}
@@ -191,14 +230,18 @@ func SolveAutoAssignments(
 			continue
 		}
 		assignments = append(assignments, AutoAssignment{
-			UserID:          edge.userID,
-			TemplateShiftID: edge.shiftID,
+			UserID:     edge.userID,
+			SlotID:     edge.slotPositionKey.SlotID,
+			PositionID: edge.slotPositionKey.PositionID,
 		})
 	}
 
 	sort.Slice(assignments, func(i, j int) bool {
-		if assignments[i].TemplateShiftID != assignments[j].TemplateShiftID {
-			return assignments[i].TemplateShiftID < assignments[j].TemplateShiftID
+		if assignments[i].SlotID != assignments[j].SlotID {
+			return assignments[i].SlotID < assignments[j].SlotID
+		}
+		if assignments[i].PositionID != assignments[j].PositionID {
+			return assignments[i].PositionID < assignments[j].PositionID
 		}
 		return assignments[i].UserID < assignments[j].UserID
 	})
@@ -206,52 +249,69 @@ func SolveAutoAssignments(
 	return assignments, nil
 }
 
-func prepareAutoAssignShifts(
-	shifts []AutoAssignShift,
-) (map[int64]preparedAutoAssignShift, int, error) {
-	prepared := make(map[int64]preparedAutoAssignShift, len(shifts))
+func prepareAutoAssignSlotPositions(
+	slotPositions []AutoAssignSlotPosition,
+) (map[slotPositionKey]preparedAutoAssignSlotPosition, map[int64]preparedAutoAssignSlot, int, error) {
+	prepared := make(map[slotPositionKey]preparedAutoAssignSlotPosition, len(slotPositions))
+	preparedSlots := make(map[int64]preparedAutoAssignSlot)
 	totalDemand := 0
 
-	for _, shift := range shifts {
-		if shift.ID <= 0 {
-			return nil, 0, fmt.Errorf("invalid shift id: %d", shift.ID)
+	for _, slotPosition := range slotPositions {
+		if slotPosition.SlotID <= 0 || slotPosition.PositionID <= 0 {
+			return nil, nil, 0, fmt.Errorf("invalid slot-position ref: slot=%d position=%d", slotPosition.SlotID, slotPosition.PositionID)
 		}
-		if shift.RequiredHeadcount <= 0 {
+		if slotPosition.RequiredHeadcount <= 0 {
 			continue
 		}
-		if _, exists := prepared[shift.ID]; exists {
-			return nil, 0, fmt.Errorf("duplicate shift id: %d", shift.ID)
+		key := slotPositionKey{SlotID: slotPosition.SlotID, PositionID: slotPosition.PositionID}
+		if _, exists := prepared[key]; exists {
+			return nil, nil, 0, fmt.Errorf("duplicate slot-position: slot=%d position=%d", slotPosition.SlotID, slotPosition.PositionID)
 		}
 
-		startMinutes, err := parseClockMinutes(shift.StartTime)
+		startMinutes, err := parseClockMinutes(slotPosition.StartTime)
 		if err != nil {
-			return nil, 0, fmt.Errorf("invalid start time for shift %d: %w", shift.ID, err)
+			return nil, nil, 0, fmt.Errorf("invalid start time for slot %d: %w", slotPosition.SlotID, err)
 		}
-		endMinutes, err := parseClockMinutes(shift.EndTime)
+		endMinutes, err := parseClockMinutes(slotPosition.EndTime)
 		if err != nil {
-			return nil, 0, fmt.Errorf("invalid end time for shift %d: %w", shift.ID, err)
+			return nil, nil, 0, fmt.Errorf("invalid end time for slot %d: %w", slotPosition.SlotID, err)
 		}
 		if endMinutes <= startMinutes {
-			return nil, 0, fmt.Errorf("invalid time window for shift %d", shift.ID)
+			return nil, nil, 0, fmt.Errorf("invalid time window for slot %d", slotPosition.SlotID)
 		}
 
-		prepared[shift.ID] = preparedAutoAssignShift{
-			shift:        shift,
+		if existing, ok := preparedSlots[slotPosition.SlotID]; ok {
+			if existing.weekday != slotPosition.Weekday ||
+				existing.startMinutes != startMinutes ||
+				existing.endMinutes != endMinutes {
+				return nil, nil, 0, fmt.Errorf("inconsistent slot window for slot %d", slotPosition.SlotID)
+			}
+		} else {
+			preparedSlots[slotPosition.SlotID] = preparedAutoAssignSlot{
+				slotID:       slotPosition.SlotID,
+				weekday:      slotPosition.Weekday,
+				startMinutes: startMinutes,
+				endMinutes:   endMinutes,
+			}
+		}
+
+		prepared[key] = preparedAutoAssignSlotPosition{
+			slotPosition: slotPosition,
 			startMinutes: startMinutes,
 			endMinutes:   endMinutes,
 		}
-		totalDemand += shift.RequiredHeadcount
+		totalDemand += slotPosition.RequiredHeadcount
 	}
 
-	return prepared, totalDemand, nil
+	return prepared, preparedSlots, totalDemand, nil
 }
 
 func buildAutoAssignOverlapGroups(
-	preparedShifts map[int64]preparedAutoAssignShift,
-	shiftIDsByUser map[int64]map[int64]struct{},
+	preparedSlots map[int64]preparedAutoAssignSlot,
+	slotIDsByUser map[int64]map[int64]struct{},
 ) ([]int64, map[int64][][]int64) {
-	userIDs := make([]int64, 0, len(shiftIDsByUser))
-	for userID := range shiftIDsByUser {
+	userIDs := make([]int64, 0, len(slotIDsByUser))
+	for userID := range slotIDsByUser {
 		userIDs = append(userIDs, userID)
 	}
 	sort.Slice(userIDs, func(i, j int) bool {
@@ -262,35 +322,35 @@ func buildAutoAssignOverlapGroups(
 	filteredUserIDs := make([]int64, 0, len(userIDs))
 
 	for _, userID := range userIDs {
-		shiftIDs := shiftIDsByUser[userID]
-		if len(shiftIDs) == 0 {
+		userSlotIDs := slotIDsByUser[userID]
+		if len(userSlotIDs) == 0 {
 			continue
 		}
 
-		shiftIDsByWeekday := make(map[int][]int64)
-		for shiftID := range shiftIDs {
-			shift := preparedShifts[shiftID]
-			shiftIDsByWeekday[shift.shift.Weekday] = append(shiftIDsByWeekday[shift.shift.Weekday], shiftID)
+		slotIDsByWeekday := make(map[int][]int64)
+		for slotID := range userSlotIDs {
+			slot := preparedSlots[slotID]
+			slotIDsByWeekday[slot.weekday] = append(slotIDsByWeekday[slot.weekday], slotID)
 		}
 
-		weekdays := make([]int, 0, len(shiftIDsByWeekday))
-		for weekday := range shiftIDsByWeekday {
+		weekdays := make([]int, 0, len(slotIDsByWeekday))
+		for weekday := range slotIDsByWeekday {
 			weekdays = append(weekdays, weekday)
 		}
 		sort.Ints(weekdays)
 
 		groups := make([][]int64, 0)
 		for _, weekday := range weekdays {
-			dayShiftIDs := shiftIDsByWeekday[weekday]
-			sort.Slice(dayShiftIDs, func(i, j int) bool {
-				return comparePreparedAutoAssignShift(
-					preparedShifts[dayShiftIDs[i]],
-					preparedShifts[dayShiftIDs[j]],
+			daySlotIDs := slotIDsByWeekday[weekday]
+			sort.Slice(daySlotIDs, func(i, j int) bool {
+				return comparePreparedAutoAssignSlot(
+					preparedSlots[daySlotIDs[i]],
+					preparedSlots[daySlotIDs[j]],
 				) < 0
 			})
 
-			visited := make([]bool, len(dayShiftIDs))
-			for index := range dayShiftIDs {
+			visited := make([]bool, len(daySlotIDs))
+			for index := range daySlotIDs {
 				if visited[index] {
 					continue
 				}
@@ -302,15 +362,15 @@ func buildAutoAssignOverlapGroups(
 				for len(queue) > 0 {
 					current := queue[0]
 					queue = queue[1:]
-					component = append(component, dayShiftIDs[current])
+					component = append(component, daySlotIDs[current])
 
-					for next := range dayShiftIDs {
+					for next := range daySlotIDs {
 						if visited[next] {
 							continue
 						}
-						if !shiftsOverlap(
-							preparedShifts[dayShiftIDs[current]],
-							preparedShifts[dayShiftIDs[next]],
+						if !slotsOverlap(
+							preparedSlots[daySlotIDs[current]],
+							preparedSlots[daySlotIDs[next]],
 						) {
 							continue
 						}
@@ -320,9 +380,9 @@ func buildAutoAssignOverlapGroups(
 				}
 
 				sort.Slice(component, func(i, j int) bool {
-					return comparePreparedAutoAssignShift(
-						preparedShifts[component[i]],
-						preparedShifts[component[j]],
+					return comparePreparedAutoAssignSlot(
+						preparedSlots[component[i]],
+						preparedSlots[component[j]],
 					) < 0
 				})
 				groups = append(groups, component)
@@ -340,18 +400,49 @@ func buildAutoAssignOverlapGroups(
 	return filteredUserIDs, result
 }
 
-func shiftsOverlap(left, right preparedAutoAssignShift) bool {
-	if left.shift.Weekday != right.shift.Weekday {
+func sortedAutoAssignSlotIDs(
+	preparedSlots map[int64]preparedAutoAssignSlot,
+	slotIDs map[int64]struct{},
+) []int64 {
+	result := make([]int64, 0, len(slotIDs))
+	for slotID := range slotIDs {
+		result = append(result, slotID)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return comparePreparedAutoAssignSlot(preparedSlots[result[i]], preparedSlots[result[j]]) < 0
+	})
+	return result
+}
+
+func sortedAutoAssignSlotPositionKeys(
+	preparedSlotPositions map[slotPositionKey]preparedAutoAssignSlotPosition,
+	keys map[slotPositionKey]struct{},
+) []slotPositionKey {
+	result := make([]slotPositionKey, 0, len(keys))
+	for key := range keys {
+		result = append(result, key)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return comparePreparedAutoAssignSlotPosition(
+			preparedSlotPositions[result[i]],
+			preparedSlotPositions[result[j]],
+		) < 0
+	})
+	return result
+}
+
+func slotsOverlap(left, right preparedAutoAssignSlot) bool {
+	if left.weekday != right.weekday {
 		return false
 	}
 
 	return left.startMinutes < right.endMinutes && right.startMinutes < left.endMinutes
 }
 
-func comparePreparedAutoAssignShift(left, right preparedAutoAssignShift) int {
+func comparePreparedAutoAssignSlot(left, right preparedAutoAssignSlot) int {
 	switch {
-	case left.shift.Weekday != right.shift.Weekday:
-		if left.shift.Weekday < right.shift.Weekday {
+	case left.weekday != right.weekday:
+		if left.weekday < right.weekday {
 			return -1
 		}
 		return 1
@@ -365,9 +456,42 @@ func comparePreparedAutoAssignShift(left, right preparedAutoAssignShift) int {
 			return -1
 		}
 		return 1
-	case left.shift.ID < right.shift.ID:
+	case left.slotID < right.slotID:
 		return -1
-	case left.shift.ID > right.shift.ID:
+	case left.slotID > right.slotID:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func comparePreparedAutoAssignSlotPosition(
+	left, right preparedAutoAssignSlotPosition,
+) int {
+	switch {
+	case left.slotPosition.Weekday != right.slotPosition.Weekday:
+		if left.slotPosition.Weekday < right.slotPosition.Weekday {
+			return -1
+		}
+		return 1
+	case left.startMinutes != right.startMinutes:
+		if left.startMinutes < right.startMinutes {
+			return -1
+		}
+		return 1
+	case left.endMinutes != right.endMinutes:
+		if left.endMinutes < right.endMinutes {
+			return -1
+		}
+		return 1
+	case left.slotPosition.SlotID != right.slotPosition.SlotID:
+		if left.slotPosition.SlotID < right.slotPosition.SlotID {
+			return -1
+		}
+		return 1
+	case left.slotPosition.PositionID < right.slotPosition.PositionID:
+		return -1
+	case left.slotPosition.PositionID > right.slotPosition.PositionID:
 		return 1
 	default:
 		return 0
