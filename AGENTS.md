@@ -31,12 +31,18 @@ Skill details live under `.claude/skills/openspec-*/SKILL.md` (mirrored to `.cod
 ### Rules of engagement
 
 - **One live writer per change.** Do not have Claude and Codex editing the same files concurrently. Handoff happens through the OpenSpec artifacts, not through the working tree.
-- **Apply runs on a feature branch, not on `main`.** Before `/opsx:apply`, create a branch named `change/<change-name>` from `main`. Codex's apply, Claude's review, the post-archive commit, and any post-smoke fix-up commits all happen on that branch. The branch merges back to `main` with `git merge --no-ff` only after `/opsx:archive` succeeds and the post-archive commit is in place. This lets `main` stay green while a long-running apply is in progress, and lets Claude propose / explore / verify other changes in parallel without working-tree contention.
+- **Apply runs on a feature branch named `change/<change-name>`, not on `main`.** Create the branch *before* `/opsx:apply`. Use `git worktree add ../<repo>-<change-name> -b change/<change-name>` (recommended — independent working directory, lets a second Codex run in parallel without trampling files; copy `.env` over manually because it's gitignored; clean up afterward with `git worktree remove`) or `git checkout -b change/<change-name>` (fine for strictly serial in-place work, cheaper but no isolation). All apply / verify / archive / fix-up commits land on the branch; the branch merges back to `main` only after `/opsx:archive` completes — see the next bullet for the merge-back sequence.
+- **`/opsx:archive` is followed by a merge-back sequence Claude SHALL perform** when the change is on a `change/*` branch (skip if on `main` directly — legacy serial flow). Right after archive succeeds and the post-archive commit is in place, Claude runs (substituting `<branch>` for the current `change/<change-name>`):
 
-  Two ways to set up the branch — pick by need, not by habit:
+  1. `git push origin <branch>` — pushes the feature branch so CI runs on it.
+  2. `main_path="$(git worktree list --porcelain | awk '/^worktree / {p=$2} /^branch refs\/heads\/main$/ {print p; exit}')"` — locate the main worktree.
+  3. `git -C "$main_path" merge --no-ff <branch> -m "Merge branch '<branch>' into main"` — integrate, preserving branch history.
+  4. `git -C "$main_path" push origin main` — push the merge.
+  5. Wait for CI on `main`; report success or surface failures.
+  6. `git -C "$main_path" worktree remove <worktree-path>` and `git -C "$main_path" branch -d <branch>` — local cleanup.
+  7. `git -C "$main_path" push origin --delete <branch>` — drop the remote branch (best-effort; suppress non-zero exit).
 
-  - **`git worktree add ../<repo>-<change-name> -b change/<change-name>`** — recommended whenever you might want to run a second Codex (or any other long-running task) in parallel. Each worktree has an independent working directory, so two Codex processes never share files or trample each other. Trade-offs: disk space (a fresh source checkout, ~50–100 MB for this project), `pnpm install` runs once per frontend-touching worktree (Go module cache stays shared), and `.env` must be copied manually because it's gitignored. Postgres / Redis / Docker containers are still shared resources — coordinate DB-touching steps if both worktrees need integration tests at once. Clean up afterward with `git worktree remove ../<repo>-<change-name>` and `git branch -d change/<change-name>`.
-  - **`git checkout -b change/<change-name>`** — fine when work is strictly serial, no second Codex is planned, and the working tree has no uncommitted changes from another change. Cheaper (no extra disk, no second `pnpm install`) but offers zero protection against branch-switch mishaps if the rules-of-engagement slip.
+  This sequence is Claude's responsibility because Claude is the only role with the Bash tool wired up for git plumbing. Codex finishes at apply; the user's only inputs in the lifecycle are starting Codex and saying "done".
 - **Behavior drift → fix the artifact first.** If review finds the implementation diverges from `design.md` / `tasks.md` / specs in a way that changes user-visible behavior or interfaces, update the artifact first and re-apply. Typos, renames, refactors that preserve behavior, comment tweaks, and logging changes can be patched directly without an artifact update.
 - **Parallelism is for independent work.** Spawn parallel agents only when tasks genuinely don't share files or state; never to "speed up" the same change folder.
 
