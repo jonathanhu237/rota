@@ -86,3 +86,14 @@ Missing or insufficient tests are a blocker before archiving, not a follow-up.
 - New variables must be added to `.env.example`. Non-sensitive entries: include a default. Sensitive entries: leave blank.
 - Local development password: `pa55word` uniformly across services.
 - Secrets never land in git; verify `.env` is `.gitignore`d before adding any new secret.
+
+---
+
+## Style guide references
+
+When in doubt about a coding style question, consult the public guides pinned in the per-language `AGENTS.md`. Project-level conventions (the rules in those files) take precedence over the public guides where they conflict.
+
+We do not pursue numeric targets for test or comment coverage. Coverage falls out of "every new behavior has a success-path and a rejection-path test" (see Done definition above) plus "comments only where the *why* is non-obvious." Hitting an arbitrary percentage is not a goal.
+
+- Backend Go: see [backend/AGENTS.md](backend/AGENTS.md).
+- Frontend TS / React: see [frontend/AGENTS.md](frontend/AGENTS.md).
