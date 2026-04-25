@@ -128,13 +128,28 @@ The system SHALL create sessions exclusively on successful `Login`. Each login S
 
 ### Requirement: Session invalidation
 
-`Logout` SHALL delete the Redis key and clear the cookie. Admin disable of a user SHALL trigger `DeleteUserSessions(userID)`, which scans the session keyspace and drops every session whose value equals that user id.
+`Logout` SHALL delete the Redis key and clear the cookie. Admin disable of a user SHALL trigger `DeleteUserSessions(userID)`, which scans the session keyspace and drops every session whose value equals that user id. Successful `SetupPassword` whose token `purpose = 'password_reset'` SHALL likewise trigger `DeleteUserSessions(userID)` after the password update commits, so any session active at the moment of reset is terminated; `SetupPassword` for `purpose = 'invitation'` SHALL NOT, because pending users have no live sessions to invalidate.
 
 #### Scenario: Admin disable terminates live sessions
 
 - **GIVEN** a user with multiple live session keys in Redis
 - **WHEN** an admin disables the user
 - **THEN** `DeleteUserSessions(userID)` deletes every Redis key whose value is the user's id
+
+#### Scenario: Password reset terminates live sessions
+
+- **GIVEN** an `active` user with one or more live session keys in Redis
+- **WHEN** the user successfully calls `SetupPassword` using a `password_reset` token
+- **THEN** the password change commits
+- **AND** `DeleteUserSessions(userID)` deletes every Redis key whose value is the user's id
+- **AND** `auth.password.set` is emitted with metadata `purpose = "password_reset"`
+
+#### Scenario: Invitation activation does not call DeleteUserSessions
+
+- **GIVEN** a `pending` user with no live sessions
+- **WHEN** the user successfully calls `SetupPassword` using an `invitation` token
+- **THEN** the password change commits
+- **AND** `DeleteUserSessions` is NOT called
 
 #### Scenario: Authenticate does not revive an expired session
 

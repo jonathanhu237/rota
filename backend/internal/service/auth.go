@@ -29,6 +29,7 @@ type sessionStore interface {
 	Get(ctx context.Context, sessionID string) (int64, error)
 	Refresh(ctx context.Context, sessionID string) (int64, error)
 	Delete(ctx context.Context, sessionID string) error
+	DeleteUserSessions(ctx context.Context, userID int64) error
 }
 
 type AuthService struct {
@@ -235,6 +236,11 @@ func (s *AuthService) SetupPassword(ctx context.Context, input SetupPasswordInpu
 	purpose := "invitation"
 	if activatedToken.Purpose == model.SetupTokenPurposePasswordReset {
 		purpose = "password_reset"
+		if s.sessionStore != nil {
+			if err := s.sessionStore.DeleteUserSessions(ctx, activatedToken.UserID); err != nil {
+				return err
+			}
+		}
 	}
 	targetID := activatedToken.UserID
 	audit.Record(ctx, audit.Event{
