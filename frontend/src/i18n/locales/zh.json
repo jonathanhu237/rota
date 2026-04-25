@@ -603,6 +603,7 @@
       "TEMPLATE_SHIFT_NOT_FOUND": "模板班次不存在",
       "ASSIGNMENT_USER_ALREADY_IN_SLOT": "该用户已在此时段被分配到其他岗位。",
       "ASSIGNMENT_TIME_CONFLICT": "该分配与用户已有的班次时间冲突。",
+      "SCHEDULING_RETRYABLE": "另一个排班变更同时完成，请重试。",
       "NOT_QUALIFIED": "您没有该班次的任职资格。",
       "USER_DISABLED": "该用户已被禁用。",
       "USER_NOT_FOUND": "用户不存在",
@@ -785,6 +786,7 @@
       "SHIFT_CHANGE_NOT_QUALIFIED": "您没有该班次的任职资格。",
       "SHIFT_CHANGE_SELF": "不能处理自己发起的申请。",
       "SHIFT_CHANGE_TIME_CONFLICT": "该变更与您已有的其他班次存在时间冲突。",
+      "SCHEDULING_RETRYABLE": "另一个排班变更同时完成，请重试。",
       "UNAUTHORIZED": "未授权"
     }
   }

@@ -10,6 +10,7 @@ import (
 	"github.com/jonathanhu237/rota/backend/internal/audit"
 	"github.com/jonathanhu237/rota/backend/internal/audit/audittest"
 	"github.com/jonathanhu237/rota/backend/internal/model"
+	"github.com/jonathanhu237/rota/backend/internal/repository"
 )
 
 func TestPublicationServiceCreateAssignment(t *testing.T) {
@@ -657,6 +658,42 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			t.Fatalf("expected no email, got %d", len(emailer.messages()))
 		}
 	})
+}
+
+func TestPublicationServiceCreateAssignmentDisabledAfterPrecheck(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+	base := newPublicationRepositoryStatefulMock()
+	base.publications[1] = assigningPublication(now)
+	repo := createAssignmentDisabledRaceRepo{publicationRepositoryStatefulMock: base}
+	service := NewPublicationService(repo, fixedClock{now: now})
+
+	stub := audittest.New()
+	ctx := stub.ContextWith(context.Background())
+	_, err := service.CreateAssignment(ctx, CreateAssignmentInput{
+		PublicationID: 1,
+		UserID:        7,
+		SlotID:        21,
+		PositionID:    101,
+	})
+	if !errors.Is(err, ErrUserDisabled) {
+		t.Fatalf("expected ErrUserDisabled, got %v", err)
+	}
+	if len(stub.Events()) != 0 {
+		t.Fatalf("expected no audit events, got %+v", stub.Events())
+	}
+}
+
+type createAssignmentDisabledRaceRepo struct {
+	*publicationRepositoryStatefulMock
+}
+
+func (r createAssignmentDisabledRaceRepo) CreateAssignment(
+	ctx context.Context,
+	params repository.CreateAssignmentParams,
+) (*model.Assignment, error) {
+	return nil, repository.ErrUserDisabled
 }
 
 func TestPublicationServiceDeleteAssignment(t *testing.T) {

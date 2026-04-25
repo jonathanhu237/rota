@@ -8,6 +8,7 @@ import (
 var (
 	ErrAssignmentTimeConflict      = errors.New("assignment time conflict")
 	ErrAssignmentUserAlreadyInSlot = errors.New("assignment user already in slot")
+	ErrSchedulingRetryable         = errors.New("scheduling retryable")
 )
 
 type Assignment struct {

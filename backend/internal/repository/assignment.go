@@ -3,9 +3,11 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"time"
 
 	"github.com/jonathanhu237/rota/backend/internal/model"
@@ -15,6 +17,9 @@ import (
 var (
 	ErrAssignmentNotFound          = errors.New("assignment not found")
 	ErrAssignmentUserAlreadyInSlot = model.ErrAssignmentUserAlreadyInSlot
+	ErrTimeConflict                = errors.New("time conflict")
+	ErrUserDisabled                = errors.New("user disabled")
+	ErrSchedulingRetryable         = model.ErrSchedulingRetryable
 )
 
 type CreateAssignmentParams struct {
@@ -42,6 +47,12 @@ type ReplaceAssignmentsParams struct {
 	PublicationID int64
 	Assignments   []ReplaceAssignmentParams
 	CreatedAt     time.Time
+}
+
+type SlotTimeWindow struct {
+	Weekday   int
+	StartTime string
+	EndTime   string
 }
 
 type AssignmentBoardSlotView struct {
@@ -109,14 +120,59 @@ func (r *PublicationRepository) CreateAssignment(
 	ctx context.Context,
 	params CreateAssignmentParams,
 ) (*model.Assignment, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, mapSchedulingRetryableError(err)
+	}
+	defer tx.Rollback()
+
+	assignment, err := createAssignmentWithScheduleCheck(ctx, tx, params)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, mapSchedulingRetryableError(err)
+	}
+
+	return assignment, nil
+}
+
+func createAssignmentWithScheduleCheck(
+	ctx context.Context,
+	tx *sql.Tx,
+	params CreateAssignmentParams,
+) (*model.Assignment, error) {
 	slotID, positionID, _, err := resolveAssignmentRef(
 		ctx,
-		r.db,
+		tx,
 		params.SlotID,
 		params.PositionID,
 		params.TemplateShiftID,
 	)
 	if err != nil {
+		return nil, err
+	}
+
+	if exists, err := assignmentExistsForUserSlot(ctx, tx, params.PublicationID, params.UserID, slotID); err != nil {
+		return nil, err
+	} else if exists {
+		return nil, ErrAssignmentUserAlreadyInSlot
+	}
+
+	window, err := getSlotTimeWindow(ctx, tx, slotID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := LockAndCheckUserSchedule(
+		ctx,
+		tx,
+		params.PublicationID,
+		params.UserID,
+		[]SlotTimeWindow{window},
+		nil,
+	); err != nil {
 		return nil, err
 	}
 
@@ -138,7 +194,7 @@ func (r *PublicationRepository) CreateAssignment(
 			created_at;
 	`
 
-	assignment, err := scanAssignment(r.db.QueryRowContext(
+	assignment, err := scanAssignment(tx.QueryRowContext(
 		ctx,
 		query,
 		params.PublicationID,
@@ -456,7 +512,11 @@ func (r *PublicationRepository) ListAssignmentCandidates(
 			u.email
 		FROM availability_submissions asub
 		INNER JOIN users u ON u.id = asub.user_id
+		INNER JOIN user_positions up
+			ON up.user_id = asub.user_id
+			AND up.position_id = asub.position_id
 		WHERE asub.publication_id = $1
+			AND u.status = 'active'
 		ORDER BY asub.slot_id ASC, asub.position_id ASC, u.id ASC;
 	`
 
@@ -485,6 +545,198 @@ func (r *PublicationRepository) ListAssignmentCandidates(
 	}
 
 	return candidates, nil
+}
+
+func LockAndCheckUserSchedule(
+	ctx context.Context,
+	tx *sql.Tx,
+	publicationID, userID int64,
+	additions []SlotTimeWindow,
+	excludeAssignmentIDs []int64,
+) error {
+	if tx == nil {
+		return errors.New("nil transaction")
+	}
+
+	if err := lockUserSchedule(ctx, tx, publicationID, userID); err != nil {
+		return err
+	}
+
+	const query = `
+		SELECT
+			a.id,
+			ts.weekday,
+			TO_CHAR(ts.start_time, 'HH24:MI'),
+			TO_CHAR(ts.end_time, 'HH24:MI')
+		FROM assignments a
+		INNER JOIN template_slots ts ON ts.id = a.slot_id
+		WHERE a.publication_id = $1
+			AND a.user_id = $2
+		ORDER BY a.id ASC
+		FOR UPDATE OF a;
+	`
+
+	rows, err := tx.QueryContext(ctx, query, publicationID, userID)
+	if err != nil {
+		return mapSchedulingRetryableError(err)
+	}
+	defer rows.Close()
+
+	excluded := make(map[int64]struct{}, len(excludeAssignmentIDs))
+	for _, id := range excludeAssignmentIDs {
+		excluded[id] = struct{}{}
+	}
+
+	windows := make([]SlotTimeWindow, 0, len(additions)+4)
+	for rows.Next() {
+		var (
+			assignmentID int64
+			window       SlotTimeWindow
+		)
+		if err := rows.Scan(&assignmentID, &window.Weekday, &window.StartTime, &window.EndTime); err != nil {
+			return err
+		}
+		if _, ok := excluded[assignmentID]; ok {
+			continue
+		}
+		windows = append(windows, window)
+	}
+	if err := rows.Err(); err != nil {
+		return mapSchedulingRetryableError(err)
+	}
+
+	windows = append(windows, additions...)
+	if hasSlotTimeConflict(windows) {
+		return ErrTimeConflict
+	}
+
+	status, err := getUserStatus(ctx, tx, userID)
+	if err != nil {
+		return err
+	}
+	if status != model.UserStatusActive {
+		return ErrUserDisabled
+	}
+
+	return nil
+}
+
+func lockUserSchedule(ctx context.Context, tx *sql.Tx, publicationID, userID int64) error {
+	var locked bool
+	err := tx.QueryRowContext(ctx, `SELECT pg_advisory_xact_lock($1) IS NOT NULL;`, scheduleAdvisoryLockKey(publicationID, userID)).Scan(&locked)
+	return mapSchedulingRetryableError(err)
+}
+
+func scheduleAdvisoryLockKey(publicationID, userID int64) int64 {
+	hash := fnv.New64a()
+	var buf [16]byte
+	binary.BigEndian.PutUint64(buf[:8], uint64(publicationID))
+	binary.BigEndian.PutUint64(buf[8:], uint64(userID))
+	_, _ = hash.Write(buf[:])
+	return int64(hash.Sum64())
+}
+
+func hasSlotTimeConflict(windows []SlotTimeWindow) bool {
+	for i := 0; i < len(windows); i++ {
+		leftStart, leftEnd, ok := parsedWindow(windows[i])
+		if !ok {
+			continue
+		}
+		for j := i + 1; j < len(windows); j++ {
+			if windows[i].Weekday != windows[j].Weekday {
+				continue
+			}
+			rightStart, rightEnd, ok := parsedWindow(windows[j])
+			if !ok {
+				continue
+			}
+			if leftStart < rightEnd && rightStart < leftEnd {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func parsedWindow(window SlotTimeWindow) (int, int, bool) {
+	start, err := parseClockMinutes(window.StartTime)
+	if err != nil {
+		return 0, 0, false
+	}
+	end, err := parseClockMinutes(window.EndTime)
+	if err != nil {
+		return 0, 0, false
+	}
+	return start, end, true
+}
+
+func parseClockMinutes(value string) (int, error) {
+	parsed, err := time.Parse("15:04", value)
+	if err != nil {
+		return 0, err
+	}
+	return parsed.Hour()*60 + parsed.Minute(), nil
+}
+
+func getUserStatus(ctx context.Context, db dbtx, userID int64) (model.UserStatus, error) {
+	const query = `
+		SELECT status
+		FROM users
+		WHERE id = $1
+		FOR UPDATE;
+	`
+
+	var status model.UserStatus
+	err := db.QueryRowContext(ctx, query, userID).Scan(&status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrUserNotFound
+	}
+	if err != nil {
+		return "", mapSchedulingRetryableError(err)
+	}
+	return status, nil
+}
+
+func getSlotTimeWindow(ctx context.Context, db dbtx, slotID int64) (SlotTimeWindow, error) {
+	const query = `
+		SELECT weekday, TO_CHAR(start_time, 'HH24:MI'), TO_CHAR(end_time, 'HH24:MI')
+		FROM template_slots
+		WHERE id = $1;
+	`
+
+	var window SlotTimeWindow
+	err := db.QueryRowContext(ctx, query, slotID).Scan(&window.Weekday, &window.StartTime, &window.EndTime)
+	if errors.Is(err, sql.ErrNoRows) {
+		return SlotTimeWindow{}, ErrTemplateSlotNotFound
+	}
+	if err != nil {
+		return SlotTimeWindow{}, mapSchedulingRetryableError(err)
+	}
+	return window, nil
+}
+
+func assignmentExistsForUserSlot(
+	ctx context.Context,
+	db dbtx,
+	publicationID, userID, slotID int64,
+) (bool, error) {
+	const query = `
+		SELECT 1
+		FROM assignments
+		WHERE publication_id = $1
+			AND user_id = $2
+			AND slot_id = $3;
+	`
+
+	var one int
+	err := db.QueryRowContext(ctx, query, publicationID, userID, slotID).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, mapSchedulingRetryableError(err)
+	}
+	return true, nil
 }
 
 func (r *PublicationRepository) GetAssignmentBoardView(
@@ -1022,6 +1274,7 @@ func getTemplateSlotPositionPairByEntryID(
 }
 
 func mapAssignmentWriteError(err error) error {
+	err = mapSchedulingRetryableError(err)
 	var pqErr *pq.Error
 	if !errors.As(err, &pqErr) {
 		return err
@@ -1029,6 +1282,19 @@ func mapAssignmentWriteError(err error) error {
 
 	if pqErr.Code == "23505" && pqErr.Constraint == "assignments_publication_user_slot_key" {
 		return ErrAssignmentUserAlreadyInSlot
+	}
+
+	return err
+}
+
+func mapSchedulingRetryableError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) && pqErr.Code == "40P01" {
+		return ErrSchedulingRetryable
 	}
 
 	return err

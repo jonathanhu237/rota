@@ -493,6 +493,8 @@ func (s *ShiftChangeService) ApproveShiftChangeRequest(
 		if err := s.mutuallyQualified(ctx, req.RequesterUserID, receiverUserID, requesterAssignment.PositionID, counterpartAssignment.PositionID); err != nil {
 			return err
 		}
+		// Fast-fail for UX latency; ApplySwap repeats this inside the
+		// transaction after locking the affected users' schedules.
 		if err := s.ensureSwapFitsSchedule(ctx, req.PublicationID, req.RequesterUserID, receiverUserID, requesterAssignment, counterpartAssignment, requesterShift, counterpartShift); err != nil {
 			return err
 		}
@@ -505,6 +507,8 @@ func (s *ShiftChangeService) ApproveShiftChangeRequest(
 		if !qualified {
 			return ErrShiftChangeNotQualified
 		}
+		// Fast-fail for UX latency; ApplyGive repeats this inside the
+		// transaction after locking the receiver's schedule.
 		if err := s.ensureGiveFitsSchedule(ctx, req.PublicationID, receiverUserID, requesterAssignment, requesterShift); err != nil {
 			return err
 		}
@@ -517,6 +521,8 @@ func (s *ShiftChangeService) ApproveShiftChangeRequest(
 		if !qualified {
 			return ErrShiftChangeNotQualified
 		}
+		// Fast-fail for UX latency; ApplyGive repeats this inside the
+		// transaction after locking the receiver's schedule.
 		if err := s.ensureGiveFitsSchedule(ctx, req.PublicationID, receiverUserID, requesterAssignment, requesterShift); err != nil {
 			return err
 		}
@@ -754,6 +760,12 @@ func (s *ShiftChangeService) mapApplyError(
 		return ErrShiftChangeNotPending
 	case errors.Is(err, repository.ErrShiftChangeNotFound):
 		return ErrShiftChangeNotFound
+	case errors.Is(err, repository.ErrTimeConflict):
+		return ErrShiftChangeTimeConflict
+	case errors.Is(err, repository.ErrUserDisabled):
+		return ErrUserDisabled
+	case errors.Is(err, repository.ErrSchedulingRetryable):
+		return ErrSchedulingRetryable
 	default:
 		return err
 	}

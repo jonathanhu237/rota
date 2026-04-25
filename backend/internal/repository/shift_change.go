@@ -294,22 +294,26 @@ func (r *ShiftChangeRepository) UpdateState(
 // AssignmentSnapshot captures the minimum fields needed for the optimistic
 // lock check at approval time.
 type AssignmentSnapshot struct {
-	ID     int64
-	UserID int64
-	Exists bool
+	ID            int64
+	PublicationID int64
+	UserID        int64
+	SlotID        int64
+	PositionID    int64
+	Window        SlotTimeWindow
+	Exists        bool
 }
 
 // ApplySwapParams applies an approved swap. Callers pass the two
 // assignment IDs; the repo verifies each still exists with the expected
 // user, swaps the user_id, and flips the request to approved.
 type ApplySwapParams struct {
-	RequestID             int64
-	RequesterAssignmentID int64
-	RequesterUserID       int64
+	RequestID               int64
+	RequesterAssignmentID   int64
+	RequesterUserID         int64
 	CounterpartAssignmentID int64
-	CounterpartUserID     int64
-	DecidedByUserID       int64
-	Now                   time.Time
+	CounterpartUserID       int64
+	DecidedByUserID         int64
+	Now                     time.Time
 }
 
 // ApplyGiveParams applies an approved give (direct or pool claim). The
@@ -329,7 +333,7 @@ type ApplyGiveParams struct {
 // swap or give, so audit metadata can be assembled without another round
 // trip.
 type ApproveResult struct {
-	RequesterAssignment *model.Assignment
+	RequesterAssignment   *model.Assignment
 	CounterpartAssignment *model.Assignment
 }
 
@@ -364,22 +368,46 @@ func (r *ShiftChangeRepository) ApplySwap(
 	if !counterpartSnap.Exists || counterpartSnap.UserID != params.CounterpartUserID {
 		return nil, ErrShiftChangeAssignmentMiss
 	}
+	if requesterSnap.PublicationID != counterpartSnap.PublicationID {
+		return nil, ErrShiftChangeAssignmentMiss
+	}
+
+	if err := mapShiftChangeScheduleCheckError(LockAndCheckUserSchedule(
+		ctx,
+		tx,
+		requesterSnap.PublicationID,
+		params.RequesterUserID,
+		[]SlotTimeWindow{counterpartSnap.Window},
+		[]int64{params.RequesterAssignmentID},
+	)); err != nil {
+		return nil, err
+	}
+	if err := mapShiftChangeScheduleCheckError(LockAndCheckUserSchedule(
+		ctx,
+		tx,
+		requesterSnap.PublicationID,
+		params.CounterpartUserID,
+		[]SlotTimeWindow{requesterSnap.Window},
+		[]int64{params.CounterpartAssignmentID},
+	)); err != nil {
+		return nil, err
+	}
 
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE assignments SET user_id = $2 WHERE id = $1;`,
 		params.RequesterAssignmentID, params.CounterpartUserID,
 	); err != nil {
-		return nil, err
+		return nil, mapSchedulingRetryableError(err)
 	}
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE assignments SET user_id = $2 WHERE id = $1;`,
 		params.CounterpartAssignmentID, params.RequesterUserID,
 	); err != nil {
-		return nil, err
+		return nil, mapSchedulingRetryableError(err)
 	}
 
 	if err := markApproved(ctx, tx, params.RequestID, params.DecidedByUserID, params.Now); err != nil {
-		return nil, err
+		return nil, mapSchedulingRetryableError(err)
 	}
 
 	requester, err := loadAssignment(ctx, tx, params.RequesterAssignmentID)
@@ -392,7 +420,7 @@ func (r *ShiftChangeRepository) ApplySwap(
 	}
 
 	if err := tx.Commit(); err != nil {
-		return nil, err
+		return nil, mapSchedulingRetryableError(err)
 	}
 	return &ApproveResult{
 		RequesterAssignment:   requester,
@@ -423,14 +451,25 @@ func (r *ShiftChangeRepository) ApplyGive(
 		return nil, ErrShiftChangeAssignmentMiss
 	}
 
+	if err := mapShiftChangeScheduleCheckError(LockAndCheckUserSchedule(
+		ctx,
+		tx,
+		snap.PublicationID,
+		params.ReceiverUserID,
+		[]SlotTimeWindow{snap.Window},
+		nil,
+	)); err != nil {
+		return nil, err
+	}
+
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE assignments SET user_id = $2 WHERE id = $1;`,
 		params.RequesterAssignmentID, params.ReceiverUserID,
 	); err != nil {
-		return nil, err
+		return nil, mapSchedulingRetryableError(err)
 	}
 	if err := markApproved(ctx, tx, params.RequestID, params.DecidedByUserID, params.Now); err != nil {
-		return nil, err
+		return nil, mapSchedulingRetryableError(err)
 	}
 
 	requester, err := loadAssignment(ctx, tx, params.RequesterAssignmentID)
@@ -439,7 +478,7 @@ func (r *ShiftChangeRepository) ApplyGive(
 	}
 
 	if err := tx.Commit(); err != nil {
-		return nil, err
+		return nil, mapSchedulingRetryableError(err)
 	}
 	return &ApproveResult{
 		RequesterAssignment: requester,
@@ -529,7 +568,7 @@ func lockPendingRequest(ctx context.Context, tx *sql.Tx, id int64) error {
 	case errors.Is(err, sql.ErrNoRows):
 		return ErrShiftChangeNotFound
 	case err != nil:
-		return err
+		return mapSchedulingRetryableError(err)
 	case state != model.ShiftChangeStatePending:
 		return ErrShiftChangeNotPending
 	default:
@@ -539,19 +578,47 @@ func lockPendingRequest(ctx context.Context, tx *sql.Tx, id int64) error {
 
 func lockAssignment(ctx context.Context, tx *sql.Tx, id int64) (AssignmentSnapshot, error) {
 	const query = `
-		SELECT user_id
-		FROM assignments
-		WHERE id = $1
-		FOR UPDATE;
+		SELECT
+			a.publication_id,
+			a.user_id,
+			a.slot_id,
+			a.position_id,
+			ts.weekday,
+			TO_CHAR(ts.start_time, 'HH24:MI'),
+			TO_CHAR(ts.end_time, 'HH24:MI')
+		FROM assignments a
+		INNER JOIN template_slots ts ON ts.id = a.slot_id
+		WHERE a.id = $1
+		FOR UPDATE OF a;
 	`
-	var userID int64
-	switch err := tx.QueryRowContext(ctx, query, id).Scan(&userID); {
+	snap := AssignmentSnapshot{ID: id}
+	switch err := tx.QueryRowContext(ctx, query, id).Scan(
+		&snap.PublicationID,
+		&snap.UserID,
+		&snap.SlotID,
+		&snap.PositionID,
+		&snap.Window.Weekday,
+		&snap.Window.StartTime,
+		&snap.Window.EndTime,
+	); {
 	case errors.Is(err, sql.ErrNoRows):
 		return AssignmentSnapshot{ID: id, Exists: false}, nil
 	case err != nil:
-		return AssignmentSnapshot{}, err
+		return AssignmentSnapshot{}, mapSchedulingRetryableError(err)
 	}
-	return AssignmentSnapshot{ID: id, UserID: userID, Exists: true}, nil
+	snap.Exists = true
+	return snap, nil
+}
+
+func mapShiftChangeScheduleCheckError(err error) error {
+	switch {
+	case errors.Is(err, ErrTimeConflict):
+		return model.ErrShiftChangeTimeConflict
+	case errors.Is(err, ErrUserDisabled):
+		return ErrUserDisabled
+	default:
+		return err
+	}
 }
 
 func loadAssignment(ctx context.Context, tx *sql.Tx, id int64) (*model.Assignment, error) {
@@ -592,11 +659,11 @@ func markApproved(
 
 func scanShiftChangeRequest(row scanner) (*model.ShiftChangeRequest, error) {
 	var (
-		req                      model.ShiftChangeRequest
-		counterpartUser          sql.NullInt64
-		counterpartAssignment    sql.NullInt64
-		decidedBy                sql.NullInt64
-		decidedAt                sql.NullTime
+		req                   model.ShiftChangeRequest
+		counterpartUser       sql.NullInt64
+		counterpartAssignment sql.NullInt64
+		decidedBy             sql.NullInt64
+		decidedAt             sql.NullTime
 	)
 	err := row.Scan(
 		&req.ID,

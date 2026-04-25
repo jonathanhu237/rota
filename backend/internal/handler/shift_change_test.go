@@ -152,6 +152,8 @@ func TestShiftChangeHandler_Create(t *testing.T) {
 			{name: "not owner", err: service.ErrShiftChangeNotOwner, status: http.StatusForbidden, code: "SHIFT_CHANGE_NOT_OWNER"},
 			{name: "not qualified", err: service.ErrShiftChangeNotQualified, status: http.StatusForbidden, code: "SHIFT_CHANGE_NOT_QUALIFIED"},
 			{name: "time conflict", err: service.ErrShiftChangeTimeConflict, status: http.StatusConflict, code: "SHIFT_CHANGE_TIME_CONFLICT"},
+			{name: "user disabled", err: service.ErrUserDisabled, status: http.StatusConflict, code: "USER_DISABLED"},
+			{name: "retryable scheduling", err: service.ErrSchedulingRetryable, status: http.StatusServiceUnavailable, code: "SCHEDULING_RETRYABLE"},
 			{name: "publication not published", err: service.ErrPublicationNotPublished, status: http.StatusConflict, code: "PUBLICATION_NOT_PUBLISHED"},
 			{name: "publication not found", err: service.ErrPublicationNotFound, status: http.StatusNotFound, code: "PUBLICATION_NOT_FOUND"},
 			{name: "invalid input", err: service.ErrInvalidInput, status: http.StatusBadRequest, code: "INVALID_REQUEST"},
@@ -334,6 +336,8 @@ func TestShiftChangeHandler_Approve(t *testing.T) {
 			{name: "invalidated", err: service.ErrShiftChangeInvalidated, status: http.StatusConflict, code: "SHIFT_CHANGE_INVALIDATED"},
 			{name: "not qualified", err: service.ErrShiftChangeNotQualified, status: http.StatusForbidden, code: "SHIFT_CHANGE_NOT_QUALIFIED"},
 			{name: "time conflict", err: service.ErrShiftChangeTimeConflict, status: http.StatusConflict, code: "SHIFT_CHANGE_TIME_CONFLICT"},
+			{name: "user disabled", err: service.ErrUserDisabled, status: http.StatusConflict, code: "USER_DISABLED"},
+			{name: "retryable scheduling", err: service.ErrSchedulingRetryable, status: http.StatusServiceUnavailable, code: "SCHEDULING_RETRYABLE"},
 			{name: "not owner", err: service.ErrShiftChangeNotOwner, status: http.StatusForbidden, code: "SHIFT_CHANGE_NOT_OWNER"},
 		}
 

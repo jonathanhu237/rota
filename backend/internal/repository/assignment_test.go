@@ -271,6 +271,99 @@ func TestAssignmentRepositoryIntegration(t *testing.T) {
 	})
 }
 
+func TestListAssignmentCandidatesFiltered(t *testing.T) {
+	ctx := context.Background()
+	db := openIntegrationDB(t)
+	repo := NewPublicationRepository(db)
+	publication, _, positionID, slotPositionID, user := seedAssignmentPrerequisites(t, db)
+	seedSubmission(t, db, publication.ID, user.ID, slotPositionID, testTime())
+
+	candidates, err := repo.ListAssignmentCandidates(ctx, publication.ID)
+	if err != nil {
+		t.Fatalf("ListAssignmentCandidates returned error: %v", err)
+	}
+	if len(candidates) != 1 || candidates[0].UserID != user.ID || candidates[0].PositionID != positionID {
+		t.Fatalf("expected active qualified candidate, got %+v", candidates)
+	}
+
+	if _, err := db.ExecContext(ctx, `DELETE FROM user_positions WHERE user_id = $1 AND position_id = $2`, user.ID, positionID); err != nil {
+		t.Fatalf("delete user position: %v", err)
+	}
+	candidates, err = repo.ListAssignmentCandidates(ctx, publication.ID)
+	if err != nil {
+		t.Fatalf("ListAssignmentCandidates after revoked qualification returned error: %v", err)
+	}
+	if len(candidates) != 0 {
+		t.Fatalf("expected revoked qualification to be filtered, got %+v", candidates)
+	}
+
+	seedUserPosition(t, db, user.ID, positionID)
+	if _, err := db.ExecContext(ctx, `UPDATE users SET status = 'disabled' WHERE id = $1`, user.ID); err != nil {
+		t.Fatalf("disable user: %v", err)
+	}
+	candidates, err = repo.ListAssignmentCandidates(ctx, publication.ID)
+	if err != nil {
+		t.Fatalf("ListAssignmentCandidates after disable returned error: %v", err)
+	}
+	if len(candidates) != 0 {
+		t.Fatalf("expected disabled user to be filtered, got %+v", candidates)
+	}
+}
+
+func TestLockAndCheckUserSchedule(t *testing.T) {
+	ctx := context.Background()
+	db := openIntegrationDB(t)
+	publication, _, positionID, firstSlotPositionID, user := seedAssignmentPrerequisites(t, db)
+	secondSlotID := seedTemplateSlot(t, db, publication.TemplateID, 2, "14:00", "16:00")
+	secondSlotPositionID := seedTemplateSlotPosition(t, db, secondSlotID, positionID, 1)
+	seedAssignment(t, db, publication.ID, user.ID, firstSlotPositionID, testTime())
+	seedAssignment(t, db, publication.ID, user.ID, secondSlotPositionID, testTime().Add(time.Minute))
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	err = LockAndCheckUserSchedule(ctx, tx, publication.ID, user.ID, []SlotTimeWindow{
+		{Weekday: 1, StartTime: "10:00", EndTime: "11:00"},
+	}, nil)
+	if !errors.Is(err, ErrTimeConflict) {
+		t.Fatalf("expected ErrTimeConflict, got %v", err)
+	}
+	if rollbackErr := tx.Rollback(); rollbackErr != nil {
+		t.Fatalf("rollback conflict tx: %v", rollbackErr)
+	}
+
+	tx, err = db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin non-overlap tx: %v", err)
+	}
+	if err := LockAndCheckUserSchedule(ctx, tx, publication.ID, user.ID, []SlotTimeWindow{
+		{Weekday: 1, StartTime: "12:00", EndTime: "13:00"},
+	}, nil); err != nil {
+		t.Fatalf("expected non-overlap schedule to pass, got %v", err)
+	}
+	if rollbackErr := tx.Rollback(); rollbackErr != nil {
+		t.Fatalf("rollback non-overlap tx: %v", rollbackErr)
+	}
+
+	if _, err := db.ExecContext(ctx, `UPDATE users SET status = 'disabled' WHERE id = $1`, user.ID); err != nil {
+		t.Fatalf("disable user: %v", err)
+	}
+	tx, err = db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin disabled tx: %v", err)
+	}
+	err = LockAndCheckUserSchedule(ctx, tx, publication.ID, user.ID, []SlotTimeWindow{
+		{Weekday: 1, StartTime: "12:00", EndTime: "13:00"},
+	}, nil)
+	if !errors.Is(err, ErrUserDisabled) {
+		t.Fatalf("expected ErrUserDisabled, got %v", err)
+	}
+	if rollbackErr := tx.Rollback(); rollbackErr != nil {
+		t.Fatalf("rollback disabled tx: %v", rollbackErr)
+	}
+}
+
 func seedAssignmentPrerequisites(
 	t testing.TB,
 	db *sql.DB,

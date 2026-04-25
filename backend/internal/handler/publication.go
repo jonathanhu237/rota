@@ -619,6 +619,8 @@ func (h *PublicationHandler) writePublicationServiceError(w http.ResponseWriter,
 		writeError(w, http.StatusConflict, "ASSIGNMENT_TIME_CONFLICT", "Assignment time conflict")
 	case errors.Is(err, service.ErrNotQualified):
 		writeError(w, http.StatusForbidden, "NOT_QUALIFIED", "User is not qualified for this shift")
+	case errors.Is(err, service.ErrSchedulingRetryable):
+		writeError(w, http.StatusServiceUnavailable, "SCHEDULING_RETRYABLE", "Scheduling conflict, please retry")
 	default:
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
 	}

@@ -272,6 +272,8 @@ func (h *ShiftChangeHandler) writeError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusForbidden, "SHIFT_CHANGE_NOT_QUALIFIED", "Not qualified for the involved shift")
 	case errors.Is(err, service.ErrShiftChangeTimeConflict):
 		writeError(w, http.StatusConflict, "SHIFT_CHANGE_TIME_CONFLICT", "Resulting schedule would have overlapping shifts")
+	case errors.Is(err, service.ErrUserDisabled):
+		writeError(w, http.StatusConflict, "USER_DISABLED", "User is disabled")
 	case errors.Is(err, service.ErrShiftChangeNotPending):
 		writeError(w, http.StatusConflict, "SHIFT_CHANGE_NOT_PENDING", "Request is no longer pending")
 	case errors.Is(err, service.ErrShiftChangeExpired):
@@ -284,6 +286,8 @@ func (h *ShiftChangeHandler) writeError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "PUBLICATION_NOT_PUBLISHED", "Publication is not published")
 	case errors.Is(err, service.ErrPublicationNotFound):
 		writeError(w, http.StatusNotFound, "PUBLICATION_NOT_FOUND", "Publication not found")
+	case errors.Is(err, service.ErrSchedulingRetryable):
+		writeError(w, http.StatusServiceUnavailable, "SCHEDULING_RETRYABLE", "Scheduling conflict, please retry")
 	default:
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
 	}

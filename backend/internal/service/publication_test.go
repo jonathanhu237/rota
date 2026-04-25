@@ -134,6 +134,10 @@ func newPublicationRepositoryStatefulMock() *publicationRepositoryStatefulMock {
 			7: {
 				101: {},
 			},
+			8: {
+				101: {},
+				102: {},
+			},
 		},
 		shiftChangeRequests: make(map[int64]*model.ShiftChangeRequest),
 	}
@@ -685,6 +689,12 @@ func (m *publicationRepositoryStatefulMock) ListAssignmentCandidates(
 			continue
 		}
 		slotID, positionID, _ := m.resolveStoredSubmissionRef(submission)
+		if user.Status != model.UserStatusActive {
+			continue
+		}
+		if qualified, _ := m.IsUserQualifiedForPosition(ctx, user.ID, positionID); !qualified {
+			continue
+		}
 		candidates = append(candidates, &model.AssignmentCandidate{
 			SlotID:     slotID,
 			PositionID: positionID,
@@ -795,10 +805,7 @@ func (m *publicationRepositoryStatefulMock) GetAssignmentBoardView(
 	if err != nil {
 		return nil, err
 	}
-	candidates, err := m.ListAssignmentCandidates(ctx, publicationID)
-	if err != nil {
-		return nil, err
-	}
+	candidates := m.listAssignmentBoardCandidates(publicationID)
 	assignments, err := m.ListPublicationAssignments(ctx, publicationID)
 	if err != nil {
 		return nil, err
@@ -853,6 +860,39 @@ func (m *publicationRepositoryStatefulMock) GetAssignmentBoardView(
 	}
 
 	return board, nil
+}
+
+func (m *publicationRepositoryStatefulMock) listAssignmentBoardCandidates(publicationID int64) []*model.AssignmentCandidate {
+	candidates := make([]*model.AssignmentCandidate, 0)
+	for _, submission := range m.submissions {
+		if submission.PublicationID != publicationID {
+			continue
+		}
+		user, ok := m.users[submission.UserID]
+		if !ok {
+			continue
+		}
+		slotID, positionID, _ := m.resolveStoredSubmissionRef(submission)
+		candidates = append(candidates, &model.AssignmentCandidate{
+			SlotID:     slotID,
+			PositionID: positionID,
+			UserID:     user.ID,
+			Name:       user.Name,
+			Email:      user.Email,
+		})
+	}
+
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].SlotID != candidates[j].SlotID {
+			return candidates[i].SlotID < candidates[j].SlotID
+		}
+		if candidates[i].PositionID != candidates[j].PositionID {
+			return candidates[i].PositionID < candidates[j].PositionID
+		}
+		return candidates[i].UserID < candidates[j].UserID
+	})
+
+	return candidates
 }
 
 func (m *publicationRepositoryStatefulMock) ListUserAssignmentsOnWeekdayInPublication(

@@ -108,6 +108,8 @@ func (s *PublicationService) CreateAssignment(
 		return nil, ErrAssignmentTimeConflict
 	}
 
+	// The checks above are a fast-fail for UX latency. The repository repeats
+	// the user-status and schedule checks inside the insert transaction.
 	assignment, err := s.publicationRepo.CreateAssignment(ctx, repository.CreateAssignmentParams{
 		PublicationID: input.PublicationID,
 		UserID:        input.UserID,

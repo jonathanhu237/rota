@@ -149,3 +149,56 @@ func TestPublicationServiceAutoAssignPublication(t *testing.T) {
 		}
 	})
 }
+
+func TestPublicationServiceAutoAssignSkipsRevokedQualification(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 4, 23, 10, 0, 0, 0, time.UTC)
+	repo := newPublicationRepositoryStatefulMock()
+	repo.publications[1] = assigningPublication(now)
+	repo.slotPositions[21][0].RequiredHeadcount = 1
+	repo.submissions[submissionKey(1, 7, 11)] = &model.AvailabilitySubmission{
+		ID:              1,
+		PublicationID:   1,
+		UserID:          7,
+		TemplateShiftID: 11,
+		CreatedAt:       now.Add(-time.Hour),
+	}
+	delete(repo.qualifiedByUser[7], 101)
+
+	service := NewPublicationService(repo, fixedClock{now: now})
+	if _, err := service.AutoAssignPublication(context.Background(), 1); err != nil {
+		t.Fatalf("AutoAssignPublication returned error: %v", err)
+	}
+	if _, ok := repo.assignments[assignmentKey(1, 7, 21)]; ok {
+		t.Fatalf("expected revoked qualification to be excluded, got assignments %+v", repo.assignments)
+	}
+	if len(repo.submissions) != 1 {
+		t.Fatalf("expected stale submission row to remain, got %+v", repo.submissions)
+	}
+}
+
+func TestPublicationServiceAutoAssignSkipsDisabled(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 4, 23, 10, 0, 0, 0, time.UTC)
+	repo := newPublicationRepositoryStatefulMock()
+	repo.publications[1] = assigningPublication(now)
+	repo.slotPositions[21][0].RequiredHeadcount = 1
+	repo.users[7].Status = model.UserStatusDisabled
+	repo.submissions[submissionKey(1, 7, 11)] = &model.AvailabilitySubmission{
+		ID:              1,
+		PublicationID:   1,
+		UserID:          7,
+		TemplateShiftID: 11,
+		CreatedAt:       now.Add(-time.Hour),
+	}
+
+	service := NewPublicationService(repo, fixedClock{now: now})
+	if _, err := service.AutoAssignPublication(context.Background(), 1); err != nil {
+		t.Fatalf("AutoAssignPublication returned error: %v", err)
+	}
+	if _, ok := repo.assignments[assignmentKey(1, 7, 21)]; ok {
+		t.Fatalf("expected disabled user to be excluded, got assignments %+v", repo.assignments)
+	}
+}

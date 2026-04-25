@@ -29,6 +29,7 @@ var (
 	ErrPublicationNotActive        = model.ErrPublicationNotActive
 	ErrAssignmentTimeConflict      = model.ErrAssignmentTimeConflict
 	ErrAssignmentUserAlreadyInSlot = model.ErrAssignmentUserAlreadyInSlot
+	ErrSchedulingRetryable         = model.ErrSchedulingRetryable
 	ErrNotQualified                = model.ErrNotQualified
 )
 
@@ -557,6 +558,12 @@ func mapPublicationRepositoryError(err error) error {
 		return ErrUserNotFound
 	case errors.Is(err, repository.ErrAssignmentUserAlreadyInSlot):
 		return ErrAssignmentUserAlreadyInSlot
+	case errors.Is(err, repository.ErrTimeConflict):
+		return ErrAssignmentTimeConflict
+	case errors.Is(err, repository.ErrUserDisabled):
+		return ErrUserDisabled
+	case errors.Is(err, repository.ErrSchedulingRetryable):
+		return ErrSchedulingRetryable
 	default:
 		return err
 	}

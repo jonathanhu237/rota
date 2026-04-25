@@ -604,6 +604,7 @@
       "TEMPLATE_SHIFT_NOT_FOUND": "Template shift not found",
       "ASSIGNMENT_USER_ALREADY_IN_SLOT": "This user is already assigned to another position in this slot.",
       "ASSIGNMENT_TIME_CONFLICT": "This assignment overlaps with another slot the user is already assigned to.",
+      "SCHEDULING_RETRYABLE": "Another scheduling change was applied at the same time. Please try again.",
       "NOT_QUALIFIED": "You are not qualified for this shift.",
       "USER_DISABLED": "This user is disabled.",
       "USER_NOT_FOUND": "User not found",
@@ -786,6 +787,7 @@
       "SHIFT_CHANGE_NOT_QUALIFIED": "You are not qualified for this shift.",
       "SHIFT_CHANGE_SELF": "You cannot act on your own request.",
       "SHIFT_CHANGE_TIME_CONFLICT": "This change conflicts with another shift you already have.",
+      "SCHEDULING_RETRYABLE": "Another scheduling change was applied at the same time. Please try again.",
       "UNAUTHORIZED": "Unauthorized"
     }
   }

@@ -576,6 +576,7 @@ func TestPublicationHandler(t *testing.T) {
 			{name: "user disabled", err: service.ErrUserDisabled, status: http.StatusConflict, code: "USER_DISABLED"},
 			{name: "user already in slot", err: service.ErrAssignmentUserAlreadyInSlot, status: http.StatusConflict, code: "ASSIGNMENT_USER_ALREADY_IN_SLOT"},
 			{name: "time conflict", err: service.ErrAssignmentTimeConflict, status: http.StatusConflict, code: "ASSIGNMENT_TIME_CONFLICT"},
+			{name: "retryable scheduling", err: service.ErrSchedulingRetryable, status: http.StatusServiceUnavailable, code: "SCHEDULING_RETRYABLE"},
 		}
 
 		for _, tc := range cases {
