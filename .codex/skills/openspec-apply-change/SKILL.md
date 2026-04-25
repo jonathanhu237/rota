@@ -24,59 +24,36 @@ Implement tasks from an OpenSpec change.
 
    Always announce: "Using change: <name>" and how to override (e.g., `/opsx:apply <other>`).
 
-1a. **Ensure the apply runs on a `change/<change-name>` worktree (rota project rule).**
+1a. **Verify branch precondition (rota project rule).**
 
-   This project requires apply to run on a branch named `change/<change-name>`, not on `main`. Bootstrap the worktree yourself if needed, do not ask the user to do it manually.
-
-   Detection step:
+   This project requires apply to run on a branch named `change/<change-name>`, not on `main`. Before doing any task work, check:
 
    ```bash
    expected="change/<change-name>"
-   current="$(git rev-parse --abbrev-ref HEAD)"
+   current=$(git rev-parse --abbrev-ref HEAD)
    ```
 
-   Branch the work: choose ONE of (a), (b), (c) based on `current` and the working tree state.
+   If `current != expected`, **stop immediately** — do not proceed to any later step, do not modify any file. Print the following to the user (substitute `<change-name>` and detect `<repo>` via `basename "$(git rev-parse --show-toplevel)"`):
 
-   - **(a) `current == expected`**: already on the right branch. Continue to Step 2.
+   ```
+   ✗ apply must run on branch change/<change-name>, currently on <current>.
+     Set up the worktree (recommended for parallel runs) before retrying:
 
-   - **(b) `current == main` AND `git status --porcelain` is empty (or contains only the change's `openspec/changes/<change-name>/` artifacts)**: bootstrap a fresh worktree, then `cd` into it. After this block your cwd MUST be the new worktree; all later steps run there.
+       cd "$(dirname "$(git rev-parse --show-toplevel)")"
+       git -C <repo> worktree add ../<repo>-<change-name> -b change/<change-name>
+       cp <repo>/.env ../<repo>-<change-name>/.env
+       cd ../<repo>-<change-name>
+       codex exec '/opsx:apply <change-name>'
 
-     ```bash
-     repo_root="$(git rev-parse --show-toplevel)"
-     repo_name="$(basename "$repo_root")"
-     worktree_dir="${repo_root}/../${repo_name}-<change-name>"
+     Or for strictly serial work, a regular branch is fine:
 
-     if [ -e "$worktree_dir" ]; then
-       echo "✗ worktree path already exists: $worktree_dir"
-       echo "  remove it first (git worktree remove $worktree_dir) or pick a different change name"
-       exit 1
-     fi
-
-     git -C "$repo_root" worktree add "$worktree_dir" -b "$expected"
-     # .env is gitignored; copy it forward best-effort so the new worktree can run docker compose / smoke tests
-     cp "$repo_root/.env" "$worktree_dir/.env" 2>/dev/null || echo "  note: no .env to copy; you may need to populate $worktree_dir/.env before integration tests"
-     cd "$worktree_dir"
-     ```
-
-     Announce to the user: `"Bootstrapped worktree at <worktree_dir> on branch <expected>. Continuing apply there."`
-
-   - **(c) anything else** (e.g., `current` is some other branch, or the working tree has unrelated uncommitted changes): refuse and stop. Print:
-
-     ```
-     ✗ cannot bootstrap worktree from current state.
-       current branch: <current>
-       expected branch: change/<change-name>
-       working tree status: <output of `git status -s | head -5`>
-
-     Resolve manually before re-running. Common fixes:
-       - if you're already in a worktree for a different change, cd to the main checkout (the one on branch main) and re-run codex exec there
-       - if the main working tree has uncommitted unrelated changes, commit or stash them first
-       - if you intended a serial in-place flow (no worktree), checkout the branch yourself: git checkout -b change/<change-name>
+       git checkout -b change/<change-name>
+       codex exec '/opsx:apply <change-name>'
 
      See AGENTS.md "Apply runs on a feature branch" for the full rule.
-     ```
+   ```
 
-     Exit. Do not continue.
+   Exit. Do not continue. The user re-runs after setting up the branch.
 
 2. **Check status to understand the schema**
    ```bash
