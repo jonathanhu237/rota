@@ -13,11 +13,12 @@ import (
 // Action constants list every audit event the system emits. Keep this list
 // authoritative so new actions are easy to discover during code review.
 const (
-	ActionUserCreate               = "user.create"
-	ActionUserUpdate               = "user.update"
-	ActionUserStatusActivate       = "user.status.activate"
-	ActionUserStatusDisable        = "user.status.disable"
-	ActionUserInvitationResend     = "user.invitation.resend"
+	ActionUserCreate                = "user.create"
+	ActionUserUpdate                = "user.update"
+	ActionUserStatusActivate        = "user.status.activate"
+	ActionUserStatusDisable         = "user.status.disable"
+	ActionUserInvitationResend      = "user.invitation.resend"
+	ActionUserInvitationEmailFailed = "user.invitation.email_failed"
 	ActionUserQualificationsReplace = "user.qualifications.replace"
 
 	ActionPositionCreate = "position.create"
@@ -40,12 +41,12 @@ const (
 	ActionPublicationEnd        = "publication.end"
 	ActionPublicationAutoAssign = "publication.auto_assign"
 
-	ActionShiftChangeCreate      = "shift_change.create"
-	ActionShiftChangeApprove     = "shift_change.approve"
-	ActionShiftChangeReject      = "shift_change.reject"
-	ActionShiftChangeCancel      = "shift_change.cancel"
+	ActionShiftChangeCreate            = "shift_change.create"
+	ActionShiftChangeApprove           = "shift_change.approve"
+	ActionShiftChangeReject            = "shift_change.reject"
+	ActionShiftChangeCancel            = "shift_change.cancel"
 	ActionShiftChangeInvalidateCascade = "shift_change.invalidate.cascade"
-	ActionShiftChangeExpireBulk  = "shift_change.expire.bulk"
+	ActionShiftChangeExpireBulk        = "shift_change.expire.bulk"
 
 	ActionSubmissionCreate = "submission.create"
 	ActionSubmissionDelete = "submission.delete"

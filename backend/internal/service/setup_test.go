@@ -232,6 +232,78 @@ func TestUserServiceCreateUserInvitationFlow(t *testing.T) {
 	})
 }
 
+func TestUserServiceCreateUserEmailFailureAudit(t *testing.T) {
+	t.Parallel()
+
+	expectedErr := errors.New("smtp unavailable")
+	txUserRepo := &setupUserRepositoryMock{
+		createFunc: func(ctx context.Context, params repository.CreateUserParams) (*model.User, error) {
+			return &model.User{
+				ID:      14,
+				Email:   params.Email,
+				Name:    params.Name,
+				IsAdmin: params.IsAdmin,
+				Status:  params.Status,
+			}, nil
+		},
+	}
+	txTokenRepo := &setupTokenRepositoryMock{
+		invalidateUnusedTokensFunc: func(ctx context.Context, userID int64, purpose model.SetupTokenPurpose, usedAt time.Time) error {
+			return nil
+		},
+		createFunc: func(ctx context.Context, params repository.CreateSetupTokenParams) (*model.SetupToken, error) {
+			return &model.SetupToken{ID: 9, UserID: params.UserID, TokenHash: params.TokenHash}, nil
+		},
+	}
+	service := NewUserService(
+		&userRepositoryMock{
+			getByEmailFunc: func(ctx context.Context, email string) (*model.User, error) {
+				return nil, repository.ErrUserNotFound
+			},
+		},
+		&userSessionStoreMock{},
+		WithSetupFlows(SetupFlowConfig{
+			TxManager:          &setupTxManagerMock{withinTxFunc: withSetupRepos(txUserRepo, txTokenRepo)},
+			Emailer:            &emailerMock{sendFunc: func(ctx context.Context, msg email.Message) error { return expectedErr }},
+			Logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
+			AppBaseURL:         "http://localhost:5173",
+			InvitationTokenTTL: 72 * time.Hour,
+			Clock:              func() time.Time { return time.Date(2026, 4, 20, 8, 0, 0, 0, time.UTC) },
+			RandomReader:       strings.NewReader(strings.Repeat("h", 32)),
+		}),
+	)
+
+	stub := audittest.New()
+	ctx := stub.ContextWith(context.Background())
+	user, err := service.CreateUser(ctx, CreateUserInput{
+		Email: "worker@example.com",
+		Name:  "Worker",
+	})
+	if err != nil {
+		t.Fatalf("CreateUser returned error: %v", err)
+	}
+	if user.ID != 14 || user.Status != model.UserStatusPending {
+		t.Fatalf("expected pending created user, got %+v", user)
+	}
+
+	event := assertSingleAuditAction(t, stub, audit.ActionUserInvitationEmailFailed)
+	if event.TargetType != audit.TargetTypeUser {
+		t.Fatalf("expected target type user, got %q", event.TargetType)
+	}
+	if event.TargetID == nil || *event.TargetID != 14 {
+		t.Fatalf("expected target ID 14, got %v", event.TargetID)
+	}
+	if event.Metadata["email"] != "worker@example.com" {
+		t.Fatalf("expected email metadata, got %v", event.Metadata["email"])
+	}
+	if event.Metadata["error"] != expectedErr.Error() {
+		t.Fatalf("expected error metadata %q, got %v", expectedErr.Error(), event.Metadata["error"])
+	}
+	if stub.FindByAction(audit.ActionUserCreate) == nil {
+		t.Fatalf("expected user.create audit event, got %v", stub.Actions())
+	}
+}
+
 func TestUserServiceResendInvitation(t *testing.T) {
 	t.Run("reissues an invitation for a pending user", func(t *testing.T) {
 		t.Parallel()
@@ -332,6 +404,66 @@ func TestUserServiceResendInvitation(t *testing.T) {
 			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
 		}
 	})
+}
+
+func TestUserServiceResendInvitationEmailFailureAudit(t *testing.T) {
+	t.Parallel()
+
+	expectedErr := errors.New("smtp refused")
+	txUserRepo := &setupUserRepositoryMock{
+		getByIDFunc: func(ctx context.Context, id int64) (*model.User, error) {
+			return &model.User{
+				ID:     id,
+				Email:  "pending@example.com",
+				Name:   "Pending User",
+				Status: model.UserStatusPending,
+			}, nil
+		},
+	}
+	txTokenRepo := &setupTokenRepositoryMock{
+		invalidateUnusedTokensFunc: func(ctx context.Context, userID int64, purpose model.SetupTokenPurpose, usedAt time.Time) error {
+			return nil
+		},
+		createFunc: func(ctx context.Context, params repository.CreateSetupTokenParams) (*model.SetupToken, error) {
+			return &model.SetupToken{ID: 10, UserID: params.UserID, TokenHash: params.TokenHash}, nil
+		},
+	}
+	service := NewUserService(
+		&userRepositoryMock{},
+		&userSessionStoreMock{},
+		WithSetupFlows(SetupFlowConfig{
+			TxManager:          &setupTxManagerMock{withinTxFunc: withSetupRepos(txUserRepo, txTokenRepo)},
+			Emailer:            &emailerMock{sendFunc: func(ctx context.Context, msg email.Message) error { return expectedErr }},
+			Logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
+			AppBaseURL:         "http://localhost:5173",
+			InvitationTokenTTL: 72 * time.Hour,
+			Clock:              func() time.Time { return time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC) },
+			RandomReader:       strings.NewReader(strings.Repeat("i", 32)),
+		}),
+	)
+
+	stub := audittest.New()
+	ctx := stub.ContextWith(context.Background())
+	if err := service.ResendInvitation(ctx, 21); err != nil {
+		t.Fatalf("ResendInvitation returned error: %v", err)
+	}
+
+	event := assertSingleAuditAction(t, stub, audit.ActionUserInvitationEmailFailed)
+	if event.TargetType != audit.TargetTypeUser {
+		t.Fatalf("expected target type user, got %q", event.TargetType)
+	}
+	if event.TargetID == nil || *event.TargetID != 21 {
+		t.Fatalf("expected target ID 21, got %v", event.TargetID)
+	}
+	if event.Metadata["email"] != "pending@example.com" {
+		t.Fatalf("expected email metadata, got %v", event.Metadata["email"])
+	}
+	if event.Metadata["error"] != expectedErr.Error() {
+		t.Fatalf("expected error metadata %q, got %v", expectedErr.Error(), event.Metadata["error"])
+	}
+	if stub.FindByAction(audit.ActionUserInvitationResend) == nil {
+		t.Fatalf("expected user.invitation.resend audit event, got %v", stub.Actions())
+	}
 }
 
 func TestAuthServiceSetupFlows(t *testing.T) {
@@ -663,6 +795,62 @@ func TestAuthServiceSetupFlows(t *testing.T) {
 			t.Fatalf("metadata must not contain password; got %v", event.Metadata)
 		}
 	})
+}
+
+func TestTokenIssuanceInvalidatesPriorBeforeCreate(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 4, 25, 11, 0, 0, 0, time.UTC)
+	calls := make([]string, 0, 2)
+	tokenRepo := &setupTokenRepositoryMock{
+		invalidateUnusedTokensFunc: func(ctx context.Context, userID int64, purpose model.SetupTokenPurpose, usedAt time.Time) error {
+			calls = append(calls, "invalidate")
+			if userID != 88 || purpose != model.SetupTokenPurposeInvitation {
+				t.Fatalf("unexpected invalidate input userID=%d purpose=%q", userID, purpose)
+			}
+			if !usedAt.Equal(now) {
+				t.Fatalf("expected invalidation time %s, got %s", now, usedAt)
+			}
+			return nil
+		},
+		createFunc: func(ctx context.Context, params repository.CreateSetupTokenParams) (*model.SetupToken, error) {
+			calls = append(calls, "create")
+			if len(calls) != 2 || calls[0] != "invalidate" {
+				t.Fatalf("Create called before invalidation, calls=%v", calls)
+			}
+			return &model.SetupToken{ID: 11, UserID: params.UserID, TokenHash: params.TokenHash}, nil
+		},
+	}
+	helper := newSetupFlowHelper(SetupFlowConfig{
+		Clock:        func() time.Time { return now },
+		RandomReader: strings.NewReader(strings.Repeat("j", 32)),
+	})
+
+	rawToken, err := helper.issueToken(context.Background(), tokenRepo, 88, model.SetupTokenPurposeInvitation, 72*time.Hour)
+	if err != nil {
+		t.Fatalf("issueToken returned error: %v", err)
+	}
+	if rawToken == "" {
+		t.Fatalf("expected raw token")
+	}
+	if len(calls) != 2 || calls[0] != "invalidate" || calls[1] != "create" {
+		t.Fatalf("expected invalidate then create, got %v", calls)
+	}
+}
+
+func assertSingleAuditAction(t *testing.T, stub *audittest.Stub, action string) audit.RecordedEvent {
+	t.Helper()
+
+	var matches []audit.RecordedEvent
+	for _, event := range stub.Events() {
+		if event.Action == action {
+			matches = append(matches, event)
+		}
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected exactly one %q audit event, got %d actions=%v", action, len(matches), stub.Actions())
+	}
+	return matches[0]
 }
 
 type setupUserRepositoryMock struct {

@@ -176,3 +176,28 @@ func TestSetupTokenRepositoryIntegration(t *testing.T) {
 		}
 	})
 }
+
+func TestSetupTokenMarkUsedReturnsErrTokenUsedOnSecondCall(t *testing.T) {
+	ctx := context.Background()
+	db := openIntegrationDB(t)
+	user := seedUser(t, db, userSeed{})
+	repo := NewSetupTokenRepository(db)
+	token, err := repo.Create(ctx, CreateSetupTokenParams{
+		UserID:    user.ID,
+		TokenHash: "token-hash-mark-used-twice",
+		Purpose:   model.SetupTokenPurposeInvitation,
+		ExpiresAt: testTime().Add(72 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("create setup token: %v", err)
+	}
+
+	if err := repo.MarkUsed(ctx, token.ID, testTime()); err != nil {
+		t.Fatalf("first MarkUsed returned error: %v", err)
+	}
+
+	err = repo.MarkUsed(ctx, token.ID, testTime().Add(time.Second))
+	if !errors.Is(err, model.ErrTokenUsed) {
+		t.Fatalf("expected ErrTokenUsed on second MarkUsed, got %v", err)
+	}
+}

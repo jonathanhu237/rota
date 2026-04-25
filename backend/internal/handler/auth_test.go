@@ -431,6 +431,25 @@ func TestAuthHandler(t *testing.T) {
 	})
 }
 
+func TestAuthHandlerSetupPasswordTokenUsed(t *testing.T) {
+	t.Parallel()
+
+	handler := NewAuthHandler(&stubAuthService{
+		setupPasswordFunc: func(ctx context.Context, input service.SetupPasswordInput) error {
+			return model.ErrTokenUsed
+		},
+	})
+	recorder := httptest.NewRecorder()
+	req := jsonRequest(t, http.MethodPost, "/auth/setup-password", map[string]any{
+		"token":    "opaque-token",
+		"password": "pa55word",
+	})
+
+	handler.SetupPassword(recorder, req)
+
+	assertErrorResponse(t, recorder, http.StatusGone, "TOKEN_USED")
+}
+
 func assertSessionCookie(
 	t testing.TB,
 	cookies []*http.Cookie,

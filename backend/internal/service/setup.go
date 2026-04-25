@@ -26,6 +26,7 @@ type setupTxManager = repository.SetupTxRunner
 
 type setupLogger interface {
 	Error(msg string, args ...any)
+	Warn(msg string, args ...any)
 }
 
 type SetupFlowConfig struct {
@@ -122,8 +123,8 @@ func (h *setupFlowHelper) issueToken(
 	return rawToken, nil
 }
 
-func (h *setupFlowHelper) sendInvitation(ctx context.Context, user *model.User, rawToken string) {
-	h.sendEmail(ctx, email.BuildInvitationMessage(email.TemplateData{
+func (h *setupFlowHelper) sendInvitation(ctx context.Context, user *model.User, rawToken string) error {
+	return h.sendEmail(ctx, email.BuildInvitationMessage(email.TemplateData{
 		To:         user.Email,
 		Name:       user.Name,
 		BaseURL:    h.appBaseURL,
@@ -133,8 +134,8 @@ func (h *setupFlowHelper) sendInvitation(ctx context.Context, user *model.User, 
 	}))
 }
 
-func (h *setupFlowHelper) sendPasswordReset(ctx context.Context, user *model.User, rawToken string) {
-	h.sendEmail(ctx, email.BuildPasswordResetMessage(email.TemplateData{
+func (h *setupFlowHelper) sendPasswordReset(ctx context.Context, user *model.User, rawToken string) error {
+	return h.sendEmail(ctx, email.BuildPasswordResetMessage(email.TemplateData{
 		To:         user.Email,
 		Name:       user.Name,
 		BaseURL:    h.appBaseURL,
@@ -144,14 +145,12 @@ func (h *setupFlowHelper) sendPasswordReset(ctx context.Context, user *model.Use
 	}))
 }
 
-func (h *setupFlowHelper) sendEmail(ctx context.Context, msg email.Message) {
+func (h *setupFlowHelper) sendEmail(ctx context.Context, msg email.Message) error {
 	if h.emailer == nil {
-		return
+		return nil
 	}
 
-	if err := h.emailer.Send(ctx, msg); err != nil {
-		h.logger.Error("Failed to send setup email", "error", err, "to", msg.To, "subject", msg.Subject)
-	}
+	return h.emailer.Send(ctx, msg)
 }
 
 func (h *setupFlowHelper) resolveToken(

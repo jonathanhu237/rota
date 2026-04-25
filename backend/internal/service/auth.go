@@ -166,7 +166,14 @@ func (s *AuthService) RequestPasswordReset(ctx context.Context, emailAddress str
 	}
 
 	if user != nil && rawToken != "" {
-		s.setupFlows.sendPasswordReset(ctx, user, rawToken)
+		if err := s.setupFlows.sendPasswordReset(ctx, user, rawToken); err != nil {
+			s.setupFlows.logger.Warn(
+				"password reset email failed",
+				"user_id", user.ID,
+				"email", user.Email,
+				"error", err,
+			)
+		}
 	}
 
 	// user_found reflects whether an eligible (active) user exists for the

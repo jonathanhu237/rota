@@ -174,7 +174,9 @@ func (s *UserService) CreateUser(ctx context.Context, input CreateUserInput) (*m
 		return nil, err
 	}
 
-	s.setupFlows.sendInvitation(ctx, createdUser, rawToken)
+	if err := s.setupFlows.sendInvitation(ctx, createdUser, rawToken); err != nil {
+		s.recordInvitationEmailFailure(ctx, createdUser, err)
+	}
 
 	targetID := createdUser.ID
 	audit.Record(ctx, audit.Event{
@@ -224,7 +226,9 @@ func (s *UserService) ResendInvitation(ctx context.Context, userID int64) error 
 		return err
 	}
 
-	s.setupFlows.sendInvitation(ctx, user, rawToken)
+	if err := s.setupFlows.sendInvitation(ctx, user, rawToken); err != nil {
+		s.recordInvitationEmailFailure(ctx, user, err)
+	}
 
 	targetID := user.ID
 	audit.Record(ctx, audit.Event{
@@ -249,6 +253,32 @@ func (s *UserService) GetUserByID(ctx context.Context, id int64) (*model.User, e
 		return nil, mapRepositoryError(err)
 	}
 	return user, nil
+}
+
+func (s *UserService) recordInvitationEmailFailure(ctx context.Context, user *model.User, err error) {
+	if user == nil || err == nil {
+		return
+	}
+
+	targetID := user.ID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionUserInvitationEmailFailed,
+		TargetType: audit.TargetTypeUser,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"email": user.Email,
+			"error": err.Error(),
+		},
+	})
+
+	if s.setupFlows != nil && s.setupFlows.logger != nil {
+		s.setupFlows.logger.Warn(
+			"invitation email failed",
+			"user_id", user.ID,
+			"email", user.Email,
+			"error", err,
+		)
+	}
 }
 
 func (s *UserService) UpdateUser(ctx context.Context, input UpdateUserInput) (*model.User, error) {

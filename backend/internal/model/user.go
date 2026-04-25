@@ -1,6 +1,9 @@
 package model
 
-import "errors"
+import (
+	"errors"
+	"unicode/utf8"
+)
 
 type UserStatus string
 
@@ -23,7 +26,7 @@ type User struct {
 }
 
 func ValidatePassword(password string) error {
-	if len(password) < 8 {
+	if utf8.RuneCountInString(password) < 8 {
 		return ErrPasswordTooShort
 	}
 	return nil

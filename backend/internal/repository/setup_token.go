@@ -103,7 +103,8 @@ func (r *SetupTokenRepository) MarkUsed(ctx context.Context, id int64, usedAt ti
 	const query = `
 		UPDATE user_setup_tokens
 		SET used_at = $2
-		WHERE id = $1;
+		WHERE id = $1
+			AND used_at IS NULL;
 	`
 
 	result, err := r.db.ExecContext(ctx, query, id, usedAt)
@@ -116,7 +117,7 @@ func (r *SetupTokenRepository) MarkUsed(ctx context.Context, id int64, usedAt ti
 		return err
 	}
 	if rowsAffected == 0 {
-		return model.ErrTokenNotFound
+		return model.ErrTokenUsed
 	}
 
 	return nil

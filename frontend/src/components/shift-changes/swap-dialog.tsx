@@ -1,7 +1,7 @@
-import { useEffect, useEffectEvent, useMemo, useState } from "react"
+import { useEffect, useEffectEvent, useMemo, useRef } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { Controller, useForm } from "react-hook-form"
+import { Controller, useForm, useWatch } from "react-hook-form"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -81,7 +81,6 @@ export function SwapDialog({
     handleSubmit,
     reset,
     trigger,
-    watch,
     setValue,
     formState: { errors },
   } = useForm<SwapFormValues>({
@@ -92,7 +91,7 @@ export function SwapDialog({
     },
   })
 
-  const counterpartUserID = watch("counterpart_user_id")
+  const counterpartUserID = useWatch({ control, name: "counterpart_user_id" })
 
   useEffect(() => {
     if (open) {
@@ -120,13 +119,13 @@ export function SwapDialog({
 
   // Clear the shift choice when the counterpart changes so the picker
   // always reflects the new person's own shifts.
-  const [previousCounterpart, setPreviousCounterpart] = useState<number>(0)
+  const previousCounterpart = useRef<number>(0)
   useEffect(() => {
-    if (counterpartUserID !== previousCounterpart) {
-      setPreviousCounterpart(counterpartUserID)
+    if (counterpartUserID !== previousCounterpart.current) {
+      previousCounterpart.current = counterpartUserID
       setValue("counterpart_assignment_id", 0, { shouldValidate: false })
     }
-  }, [counterpartUserID, previousCounterpart, setValue])
+  }, [counterpartUserID, setValue])
 
   const mutation = useMutation({
     mutationFn: async (values: SwapFormValues) => {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/jonathanhu237/rota/backend/internal/audit"
 	"github.com/jonathanhu237/rota/backend/internal/audit/audittest"
@@ -563,6 +564,161 @@ func TestAuthServiceLogout(t *testing.T) {
 			t.Fatalf("expected no audit events on delete failure, got %v", stub.Actions())
 		}
 	})
+}
+
+func TestAuthServiceSetupPasswordPropagatesTokenUsed(t *testing.T) {
+	t.Parallel()
+
+	rawToken := validSetupToken(10)
+	now := time.Date(2026, 4, 25, 10, 0, 0, 0, time.UTC)
+	txUserRepo := &setupUserRepositoryMock{
+		setPasswordAndStatusFunc: func(ctx context.Context, params repository.SetUserPasswordParams) (*model.User, error) {
+			t.Fatalf("SetPasswordAndStatus should not be called after ErrTokenUsed")
+			return nil, nil
+		},
+	}
+	txTokenRepo := &setupTokenRepositoryMock{
+		getByTokenHashFunc: func(ctx context.Context, tokenHash string) (*model.SetupToken, error) {
+			return &model.SetupToken{
+				ID:        77,
+				UserID:    51,
+				Purpose:   model.SetupTokenPurposeInvitation,
+				ExpiresAt: now.Add(time.Hour),
+			}, nil
+		},
+		markUsedFunc: func(ctx context.Context, id int64, usedAt time.Time) error {
+			if id != 77 {
+				t.Fatalf("expected token ID 77, got %d", id)
+			}
+			return model.ErrTokenUsed
+		},
+		invalidateAllUnusedFunc: func(ctx context.Context, userID int64, usedAt time.Time) error {
+			t.Fatalf("InvalidateAllUnusedTokens should not be called after ErrTokenUsed")
+			return nil
+		},
+	}
+
+	service := NewAuthService(
+		&authUserRepositoryMock{},
+		&authSessionStoreMock{},
+		WithAuthSetupFlows(SetupFlowConfig{
+			TxManager: &setupTxManagerMock{withinTxFunc: withSetupRepos(txUserRepo, txTokenRepo)},
+			Clock:     func() time.Time { return now },
+		}),
+	)
+	stub := audittest.New()
+	ctx := stub.ContextWith(context.Background())
+
+	err := service.SetupPassword(ctx, SetupPasswordInput{
+		Token:    rawToken,
+		Password: "pa55word",
+	})
+	if !errors.Is(err, model.ErrTokenUsed) {
+		t.Fatalf("expected ErrTokenUsed, got %v", err)
+	}
+	if len(stub.Events()) != 0 {
+		t.Fatalf("expected no audit events after token-used failure, got %v", stub.Actions())
+	}
+}
+
+func TestAuthServiceSetupPasswordLength(t *testing.T) {
+	t.Run("rejects empty password", func(t *testing.T) {
+		t.Parallel()
+		assertSetupPasswordLengthError(t, "")
+	})
+
+	t.Run("rejects seven code points", func(t *testing.T) {
+		t.Parallel()
+		assertSetupPasswordLengthError(t, "1234567")
+	})
+
+	t.Run("accepts eight code points", func(t *testing.T) {
+		t.Parallel()
+
+		rawToken := validSetupToken(11)
+		now := time.Date(2026, 4, 25, 10, 30, 0, 0, time.UTC)
+		txUserRepo := &setupUserRepositoryMock{
+			setPasswordAndStatusFunc: func(ctx context.Context, params repository.SetUserPasswordParams) (*model.User, error) {
+				if params.PasswordHash == "" {
+					t.Fatalf("expected hashed password")
+				}
+				if params.Status != model.UserStatusActive {
+					t.Fatalf("expected active status, got %q", params.Status)
+				}
+				return &model.User{ID: params.ID, Status: params.Status}, nil
+			},
+		}
+		txTokenRepo := &setupTokenRepositoryMock{
+			getByTokenHashFunc: func(ctx context.Context, tokenHash string) (*model.SetupToken, error) {
+				return &model.SetupToken{
+					ID:        78,
+					UserID:    52,
+					Purpose:   model.SetupTokenPurposeInvitation,
+					ExpiresAt: now.Add(time.Hour),
+				}, nil
+			},
+			markUsedFunc: func(ctx context.Context, id int64, usedAt time.Time) error {
+				if id != 78 {
+					t.Fatalf("expected token ID 78, got %d", id)
+				}
+				return nil
+			},
+			invalidateAllUnusedFunc: func(ctx context.Context, userID int64, usedAt time.Time) error {
+				if userID != 52 {
+					t.Fatalf("expected user ID 52, got %d", userID)
+				}
+				return nil
+			},
+		}
+		service := NewAuthService(
+			&authUserRepositoryMock{},
+			&authSessionStoreMock{},
+			WithAuthSetupFlows(SetupFlowConfig{
+				TxManager: &setupTxManagerMock{withinTxFunc: withSetupRepos(txUserRepo, txTokenRepo)},
+				Clock:     func() time.Time { return now },
+			}),
+		)
+
+		if err := service.SetupPassword(context.Background(), SetupPasswordInput{
+			Token:    rawToken,
+			Password: "12345678",
+		}); err != nil {
+			t.Fatalf("SetupPassword returned error: %v", err)
+		}
+	})
+
+	t.Run("rejects six multibyte code points", func(t *testing.T) {
+		t.Parallel()
+		assertSetupPasswordLengthError(t, "你好世界你好")
+	})
+}
+
+func assertSetupPasswordLengthError(t *testing.T, password string) {
+	t.Helper()
+
+	rawToken := validSetupToken(12)
+	service := NewAuthService(
+		&authUserRepositoryMock{},
+		&authSessionStoreMock{},
+		WithAuthSetupFlows(SetupFlowConfig{
+			TxManager: &setupTxManagerMock{
+				withinTxFunc: withSetupRepos(&setupUserRepositoryMock{}, &setupTokenRepositoryMock{
+					getByTokenHashFunc: func(ctx context.Context, tokenHash string) (*model.SetupToken, error) {
+						t.Fatalf("token lookup should not run for short password")
+						return nil, nil
+					},
+				}),
+			},
+		}),
+	)
+
+	err := service.SetupPassword(context.Background(), SetupPasswordInput{
+		Token:    rawToken,
+		Password: password,
+	})
+	if !errors.Is(err, model.ErrPasswordTooShort) {
+		t.Fatalf("expected ErrPasswordTooShort, got %v", err)
+	}
 }
 
 // assertLoginFailure asserts the stub captured a single login-failure event
