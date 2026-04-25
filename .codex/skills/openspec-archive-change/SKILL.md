@@ -82,16 +82,71 @@ Archive a completed change in the experimental workflow.
    mv openspec/changes/<name> openspec/changes/archive/YYYY-MM-DD-<name>
    ```
 
-6. **Display summary**
+6. **Commit the archived change on the current branch (rota project rule).**
 
-   Show archive completion summary including:
-   - Change name
-   - Schema that was used
-   - Archive location
-   - Whether specs were synced (if applicable)
-   - Note about any warnings (incomplete artifacts/tasks)
+   Compose a Conventional Commits message that reflects the change (`feat`, `fix`, `refactor`, `chore`, `docs`) with a meaningful body summarizing what changed. Stage only paths the change touched — typically some subset of `backend/`, `frontend/`, `migrations/`, `openspec/specs/`, and the new `openspec/changes/archive/YYYY-MM-DD-<change-name>/` directory. Use the project's `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>` trailer.
 
-**Output On Success**
+   Commit. Do NOT push yet — pushing happens after we know whether we're on a feature branch or `main`.
+
+7. **If on a `change/*` branch: merge to main and clean up the worktree (rota project rule).**
+
+   ```bash
+   current="$(git rev-parse --abbrev-ref HEAD)"
+   ```
+
+   - **If `current` is `main`** (legacy serial flow): `git push origin main` and stop. Skip the rest of this step.
+
+   - **If `current` matches `change/*`**:
+
+     1. Push the feature branch first so CI runs on it (optional but lets us catch failures before merging):
+        ```bash
+        git push origin "$current"
+        ```
+
+     2. Find the main checkout (the worktree on branch `main`):
+        ```bash
+        main_path="$(git worktree list --porcelain | awk '/^worktree / {p=$2} /^branch refs\/heads\/main$/ {print p; exit}')"
+        ```
+
+     3. Merge into `main` from the main checkout, with a merge commit (no fast-forward) so the branch's history is preserved:
+        ```bash
+        git -C "$main_path" merge --no-ff "$current" -m "Merge branch '$current' into main"
+        git -C "$main_path" push origin main
+        ```
+
+     4. Wait for CI on `main` to complete (the user has a Stop-hook notification configured; `gh run watch <id>` is fine, or use a polling background command). Report the result.
+
+     5. Delete the feature branch and remove the worktree:
+        ```bash
+        # The worktree is the directory the archive was performed from.
+        worktree_path="$(git rev-parse --show-toplevel)"
+        git -C "$main_path" worktree remove "$worktree_path"
+        git -C "$main_path" branch -d "$current"
+        # Best-effort delete the remote branch too:
+        git -C "$main_path" push origin --delete "$current" 2>/dev/null || true
+        ```
+
+     6. Switch the working directory of subsequent shell commands to `$main_path` (the worktree we were in is gone).
+
+8. **Display summary** including the merge result.
+
+**Output On Success (with merge)**
+
+```
+## Archive Complete + Merged
+
+**Change:** <change-name>
+**Schema:** <schema-name>
+**Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
+**Specs:** ✓ Synced to main specs
+**Branch:** change/<change-name> merged into main and removed
+**Worktree:** ../<repo>-<change-name>/ removed
+**CI on main:** ✓ green (or ✗ failed — investigate)
+
+All artifacts complete. All tasks complete.
+```
+
+**Output On Success (legacy serial, no branch)**
 
 ```
 ## Archive Complete
@@ -99,7 +154,8 @@ Archive a completed change in the experimental workflow.
 **Change:** <change-name>
 **Schema:** <schema-name>
 **Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
-**Specs:** ✓ Synced to main specs (or "No delta specs" or "Sync skipped")
+**Specs:** ✓ Synced to main specs
+**Branch:** stayed on main (no feature branch)
 
 All artifacts complete. All tasks complete.
 ```
@@ -112,3 +168,4 @@ All artifacts complete. All tasks complete.
 - Show clear summary of what happened
 - If sync is requested, use openspec-sync-specs approach (agent-driven)
 - If delta specs exist, always run the sync assessment and show the combined summary before prompting
+- The merge step (step 7) is rota-project-specific. Other projects using this skill template can drop it.
