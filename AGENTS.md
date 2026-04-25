@@ -44,7 +44,11 @@ Skill details live under `.claude/skills/openspec-*/SKILL.md` (mirrored to `.cod
 
   This sequence is Claude's responsibility because Claude is the only role with the Bash tool wired up for git plumbing. Codex finishes at apply; the user's only inputs in the lifecycle are starting Codex and saying "done".
 - **Behavior drift → fix the artifact first.** If review finds the implementation diverges from `design.md` / `tasks.md` / specs in a way that changes user-visible behavior or interfaces, update the artifact first and re-apply. Typos, renames, refactors that preserve behavior, comment tweaks, and logging changes can be patched directly without an artifact update.
-- **Parallelism is for independent work.** Spawn parallel agents only when tasks genuinely don't share files or state; never to "speed up" the same change folder.
+- **Parallelism is for independent or stacked changes.** Two changes may run in parallel — each on its own Codex + worktree — when (a) their files and schema are disjoint (independent), or (b) they form a stacked pair under the rules below. Never spawn parallel agents to "speed up" the same change folder.
+- **Stacked branches for dependent changes.** When change B depends on change A whose code has not yet merged to `main`, B's worktree SHALL be opened with A's branch as its base: `git worktree add ../<repo>-<B-name> -b change/<B-name> change/<A-name>` (substituting actual names). Apply / verify / archive / merge-back proceed as normal but with two extra rules:
+
+  1. When A receives new commits during review, Claude SHALL rebase B onto the latest A: `git -C ../<repo>-<B-name> rebase change/<A-name>`. Spec-delta conflicts (B's MODIFIED requirements layered on A's MODIFIED) are resolved by hand; code conflicts are usually Codex re-applying around the new baseline.
+  2. B's `/opsx:archive` + merge-back SHALL happen strictly after A's. The order is: A archive → A merge → B rebase onto main (`git rebase --onto main change/<A-name> change/<B-name>`) → B archive → B merge. Reversing the order makes B's spec sync reference requirements that are not yet in `main`.
 
 ### Commit convention
 
