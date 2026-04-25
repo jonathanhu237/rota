@@ -27,10 +27,11 @@ func (m *authUserRepositoryMock) GetByEmail(ctx context.Context, email string) (
 }
 
 type authSessionStoreMock struct {
-	createFunc  func(ctx context.Context, userID int64) (string, int64, error)
-	getFunc     func(ctx context.Context, sessionID string) (int64, error)
-	refreshFunc func(ctx context.Context, sessionID string) (int64, error)
-	deleteFunc  func(ctx context.Context, sessionID string) error
+	createFunc             func(ctx context.Context, userID int64) (string, int64, error)
+	getFunc                func(ctx context.Context, sessionID string) (int64, error)
+	refreshFunc            func(ctx context.Context, sessionID string) (int64, error)
+	deleteFunc             func(ctx context.Context, sessionID string) error
+	deleteUserSessionsFunc func(ctx context.Context, userID int64) error
 }
 
 func (m *authSessionStoreMock) Create(ctx context.Context, userID int64) (string, int64, error) {
@@ -47,6 +48,13 @@ func (m *authSessionStoreMock) Refresh(ctx context.Context, sessionID string) (i
 
 func (m *authSessionStoreMock) Delete(ctx context.Context, sessionID string) error {
 	return m.deleteFunc(ctx, sessionID)
+}
+
+func (m *authSessionStoreMock) DeleteUserSessions(ctx context.Context, userID int64) error {
+	if m.deleteUserSessionsFunc == nil {
+		return nil
+	}
+	return m.deleteUserSessionsFunc(ctx, userID)
 }
 
 func TestAuthServiceLogin(t *testing.T) {
@@ -618,6 +626,124 @@ func TestAuthServiceSetupPasswordPropagatesTokenUsed(t *testing.T) {
 	}
 	if len(stub.Events()) != 0 {
 		t.Fatalf("expected no audit events after token-used failure, got %v", stub.Actions())
+	}
+}
+
+func TestAuthServiceSetupPasswordResetClearsSessions(t *testing.T) {
+	t.Parallel()
+
+	rawToken := validSetupToken(20)
+	now := time.Date(2026, 4, 25, 11, 0, 0, 0, time.UTC)
+	const userID = int64(61)
+	txUserRepo := &setupUserRepositoryMock{
+		setPasswordAndStatusFunc: func(ctx context.Context, params repository.SetUserPasswordParams) (*model.User, error) {
+			return &model.User{ID: params.ID, Status: params.Status}, nil
+		},
+	}
+	txTokenRepo := &setupTokenRepositoryMock{
+		getByTokenHashFunc: func(ctx context.Context, tokenHash string) (*model.SetupToken, error) {
+			return &model.SetupToken{
+				ID:        88,
+				UserID:    userID,
+				Purpose:   model.SetupTokenPurposePasswordReset,
+				ExpiresAt: now.Add(time.Hour),
+			}, nil
+		},
+		markUsedFunc: func(ctx context.Context, id int64, usedAt time.Time) error {
+			return nil
+		},
+		invalidateAllUnusedFunc: func(ctx context.Context, _ int64, _ time.Time) error {
+			return nil
+		},
+	}
+
+	deleteCalls := 0
+	service := NewAuthService(
+		&authUserRepositoryMock{},
+		&authSessionStoreMock{
+			deleteUserSessionsFunc: func(ctx context.Context, gotUserID int64) error {
+				if gotUserID != userID {
+					t.Fatalf("expected DeleteUserSessions for user %d, got %d", userID, gotUserID)
+				}
+				deleteCalls++
+				return nil
+			},
+		},
+		WithAuthSetupFlows(SetupFlowConfig{
+			TxManager: &setupTxManagerMock{withinTxFunc: withSetupRepos(txUserRepo, txTokenRepo)},
+			Clock:     func() time.Time { return now },
+		}),
+	)
+	stub := audittest.New()
+	ctx := stub.ContextWith(context.Background())
+
+	if err := service.SetupPassword(ctx, SetupPasswordInput{
+		Token:    rawToken,
+		Password: "pa55word!",
+	}); err != nil {
+		t.Fatalf("SetupPassword returned error: %v", err)
+	}
+
+	if deleteCalls != 1 {
+		t.Fatalf("expected DeleteUserSessions to be called once for password_reset, got %d", deleteCalls)
+	}
+
+	event := stub.FindByAction(audit.ActionAuthPasswordSet)
+	if event == nil {
+		t.Fatalf("expected %s audit event, got actions=%v", audit.ActionAuthPasswordSet, stub.Actions())
+	}
+	if event.Metadata["purpose"] != "password_reset" {
+		t.Fatalf("expected purpose=password_reset, got %v", event.Metadata["purpose"])
+	}
+}
+
+func TestAuthServiceSetupPasswordInvitationDoesNotClearSessions(t *testing.T) {
+	t.Parallel()
+
+	rawToken := validSetupToken(21)
+	now := time.Date(2026, 4, 25, 11, 30, 0, 0, time.UTC)
+	const userID = int64(62)
+	txUserRepo := &setupUserRepositoryMock{
+		setPasswordAndStatusFunc: func(ctx context.Context, params repository.SetUserPasswordParams) (*model.User, error) {
+			return &model.User{ID: params.ID, Status: params.Status}, nil
+		},
+	}
+	txTokenRepo := &setupTokenRepositoryMock{
+		getByTokenHashFunc: func(ctx context.Context, tokenHash string) (*model.SetupToken, error) {
+			return &model.SetupToken{
+				ID:        89,
+				UserID:    userID,
+				Purpose:   model.SetupTokenPurposeInvitation,
+				ExpiresAt: now.Add(time.Hour),
+			}, nil
+		},
+		markUsedFunc: func(ctx context.Context, id int64, usedAt time.Time) error {
+			return nil
+		},
+		invalidateAllUnusedFunc: func(ctx context.Context, _ int64, _ time.Time) error {
+			return nil
+		},
+	}
+
+	service := NewAuthService(
+		&authUserRepositoryMock{},
+		&authSessionStoreMock{
+			deleteUserSessionsFunc: func(ctx context.Context, gotUserID int64) error {
+				t.Fatalf("DeleteUserSessions must not be called for invitation purpose, got userID=%d", gotUserID)
+				return nil
+			},
+		},
+		WithAuthSetupFlows(SetupFlowConfig{
+			TxManager: &setupTxManagerMock{withinTxFunc: withSetupRepos(txUserRepo, txTokenRepo)},
+			Clock:     func() time.Time { return now },
+		}),
+	)
+
+	if err := service.SetupPassword(context.Background(), SetupPasswordInput{
+		Token:    rawToken,
+		Password: "pa55word!",
+	}); err != nil {
+		t.Fatalf("SetupPassword returned error: %v", err)
 	}
 }
 
