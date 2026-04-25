@@ -24,37 +24,6 @@ Implement tasks from an OpenSpec change.
 
    Always announce: "Using change: <name>" and how to override (e.g., `/opsx:apply <other>`).
 
-1a. **Verify branch precondition (rota project rule).**
-
-   This project requires apply to run on a branch named `change/<change-name>`, not on `main`. Before doing any task work, check:
-
-   ```bash
-   expected="change/<change-name>"
-   current=$(git rev-parse --abbrev-ref HEAD)
-   ```
-
-   If `current != expected`, **stop immediately** — do not proceed to any later step, do not modify any file. Print the following to the user (substitute `<change-name>` and detect `<repo>` via `basename "$(git rev-parse --show-toplevel)"`):
-
-   ```
-   ✗ apply must run on branch change/<change-name>, currently on <current>.
-     Set up the worktree (recommended for parallel runs) before retrying:
-
-       cd "$(dirname "$(git rev-parse --show-toplevel)")"
-       git -C <repo> worktree add ../<repo>-<change-name> -b change/<change-name>
-       cp <repo>/.env ../<repo>-<change-name>/.env
-       cd ../<repo>-<change-name>
-       codex exec '/opsx:apply <change-name>'
-
-     Or for strictly serial work, a regular branch is fine:
-
-       git checkout -b change/<change-name>
-       codex exec '/opsx:apply <change-name>'
-
-     See AGENTS.md "Apply runs on a feature branch" for the full rule.
-   ```
-
-   Exit. Do not continue. The user re-runs after setting up the branch.
-
 2. **Check status to understand the schema**
    ```bash
    openspec status --change "<name>" --json
