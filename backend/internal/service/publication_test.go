@@ -462,8 +462,8 @@ func (m *publicationRepositoryStatefulMock) CreateAssignment(
 	}
 
 	key := m.assignmentStorageKey(params.PublicationID, params.UserID, params.SlotID, slotID, params.TemplateShiftID)
-	if existing, ok := m.assignments[key]; ok {
-		return cloneAssignment(existing), nil
+	if _, ok := m.assignments[key]; ok {
+		return nil, repository.ErrAssignmentUserAlreadyInSlot
 	}
 
 	assignment := &model.Assignment{
@@ -893,44 +893,6 @@ func (m *publicationRepositoryStatefulMock) listAssignmentBoardCandidates(public
 	})
 
 	return candidates
-}
-
-func (m *publicationRepositoryStatefulMock) ListUserAssignmentsOnWeekdayInPublication(
-	ctx context.Context,
-	publicationID, userID int64,
-	weekday int,
-) ([]*model.AssignmentSlotView, error) {
-	assignments := make([]*model.AssignmentSlotView, 0)
-	for _, assignment := range m.assignments {
-		if assignment.PublicationID != publicationID || assignment.UserID != userID {
-			continue
-		}
-
-		slot := m.resolveAssignmentSlot(assignment)
-		if slot == nil || slot.Weekday != weekday {
-			continue
-		}
-
-		assignments = append(assignments, &model.AssignmentSlotView{
-			SlotID:     slot.ID,
-			PositionID: assignment.PositionID,
-			Weekday:    slot.Weekday,
-			StartTime:  slot.StartTime,
-			EndTime:    slot.EndTime,
-		})
-	}
-
-	sort.Slice(assignments, func(i, j int) bool {
-		if assignments[i].StartTime != assignments[j].StartTime {
-			return assignments[i].StartTime < assignments[j].StartTime
-		}
-		if assignments[i].SlotID != assignments[j].SlotID {
-			return assignments[i].SlotID < assignments[j].SlotID
-		}
-		return assignments[i].PositionID < assignments[j].PositionID
-	})
-
-	return assignments, nil
 }
 
 func TestPublicationServiceCreatePublication(t *testing.T) {

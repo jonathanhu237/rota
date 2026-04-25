@@ -912,57 +912,6 @@ func TestShiftChangeServiceApprove(t *testing.T) {
 		}
 	})
 
-	t.Run("approve swap with time conflict", func(t *testing.T) {
-		t.Parallel()
-
-		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
-		pub, sc := buildShiftChangeFixture(now)
-		// Add a third shift that overlaps with shift 12 on the same weekday
-		// (Wednesday). User 7 already holds this third shift, so receiving
-		// shift 12 via the swap would create a time conflict.
-		pub.templateSlots[23] = &model.TemplateSlot{
-			ID:         23,
-			TemplateID: 1,
-			Weekday:    3,
-			StartTime:  "14:00",
-			EndTime:    "16:00",
-		}
-		pub.slotPositions[23] = []*model.TemplateSlotPosition{{
-			ID:                13,
-			SlotID:            23,
-			PositionID:        101,
-			RequiredHeadcount: 1,
-		}}
-		pub.assignments[assignmentKey(1, 7, 23)] = &model.Assignment{
-			ID:            102,
-			PublicationID: 1,
-			UserID:        7,
-			SlotID:        23,
-			PositionID:    101,
-			CreatedAt:     now.Add(-24 * time.Hour),
-		}
-		svc := newTestShiftChangeService(pub, sc, &emailStub{}, now)
-
-		counterpartUserID := int64(8)
-		counterpartAssignmentID := int64(101)
-		created, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
-		})
-		if err != nil {
-			t.Fatalf("create setup failed: %v", err)
-		}
-
-		err = svc.ApproveShiftChangeRequest(context.Background(), created.ID, 8)
-		if !errors.Is(err, ErrShiftChangeTimeConflict) {
-			t.Fatalf("expected ErrShiftChangeTimeConflict, got %v", err)
-		}
-	})
-
 	t.Run("approve by non-counterpart on swap is not owner", func(t *testing.T) {
 		t.Parallel()
 

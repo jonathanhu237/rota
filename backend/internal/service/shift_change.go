@@ -18,7 +18,6 @@ var (
 	ErrShiftChangeInvalidType  = model.ErrShiftChangeInvalidType
 	ErrShiftChangeNotOwner     = model.ErrShiftChangeNotOwner
 	ErrShiftChangeNotQualified = model.ErrShiftChangeNotQualified
-	ErrShiftChangeTimeConflict = model.ErrShiftChangeTimeConflict
 	ErrShiftChangeNotPending   = model.ErrShiftChangeNotPending
 	ErrShiftChangeExpired      = model.ErrShiftChangeExpired
 	ErrShiftChangeInvalidated  = model.ErrShiftChangeInvalidated
@@ -457,17 +456,7 @@ func (s *ShiftChangeService) ApproveShiftChangeRequest(
 		return ErrShiftChangeInvalidated
 	}
 
-	shiftIndex, err := s.loadShiftIndex(ctx, req.PublicationID)
-	if err != nil {
-		return mapPublicationRepositoryError(err)
-	}
-	requesterShift := findPublicationShiftForAssignment(shiftIndex, requesterAssignment)
-	if requesterShift == nil {
-		return ErrTemplateSlotPositionNotFound
-	}
-
 	var receiverUserID int64
-	var counterpartShift *model.PublicationShift
 	switch req.Type {
 	case model.ShiftChangeTypeSwap:
 		if req.CounterpartAssignmentID == nil {
@@ -485,17 +474,8 @@ func (s *ShiftChangeService) ApproveShiftChangeRequest(
 			_ = s.shiftChangeRepo.MarkInvalidated(ctx, req.ID, now)
 			return ErrShiftChangeInvalidated
 		}
-		counterpartShift = findPublicationShiftForAssignment(shiftIndex, counterpartAssignment)
-		if counterpartShift == nil {
-			return ErrTemplateSlotPositionNotFound
-		}
 		receiverUserID = *req.CounterpartUserID
 		if err := s.mutuallyQualified(ctx, req.RequesterUserID, receiverUserID, requesterAssignment.PositionID, counterpartAssignment.PositionID); err != nil {
-			return err
-		}
-		// Fast-fail for UX latency; ApplySwap repeats this inside the
-		// transaction after locking the affected users' schedules.
-		if err := s.ensureSwapFitsSchedule(ctx, req.PublicationID, req.RequesterUserID, receiverUserID, requesterAssignment, counterpartAssignment, requesterShift, counterpartShift); err != nil {
 			return err
 		}
 	case model.ShiftChangeTypeGiveDirect:
@@ -507,11 +487,6 @@ func (s *ShiftChangeService) ApproveShiftChangeRequest(
 		if !qualified {
 			return ErrShiftChangeNotQualified
 		}
-		// Fast-fail for UX latency; ApplyGive repeats this inside the
-		// transaction after locking the receiver's schedule.
-		if err := s.ensureGiveFitsSchedule(ctx, req.PublicationID, receiverUserID, requesterAssignment, requesterShift); err != nil {
-			return err
-		}
 	case model.ShiftChangeTypeGivePool:
 		receiverUserID = viewerUserID
 		qualified, err := s.publicationRepo.IsUserQualifiedForPosition(ctx, receiverUserID, requesterAssignment.PositionID)
@@ -520,11 +495,6 @@ func (s *ShiftChangeService) ApproveShiftChangeRequest(
 		}
 		if !qualified {
 			return ErrShiftChangeNotQualified
-		}
-		// Fast-fail for UX latency; ApplyGive repeats this inside the
-		// transaction after locking the receiver's schedule.
-		if err := s.ensureGiveFitsSchedule(ctx, req.PublicationID, receiverUserID, requesterAssignment, requesterShift); err != nil {
-			return err
 		}
 	}
 
@@ -679,60 +649,6 @@ func (s *ShiftChangeService) mutuallyQualified(
 	return nil
 }
 
-// ensureSwapFitsSchedule computes each affected user's weekly schedule
-// after applying the swap and rejects if either user would end up with
-// overlapping assignments on the same weekday.
-func (s *ShiftChangeService) ensureSwapFitsSchedule(
-	ctx context.Context,
-	publicationID, userA, userB int64,
-	assignmentA, assignmentB *model.Assignment,
-	shiftA, shiftB *model.PublicationShift,
-) error {
-	shifts, err := s.loadShiftIndex(ctx, publicationID)
-	if err != nil {
-		return err
-	}
-	assignments, err := s.publicationRepo.ListPublicationAssignments(ctx, publicationID)
-	if err != nil {
-		return err
-	}
-
-	// Build the final schedule: user A loses shiftA, gains shiftB; user B
-	// loses shiftB, gains shiftA.
-	finalA := collectUserShifts(assignments, shifts, userA, []int64{assignmentA.ID}, []*model.PublicationShift{shiftB})
-	finalB := collectUserShifts(assignments, shifts, userB, []int64{assignmentB.ID}, []*model.PublicationShift{shiftA})
-	if hasOverlapInSet(finalA) || hasOverlapInSet(finalB) {
-		return ErrShiftChangeTimeConflict
-	}
-	return nil
-}
-
-// ensureGiveFitsSchedule checks that the receiver would not end up with
-// overlapping assignments after taking over the requester's shift.
-func (s *ShiftChangeService) ensureGiveFitsSchedule(
-	ctx context.Context,
-	publicationID, receiverUserID int64,
-	requesterAssignment *model.Assignment,
-	requesterShift *model.PublicationShift,
-) error {
-	shifts, err := s.loadShiftIndex(ctx, publicationID)
-	if err != nil {
-		return err
-	}
-	assignments, err := s.publicationRepo.ListPublicationAssignments(ctx, publicationID)
-	if err != nil {
-		return err
-	}
-	final := collectUserShifts(assignments, shifts, receiverUserID, nil, []*model.PublicationShift{requesterShift})
-	if hasOverlapInSet(final) {
-		return ErrShiftChangeTimeConflict
-	}
-	// Guard against the requester's assignment silently disappearing — the
-	// same user can't receive their own shift.
-	_ = requesterAssignment
-	return nil
-}
-
 func (s *ShiftChangeService) loadShiftIndex(
 	ctx context.Context,
 	publicationID int64,
@@ -760,8 +676,6 @@ func (s *ShiftChangeService) mapApplyError(
 		return ErrShiftChangeNotPending
 	case errors.Is(err, repository.ErrShiftChangeNotFound):
 		return ErrShiftChangeNotFound
-	case errors.Is(err, repository.ErrTimeConflict):
-		return ErrShiftChangeTimeConflict
 	case errors.Is(err, repository.ErrUserDisabled):
 		return ErrUserDisabled
 	case errors.Is(err, repository.ErrSchedulingRetryable):

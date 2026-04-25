@@ -97,14 +97,9 @@ func TestPublicationServiceAutoAssignPublicationIntegration(t *testing.T) {
 	}
 
 	for _, userID := range []int64{flexibleUserID, overlapOnlyUserID, slotOnlyUserID} {
-		userAssignments, err := repo.ListUserAssignmentsOnWeekdayInPublication(
-			context.Background(),
-			publicationID,
-			userID,
-			1,
-		)
+		userAssignments, err := listServiceUserAssignmentWindows(db, publicationID, userID, 1)
 		if err != nil {
-			t.Fatalf("ListUserAssignmentsOnWeekdayInPublication returned error: %v", err)
+			t.Fatalf("list user assignment windows returned error: %v", err)
 		}
 
 		for i := 0; i < len(userAssignments); i++ {
@@ -117,6 +112,47 @@ func TestPublicationServiceAutoAssignPublicationIntegration(t *testing.T) {
 			}
 		}
 	}
+}
+
+type serviceAssignmentWindow struct {
+	StartTime string
+	EndTime   string
+}
+
+func listServiceUserAssignmentWindows(
+	db *sql.DB,
+	publicationID, userID int64,
+	weekday int,
+) ([]serviceAssignmentWindow, error) {
+	rows, err := db.QueryContext(
+		context.Background(),
+		`
+			SELECT TO_CHAR(ts.start_time, 'HH24:MI'), TO_CHAR(ts.end_time, 'HH24:MI')
+			FROM assignments a
+			INNER JOIN template_slots ts ON ts.id = a.slot_id
+			WHERE a.publication_id = $1
+				AND a.user_id = $2
+				AND ts.weekday = $3
+			ORDER BY ts.start_time ASC, ts.id ASC, a.position_id ASC;
+		`,
+		publicationID,
+		userID,
+		weekday,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	windows := make([]serviceAssignmentWindow, 0)
+	for rows.Next() {
+		var window serviceAssignmentWindow
+		if err := rows.Scan(&window.StartTime, &window.EndTime); err != nil {
+			return nil, err
+		}
+		windows = append(windows, window)
+	}
+	return windows, rows.Err()
 }
 
 func openServiceIntegrationDB(t testing.TB) *sql.DB {

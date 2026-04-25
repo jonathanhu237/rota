@@ -344,7 +344,7 @@ Running auto-assign SHALL require the publication's effective state to be `ASSIG
 
 ### Requirement: Reject assignment of disabled users
 
-The system SHALL reject an admin attempt to assign a disabled user with HTTP 409 and error code `USER_DISABLED`. The check SHALL be performed twice: once before the apply transaction (fast-fail for UX latency) and once again inside the transaction by re-reading `users.status` with `FOR UPDATE` after locking the user's schedule. The in-tx check is the correctness floor and ensures a user disabled between the pre-tx read and the apply commit is still rejected.
+The system SHALL reject an admin attempt to assign a disabled user with HTTP 409 and error code `USER_DISABLED`. The check SHALL be performed twice: once before the apply transaction (fast-fail for UX latency) and once again inside the transaction by re-reading `users.status` with `FOR UPDATE`. The in-tx check is the correctness floor and ensures a user disabled between the pre-tx read and the apply commit is still rejected.
 
 The same in-tx check SHALL be applied on the shift-change apply paths (`ApplySwap`, `ApplyGive`) for every user being mutated (receiver of give, both swap participants).
 
@@ -359,7 +359,7 @@ The same in-tx check SHALL be applied on the shift-change apply paths (`ApplySwa
 - **GIVEN** a pending `give_direct` to user `U`, where `U` was active when the request was created
 - **AND** an approve operation has already been authorized for `U`
 - **WHEN** an admin disables `U` before the apply transaction's status check
-- **THEN** the apply transaction's in-tx status check locks `U`'s user row and observes `U.status = disabled`
+- **THEN** the apply transaction's in-tx status check `SELECT status FROM users WHERE id = $userID FOR UPDATE` observes `U.status = disabled`
 - **AND** the apply rolls back
 - **AND** the response is HTTP 409 with error code `USER_DISABLED`
 
@@ -499,38 +499,6 @@ Approving a swap SHALL require each party to be qualified for the other party's 
 - **GIVEN** a pending swap where the requester lacks qualification for the counterpart's offered shift's position
 - **WHEN** the counterpart approves
 - **THEN** the response is HTTP 403 with error code `SHIFT_CHANGE_NOT_QUALIFIED`
-
-### Requirement: Time-conflict check before applying
-
-Before applying a swap or a give, the service SHALL recompute the receiver's full weekly assignment set as it would be after applying and SHALL reject with `SHIFT_CHANGE_TIME_CONFLICT` (HTTP 409) if any two assignments would share a weekday and overlap in time (using the overlap predicate `a.start < b.end && b.start < a.end` on the referenced slots' `start_time` and `end_time`).
-
-The check SHALL be performed twice: once before the apply transaction (fast-fail for UX latency) and once again *inside* the apply transaction, after the transaction has acquired a per-(publication, user) transaction lock and row-level locks (`SELECT ... FOR UPDATE`) on every existing assignment row of every user being mutated in that publication. The in-tx check is the correctness floor and ensures concurrent shift-change applies cannot defeat the conflict check, including when the target user had zero existing assignment rows at the start of the transaction.
-
-Understaffing SHALL NOT cause rejection at this step — it is acceptable for the receiver to take an assignment that leaves the original slot-position short-handed, because `required_headcount` is advisory.
-
-#### Scenario: Overlap with existing weekly assignment rejects the apply
-
-- **GIVEN** a pending `give_direct` whose acceptance would place the receiver in two slots that overlap on the same weekday
-- **WHEN** the receiver accepts
-- **THEN** the response is HTTP 409 with error code `SHIFT_CHANGE_TIME_CONFLICT`
-
-#### Scenario: Leaving the origin slot-position understaffed does not block apply
-
-- **GIVEN** the origin `(slot, position)` would fall below `required_headcount` after the give is applied
-- **WHEN** the receiver accepts and no other rule is violated
-- **THEN** the apply succeeds
-
-#### Scenario: Concurrent shift-change apply cannot bypass the conflict check
-
-- **GIVEN** two pending shift-change requests, R1 (give_pool) and R2 (give_direct), both targeting the same user `U`
-- **AND** R1's added slot and R2's added slot overlap in time on the same weekday
-- **AND** `U`'s pre-tx fast-fail check passes for both R1 and R2 (because at the moment each pre-tx check runs, the other has not committed)
-- **WHEN** both apply transactions begin near-simultaneously
-- **THEN** the first transaction to acquire `U`'s per-publication transaction lock commits successfully
-- **AND** the second transaction blocks on that same per-publication user lock until the first commits
-- **AND** the second transaction's in-tx conflict re-check observes the newly-committed assignment from the first
-- **AND** the second transaction returns HTTP 409 `SHIFT_CHANGE_TIME_CONFLICT`
-- **AND** `U` does NOT end up holding both overlapping assignments
 
 ### Requirement: Optimistic lock on apply (cascade-invalidate)
 
@@ -717,10 +685,8 @@ The scheduling subsystem SHALL emit the following JSON `error.code` values with 
 - `PUBLICATION_NOT_PUBLISHED` (409) — activate outside `PUBLISHED`, or shift-change write outside `PUBLISHED`.
 - `PUBLICATION_NOT_ACTIVE` (409) — end outside `ACTIVE`, or roster fetched for a publication that is not viewable.
 - `USER_DISABLED` (409) — admin tries to assign a disabled user.
-- `ASSIGNMENT_TIME_CONFLICT` (409) — admin `CreateAssignment` would leave the target user with two overlapping same-weekday slot assignments.
 - `ASSIGNMENT_USER_ALREADY_IN_SLOT` (409) — admin `CreateAssignment` for a `(publication, user, slot)` triple that already has an assignment row (regardless of the requested `position_id`). The natural key `UNIQUE(publication_id, user_id, slot_id)` is already occupied.
-- `TEMPLATE_SLOT_OVERLAP` (409) — admin `CreateSlot` / `UpdateSlot` that would violate the GIST exclusion constraint (two slots of the same `(template_id, weekday)` with overlapping time ranges).
-- `SHIFT_CHANGE_TIME_CONFLICT` (409) — applying a shift change would create an overlapping weekly assignment.
+- `TEMPLATE_SLOT_OVERLAP` (409) — admin `CreateSlot` / `UpdateSlot` that would violate the GIST exclusion constraint (two slots of the same `(template_id, weekday)` with overlapping time ranges). Time-overlap between assignments in a publication is structurally impossible by virtue of this constraint, so no separate apply-time error code exists.
 - `SHIFT_CHANGE_NOT_PENDING` (409) — approve/reject/cancel on a terminal request.
 - `SHIFT_CHANGE_EXPIRED` (409) — approve/reject/cancel on a request past `expires_at`.
 - `SHIFT_CHANGE_INVALIDATED` (409) — approve surfaces that the captured assignment row is gone or reassigned.
@@ -739,8 +705,6 @@ The scheduling subsystem SHALL emit the following JSON `error.code` values with 
 ### Requirement: Admin may edit assignments during PUBLISHED and ACTIVE
 
 The system SHALL allow an authenticated administrator to create or delete an individual assignment when the publication's effective state is `ASSIGNING`, `PUBLISHED`, or `ACTIVE`. Attempts in any other state SHALL be rejected with `PUBLICATION_NOT_MUTABLE` at HTTP 409.
-
-A create attempt that would leave the target user with two assignments whose slots overlap on the same weekday SHALL be rejected with `ASSIGNMENT_TIME_CONFLICT` at HTTP 409 (see "Admin CreateAssignment rejects same-weekday slot overlap").
 
 `AutoAssignPublication` is explicitly excluded from this widening and continues to require effective state `ASSIGNING`.
 
@@ -825,41 +789,3 @@ Each entry has the shape `{ user_id, name, email }`.
 - **GIVEN** a `(slot, position)` whose `assignments` list includes an employee
 - **WHEN** an admin fetches the assignment board
 - **THEN** that employee does NOT appear under `non_candidate_qualified` of that same `(slot, position)`
-
-### Requirement: Admin CreateAssignment rejects same-weekday slot overlap
-
-`POST /publications/{id}/assignments` SHALL, after the state, qualification, and disabled-user gates, recompute the target user's existing assignments in the same publication and SHALL reject with `ASSIGNMENT_TIME_CONFLICT` (HTTP 409) if the new assignment's slot would overlap in time with any existing same-weekday slot the user already holds (overlap predicate: `a.start < b.end && b.start < a.end`). The check SHALL use the referenced slots' `start_time` and `end_time`.
-
-The check SHALL be performed twice: once before the insert transaction (fast-fail for UX latency) and once again *inside* the insert transaction, after the transaction has acquired a per-(publication, user) transaction lock and row-level locks on every existing assignment row of the target user in that publication. The in-tx check is the correctness floor and ensures concurrent shift-change applies (or a concurrent admin assignment for the same user) cannot defeat the overlap check, including when the target user had zero existing assignment rows at the start of the transaction.
-
-Understaffing SHALL NOT cause rejection at this step.
-
-#### Scenario: Overlap with existing weekly assignment rejects the create
-
-- **GIVEN** user `U` already assigned to `Mon 09:00-11:00 / position P1`
-- **WHEN** an admin calls `POST /publications/{id}/assignments` with `{ user_id: U, slot_id: S', position_id: P2 }` where slot `S'` is `Mon 10:00-12:00`
-- **THEN** the response is HTTP 409 with error code `ASSIGNMENT_TIME_CONFLICT`
-- **AND** no assignment row is written
-- **AND** no `assignment.create` audit event is recorded
-
-#### Scenario: Touching boundaries do not count as overlap
-
-- **GIVEN** user `U` already assigned to `Mon 09:00-10:00 / position P1`
-- **WHEN** an admin calls `POST /publications/{id}/assignments` with `{ user_id: U, slot_id: S', position_id: P2 }` where slot `S'` is `Mon 10:00-12:00`
-- **THEN** the request succeeds (boundaries touch but do not overlap)
-
-#### Scenario: Overlap across different weekdays is not flagged
-
-- **GIVEN** user `U` already assigned to `Mon 09:00-11:00`
-- **WHEN** an admin creates a `Tue 09:00-11:00` assignment for the same user
-- **THEN** the request succeeds (different weekday)
-
-#### Scenario: Concurrent shift-change cannot defeat admin's overlap check
-
-- **GIVEN** an admin's `POST /publications/{id}/assignments` for user `U` with slot `S_new` (Mon 10:00-12:00)
-- **AND** the pre-tx fast-fail check passes (U has no Mon assignment yet)
-- **AND** concurrently, a shift-change apply commits, giving `U` slot `S_other` (Mon 11:00-13:00)
-- **WHEN** the admin's insert transaction reaches the in-tx overlap re-check
-- **THEN** the re-check, run after `SELECT ... FOR UPDATE` on `U`'s assignments, observes `S_other` and detects the overlap with `S_new`
-- **AND** the insert rolls back
-- **AND** the response is HTTP 409 with error code `ASSIGNMENT_TIME_CONFLICT`

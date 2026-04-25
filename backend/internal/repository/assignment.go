@@ -17,7 +17,6 @@ import (
 var (
 	ErrAssignmentNotFound          = errors.New("assignment not found")
 	ErrAssignmentUserAlreadyInSlot = model.ErrAssignmentUserAlreadyInSlot
-	ErrTimeConflict                = errors.New("time conflict")
 	ErrUserDisabled                = errors.New("user disabled")
 	ErrSchedulingRetryable         = model.ErrSchedulingRetryable
 )
@@ -47,12 +46,6 @@ type ReplaceAssignmentsParams struct {
 	PublicationID int64
 	Assignments   []ReplaceAssignmentParams
 	CreatedAt     time.Time
-}
-
-type SlotTimeWindow struct {
-	Weekday   int
-	StartTime string
-	EndTime   string
 }
 
 type AssignmentBoardSlotView struct {
@@ -160,19 +153,7 @@ func createAssignmentWithScheduleCheck(
 		return nil, ErrAssignmentUserAlreadyInSlot
 	}
 
-	window, err := getSlotTimeWindow(ctx, tx, slotID)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := LockAndCheckUserSchedule(
-		ctx,
-		tx,
-		params.PublicationID,
-		params.UserID,
-		[]SlotTimeWindow{window},
-		nil,
-	); err != nil {
+	if err := LockAndCheckUserStatus(ctx, tx, params.PublicationID, params.UserID); err != nil {
 		return nil, err
 	}
 
@@ -547,12 +528,13 @@ func (r *PublicationRepository) ListAssignmentCandidates(
 	return candidates, nil
 }
 
-func LockAndCheckUserSchedule(
+// LockAndCheckUserStatus serializes assignment mutations for one publication/user
+// and re-checks users.status inside the caller's transaction. The users row lock
+// can still surface a Postgres deadlock, so callers preserve ErrSchedulingRetryable.
+func LockAndCheckUserStatus(
 	ctx context.Context,
 	tx *sql.Tx,
 	publicationID, userID int64,
-	additions []SlotTimeWindow,
-	excludeAssignmentIDs []int64,
 ) error {
 	if tx == nil {
 		return errors.New("nil transaction")
@@ -560,54 +542,6 @@ func LockAndCheckUserSchedule(
 
 	if err := lockUserSchedule(ctx, tx, publicationID, userID); err != nil {
 		return err
-	}
-
-	const query = `
-		SELECT
-			a.id,
-			ts.weekday,
-			TO_CHAR(ts.start_time, 'HH24:MI'),
-			TO_CHAR(ts.end_time, 'HH24:MI')
-		FROM assignments a
-		INNER JOIN template_slots ts ON ts.id = a.slot_id
-		WHERE a.publication_id = $1
-			AND a.user_id = $2
-		ORDER BY a.id ASC
-		FOR UPDATE OF a;
-	`
-
-	rows, err := tx.QueryContext(ctx, query, publicationID, userID)
-	if err != nil {
-		return mapSchedulingRetryableError(err)
-	}
-	defer rows.Close()
-
-	excluded := make(map[int64]struct{}, len(excludeAssignmentIDs))
-	for _, id := range excludeAssignmentIDs {
-		excluded[id] = struct{}{}
-	}
-
-	windows := make([]SlotTimeWindow, 0, len(additions)+4)
-	for rows.Next() {
-		var (
-			assignmentID int64
-			window       SlotTimeWindow
-		)
-		if err := rows.Scan(&assignmentID, &window.Weekday, &window.StartTime, &window.EndTime); err != nil {
-			return err
-		}
-		if _, ok := excluded[assignmentID]; ok {
-			continue
-		}
-		windows = append(windows, window)
-	}
-	if err := rows.Err(); err != nil {
-		return mapSchedulingRetryableError(err)
-	}
-
-	windows = append(windows, additions...)
-	if hasSlotTimeConflict(windows) {
-		return ErrTimeConflict
 	}
 
 	status, err := getUserStatus(ctx, tx, userID)
@@ -636,48 +570,6 @@ func scheduleAdvisoryLockKey(publicationID, userID int64) int64 {
 	return int64(hash.Sum64())
 }
 
-func hasSlotTimeConflict(windows []SlotTimeWindow) bool {
-	for i := 0; i < len(windows); i++ {
-		leftStart, leftEnd, ok := parsedWindow(windows[i])
-		if !ok {
-			continue
-		}
-		for j := i + 1; j < len(windows); j++ {
-			if windows[i].Weekday != windows[j].Weekday {
-				continue
-			}
-			rightStart, rightEnd, ok := parsedWindow(windows[j])
-			if !ok {
-				continue
-			}
-			if leftStart < rightEnd && rightStart < leftEnd {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func parsedWindow(window SlotTimeWindow) (int, int, bool) {
-	start, err := parseClockMinutes(window.StartTime)
-	if err != nil {
-		return 0, 0, false
-	}
-	end, err := parseClockMinutes(window.EndTime)
-	if err != nil {
-		return 0, 0, false
-	}
-	return start, end, true
-}
-
-func parseClockMinutes(value string) (int, error) {
-	parsed, err := time.Parse("15:04", value)
-	if err != nil {
-		return 0, err
-	}
-	return parsed.Hour()*60 + parsed.Minute(), nil
-}
-
 func getUserStatus(ctx context.Context, db dbtx, userID int64) (model.UserStatus, error) {
 	const query = `
 		SELECT status
@@ -695,24 +587,6 @@ func getUserStatus(ctx context.Context, db dbtx, userID int64) (model.UserStatus
 		return "", mapSchedulingRetryableError(err)
 	}
 	return status, nil
-}
-
-func getSlotTimeWindow(ctx context.Context, db dbtx, slotID int64) (SlotTimeWindow, error) {
-	const query = `
-		SELECT weekday, TO_CHAR(start_time, 'HH24:MI'), TO_CHAR(end_time, 'HH24:MI')
-		FROM template_slots
-		WHERE id = $1;
-	`
-
-	var window SlotTimeWindow
-	err := db.QueryRowContext(ctx, query, slotID).Scan(&window.Weekday, &window.StartTime, &window.EndTime)
-	if errors.Is(err, sql.ErrNoRows) {
-		return SlotTimeWindow{}, ErrTemplateSlotNotFound
-	}
-	if err != nil {
-		return SlotTimeWindow{}, mapSchedulingRetryableError(err)
-	}
-	return window, nil
 }
 
 func assignmentExistsForUserSlot(
@@ -1152,53 +1026,6 @@ func getAssignmentByKey(
 	`
 
 	return scanAssignment(db.QueryRowContext(ctx, query, publicationID, userID, slotID))
-}
-
-func (r *PublicationRepository) ListUserAssignmentsOnWeekdayInPublication(
-	ctx context.Context,
-	publicationID, userID int64,
-	weekday int,
-) ([]*model.AssignmentSlotView, error) {
-	const query = `
-		SELECT
-			a.slot_id,
-			a.position_id,
-			ts.weekday,
-			TO_CHAR(ts.start_time, 'HH24:MI'),
-			TO_CHAR(ts.end_time, 'HH24:MI')
-		FROM assignments a
-		INNER JOIN template_slots ts ON ts.id = a.slot_id
-		WHERE a.publication_id = $1
-			AND a.user_id = $2
-			AND ts.weekday = $3
-		ORDER BY ts.start_time ASC, ts.id ASC, a.position_id ASC;
-	`
-
-	rows, err := r.db.QueryContext(ctx, query, publicationID, userID, weekday)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	assignments := make([]*model.AssignmentSlotView, 0)
-	for rows.Next() {
-		assignment := &model.AssignmentSlotView{}
-		if err := rows.Scan(
-			&assignment.SlotID,
-			&assignment.PositionID,
-			&assignment.Weekday,
-			&assignment.StartTime,
-			&assignment.EndTime,
-		); err != nil {
-			return nil, err
-		}
-		assignments = append(assignments, assignment)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return assignments, nil
 }
 
 func resolveAssignmentRef(

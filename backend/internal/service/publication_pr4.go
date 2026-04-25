@@ -69,8 +69,7 @@ func (s *PublicationService) CreateAssignment(
 		return nil, ErrPublicationNotMutable
 	}
 
-	slot, err := s.publicationRepo.GetSlot(ctx, publication.TemplateID, input.SlotID)
-	if err != nil {
+	if _, err := s.publicationRepo.GetSlot(ctx, publication.TemplateID, input.SlotID); err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
 
@@ -90,26 +89,7 @@ func (s *PublicationService) CreateAssignment(
 		return nil, ErrUserDisabled
 	}
 
-	existingAssignments, err := s.publicationRepo.ListUserAssignmentsOnWeekdayInPublication(
-		ctx,
-		input.PublicationID,
-		input.UserID,
-		slot.Weekday,
-	)
-	if err != nil {
-		return nil, mapPublicationRepositoryError(err)
-	}
-	for _, assignment := range existingAssignments {
-		if assignment.SlotID == input.SlotID {
-			return nil, ErrAssignmentUserAlreadyInSlot
-		}
-	}
-	if hasAssignmentTimeConflict(existingAssignments, slot.StartTime, slot.EndTime) {
-		return nil, ErrAssignmentTimeConflict
-	}
-
-	// The checks above are a fast-fail for UX latency. The repository repeats
-	// the user-status and schedule checks inside the insert transaction.
+	// The repository repeats the user-status check inside the insert transaction.
 	assignment, err := s.publicationRepo.CreateAssignment(ctx, repository.CreateAssignmentParams{
 		PublicationID: input.PublicationID,
 		UserID:        input.UserID,
@@ -140,37 +120,6 @@ func (s *PublicationService) CreateAssignment(
 func slotHasPosition(slotPositions []*model.TemplateSlotPosition, positionID int64) bool {
 	for _, slotPosition := range slotPositions {
 		if slotPosition.PositionID == positionID {
-			return true
-		}
-	}
-
-	return false
-}
-
-func hasAssignmentTimeConflict(
-	assignments []*model.AssignmentSlotView,
-	startTime, endTime string,
-) bool {
-	targetStartMinutes, err := parseClockMinutes(startTime)
-	if err != nil {
-		return false
-	}
-	targetEndMinutes, err := parseClockMinutes(endTime)
-	if err != nil {
-		return false
-	}
-
-	for _, assignment := range assignments {
-		assignmentStartMinutes, err := parseClockMinutes(assignment.StartTime)
-		if err != nil {
-			continue
-		}
-		assignmentEndMinutes, err := parseClockMinutes(assignment.EndTime)
-		if err != nil {
-			continue
-		}
-
-		if assignmentStartMinutes < targetEndMinutes && targetStartMinutes < assignmentEndMinutes {
 			return true
 		}
 	}

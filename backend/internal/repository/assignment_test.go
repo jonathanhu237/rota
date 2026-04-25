@@ -157,28 +157,6 @@ func TestAssignmentRepositoryIntegration(t *testing.T) {
 		}
 	})
 
-	t.Run("ListUserAssignmentsOnWeekdayInPublication returns weekly slots", func(t *testing.T) {
-		db := openIntegrationDB(t)
-		repo := NewPublicationRepository(db)
-		publication, slotID, positionID, slotPositionID, user := seedAssignmentPrerequisites(t, db)
-		otherSlotID := seedTemplateSlot(t, db, publication.TemplateID, 2, "10:00", "12:00")
-		otherSlotPositionID := seedTemplateSlotPosition(t, db, otherSlotID, positionID, 1)
-
-		seedAssignment(t, db, publication.ID, user.ID, slotPositionID, testTime())
-		seedAssignment(t, db, publication.ID, user.ID, otherSlotPositionID, testTime().Add(time.Minute))
-
-		assignments, err := repo.ListUserAssignmentsOnWeekdayInPublication(ctx, publication.ID, user.ID, 1)
-		if err != nil {
-			t.Fatalf("list weekday assignments: %v", err)
-		}
-		if len(assignments) != 1 {
-			t.Fatalf("expected 1 monday assignment, got %+v", assignments)
-		}
-		if assignments[0].SlotID != slotID || assignments[0].PositionID != positionID || assignments[0].StartTime != "09:00" || assignments[0].EndTime != "12:00" {
-			t.Fatalf("unexpected monday assignment view: %+v", assignments[0])
-		}
-	})
-
 	t.Run("database rejects assignment when position does not belong to slot", func(t *testing.T) {
 		db := openIntegrationDB(t)
 		publication, slotID, _, _, user := seedAssignmentPrerequisites(t, db)
@@ -310,40 +288,20 @@ func TestListAssignmentCandidatesFiltered(t *testing.T) {
 	}
 }
 
-func TestLockAndCheckUserSchedule(t *testing.T) {
+func TestLockAndCheckUserStatus(t *testing.T) {
 	ctx := context.Background()
 	db := openIntegrationDB(t)
-	publication, _, positionID, firstSlotPositionID, user := seedAssignmentPrerequisites(t, db)
-	secondSlotID := seedTemplateSlot(t, db, publication.TemplateID, 2, "14:00", "16:00")
-	secondSlotPositionID := seedTemplateSlotPosition(t, db, secondSlotID, positionID, 1)
-	seedAssignment(t, db, publication.ID, user.ID, firstSlotPositionID, testTime())
-	seedAssignment(t, db, publication.ID, user.ID, secondSlotPositionID, testTime().Add(time.Minute))
+	publication, _, _, _, user := seedAssignmentPrerequisites(t, db)
 
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatalf("begin tx: %v", err)
 	}
-	err = LockAndCheckUserSchedule(ctx, tx, publication.ID, user.ID, []SlotTimeWindow{
-		{Weekday: 1, StartTime: "10:00", EndTime: "11:00"},
-	}, nil)
-	if !errors.Is(err, ErrTimeConflict) {
-		t.Fatalf("expected ErrTimeConflict, got %v", err)
+	if err := LockAndCheckUserStatus(ctx, tx, publication.ID, user.ID); err != nil {
+		t.Fatalf("expected active user status check to pass, got %v", err)
 	}
 	if rollbackErr := tx.Rollback(); rollbackErr != nil {
-		t.Fatalf("rollback conflict tx: %v", rollbackErr)
-	}
-
-	tx, err = db.BeginTx(ctx, nil)
-	if err != nil {
-		t.Fatalf("begin non-overlap tx: %v", err)
-	}
-	if err := LockAndCheckUserSchedule(ctx, tx, publication.ID, user.ID, []SlotTimeWindow{
-		{Weekday: 1, StartTime: "12:00", EndTime: "13:00"},
-	}, nil); err != nil {
-		t.Fatalf("expected non-overlap schedule to pass, got %v", err)
-	}
-	if rollbackErr := tx.Rollback(); rollbackErr != nil {
-		t.Fatalf("rollback non-overlap tx: %v", rollbackErr)
+		t.Fatalf("rollback active tx: %v", rollbackErr)
 	}
 
 	if _, err := db.ExecContext(ctx, `UPDATE users SET status = 'disabled' WHERE id = $1`, user.ID); err != nil {
@@ -353,9 +311,7 @@ func TestLockAndCheckUserSchedule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("begin disabled tx: %v", err)
 	}
-	err = LockAndCheckUserSchedule(ctx, tx, publication.ID, user.ID, []SlotTimeWindow{
-		{Weekday: 1, StartTime: "12:00", EndTime: "13:00"},
-	}, nil)
+	err = LockAndCheckUserStatus(ctx, tx, publication.ID, user.ID)
 	if !errors.Is(err, ErrUserDisabled) {
 		t.Fatalf("expected ErrUserDisabled, got %v", err)
 	}

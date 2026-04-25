@@ -299,7 +299,6 @@ type AssignmentSnapshot struct {
 	UserID        int64
 	SlotID        int64
 	PositionID    int64
-	Window        SlotTimeWindow
 	Exists        bool
 }
 
@@ -372,24 +371,10 @@ func (r *ShiftChangeRepository) ApplySwap(
 		return nil, ErrShiftChangeAssignmentMiss
 	}
 
-	if err := mapShiftChangeScheduleCheckError(LockAndCheckUserSchedule(
-		ctx,
-		tx,
-		requesterSnap.PublicationID,
-		params.RequesterUserID,
-		[]SlotTimeWindow{counterpartSnap.Window},
-		[]int64{params.RequesterAssignmentID},
-	)); err != nil {
+	if err := LockAndCheckUserStatus(ctx, tx, requesterSnap.PublicationID, params.RequesterUserID); err != nil {
 		return nil, err
 	}
-	if err := mapShiftChangeScheduleCheckError(LockAndCheckUserSchedule(
-		ctx,
-		tx,
-		requesterSnap.PublicationID,
-		params.CounterpartUserID,
-		[]SlotTimeWindow{requesterSnap.Window},
-		[]int64{params.CounterpartAssignmentID},
-	)); err != nil {
+	if err := LockAndCheckUserStatus(ctx, tx, requesterSnap.PublicationID, params.CounterpartUserID); err != nil {
 		return nil, err
 	}
 
@@ -451,14 +436,7 @@ func (r *ShiftChangeRepository) ApplyGive(
 		return nil, ErrShiftChangeAssignmentMiss
 	}
 
-	if err := mapShiftChangeScheduleCheckError(LockAndCheckUserSchedule(
-		ctx,
-		tx,
-		snap.PublicationID,
-		params.ReceiverUserID,
-		[]SlotTimeWindow{snap.Window},
-		nil,
-	)); err != nil {
+	if err := LockAndCheckUserStatus(ctx, tx, snap.PublicationID, params.ReceiverUserID); err != nil {
 		return nil, err
 	}
 
@@ -582,14 +560,10 @@ func lockAssignment(ctx context.Context, tx *sql.Tx, id int64) (AssignmentSnapsh
 			a.publication_id,
 			a.user_id,
 			a.slot_id,
-			a.position_id,
-			ts.weekday,
-			TO_CHAR(ts.start_time, 'HH24:MI'),
-			TO_CHAR(ts.end_time, 'HH24:MI')
+			a.position_id
 		FROM assignments a
-		INNER JOIN template_slots ts ON ts.id = a.slot_id
 		WHERE a.id = $1
-		FOR UPDATE OF a;
+		FOR UPDATE;
 	`
 	snap := AssignmentSnapshot{ID: id}
 	switch err := tx.QueryRowContext(ctx, query, id).Scan(
@@ -597,9 +571,6 @@ func lockAssignment(ctx context.Context, tx *sql.Tx, id int64) (AssignmentSnapsh
 		&snap.UserID,
 		&snap.SlotID,
 		&snap.PositionID,
-		&snap.Window.Weekday,
-		&snap.Window.StartTime,
-		&snap.Window.EndTime,
 	); {
 	case errors.Is(err, sql.ErrNoRows):
 		return AssignmentSnapshot{ID: id, Exists: false}, nil
@@ -608,17 +579,6 @@ func lockAssignment(ctx context.Context, tx *sql.Tx, id int64) (AssignmentSnapsh
 	}
 	snap.Exists = true
 	return snap, nil
-}
-
-func mapShiftChangeScheduleCheckError(err error) error {
-	switch {
-	case errors.Is(err, ErrTimeConflict):
-		return model.ErrShiftChangeTimeConflict
-	case errors.Is(err, ErrUserDisabled):
-		return ErrUserDisabled
-	default:
-		return err
-	}
 }
 
 func loadAssignment(ctx context.Context, tx *sql.Tx, id int64) (*model.Assignment, error) {

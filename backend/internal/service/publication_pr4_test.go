@@ -242,47 +242,6 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects overlapping assignment on same weekday", func(t *testing.T) {
-		t.Parallel()
-
-		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
-		repo := newPublicationRepositoryStatefulMock()
-		repo.publications[1] = assigningPublication(now)
-		repo.templateSlots[23] = &model.TemplateSlot{
-			ID:         23,
-			TemplateID: 1,
-			Weekday:    1,
-			StartTime:  "11:00",
-			EndTime:    "14:00",
-		}
-		repo.slotPositions[23] = []*model.TemplateSlotPosition{{ID: 13, SlotID: 23, PositionID: 102, RequiredHeadcount: 1}}
-		repo.assignments[assignmentKey(1, 7, 21)] = &model.Assignment{
-			ID:            1,
-			PublicationID: 1,
-			UserID:        7,
-			SlotID:        21,
-			PositionID:    101,
-			CreatedAt:     now.Add(-15 * time.Minute),
-		}
-		service := NewPublicationService(repo, fixedClock{now: now})
-
-		stub := audittest.New()
-		ctx := stub.ContextWith(context.Background())
-
-		_, err := service.CreateAssignment(ctx, CreateAssignmentInput{
-			PublicationID: 1,
-			UserID:        7,
-			SlotID:        23,
-			PositionID:    102,
-		})
-		if !errors.Is(err, ErrAssignmentTimeConflict) {
-			t.Fatalf("expected ErrAssignmentTimeConflict, got %v", err)
-		}
-		if len(stub.Events()) != 0 {
-			t.Fatalf("expected no audit events, got %+v", stub.Events())
-		}
-	})
-
 	t.Run("allows assignment on different weekday", func(t *testing.T) {
 		t.Parallel()
 

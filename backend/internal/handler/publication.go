@@ -615,8 +615,6 @@ func (h *PublicationHandler) writePublicationServiceError(w http.ResponseWriter,
 		writeError(w, http.StatusConflict, "USER_DISABLED", "User is disabled")
 	case errors.Is(err, service.ErrAssignmentUserAlreadyInSlot):
 		writeError(w, http.StatusConflict, "ASSIGNMENT_USER_ALREADY_IN_SLOT", "User is already assigned in this slot")
-	case errors.Is(err, service.ErrAssignmentTimeConflict):
-		writeError(w, http.StatusConflict, "ASSIGNMENT_TIME_CONFLICT", "Assignment time conflict")
 	case errors.Is(err, service.ErrNotQualified):
 		writeError(w, http.StatusForbidden, "NOT_QUALIFIED", "User is not qualified for this shift")
 	case errors.Is(err, service.ErrSchedulingRetryable):

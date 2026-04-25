@@ -270,8 +270,6 @@ func (h *ShiftChangeHandler) writeError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusForbidden, "SHIFT_CHANGE_NOT_OWNER", "Not authorized for this request")
 	case errors.Is(err, service.ErrShiftChangeNotQualified):
 		writeError(w, http.StatusForbidden, "SHIFT_CHANGE_NOT_QUALIFIED", "Not qualified for the involved shift")
-	case errors.Is(err, service.ErrShiftChangeTimeConflict):
-		writeError(w, http.StatusConflict, "SHIFT_CHANGE_TIME_CONFLICT", "Resulting schedule would have overlapping shifts")
 	case errors.Is(err, service.ErrUserDisabled):
 		writeError(w, http.StatusConflict, "USER_DISABLED", "User is disabled")
 	case errors.Is(err, service.ErrShiftChangeNotPending):

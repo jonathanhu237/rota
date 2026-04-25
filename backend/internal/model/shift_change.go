@@ -9,7 +9,6 @@ var (
 	ErrShiftChangeInvalidType    = errors.New("shift change invalid type")
 	ErrShiftChangeNotOwner       = errors.New("shift change not owner")
 	ErrShiftChangeNotQualified   = errors.New("shift change not qualified")
-	ErrShiftChangeTimeConflict   = errors.New("shift change time conflict")
 	ErrShiftChangeNotPending     = errors.New("shift change not pending")
 	ErrShiftChangeExpired        = errors.New("shift change expired")
 	ErrShiftChangeInvalidated    = errors.New("shift change invalidated")

@@ -6,7 +6,6 @@ import (
 )
 
 var (
-	ErrAssignmentTimeConflict      = errors.New("assignment time conflict")
 	ErrAssignmentUserAlreadyInSlot = errors.New("assignment user already in slot")
 	ErrSchedulingRetryable         = errors.New("scheduling retryable")
 )
@@ -50,12 +49,4 @@ type AssignmentParticipant struct {
 	Name         string
 	Email        string
 	CreatedAt    time.Time
-}
-
-type AssignmentSlotView struct {
-	SlotID     int64
-	PositionID int64
-	Weekday    int
-	StartTime  string
-	EndTime    string
 }

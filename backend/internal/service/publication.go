@@ -27,7 +27,6 @@ var (
 	ErrPublicationNotAssigning     = model.ErrPublicationNotAssigning
 	ErrPublicationNotPublished     = model.ErrPublicationNotPublished
 	ErrPublicationNotActive        = model.ErrPublicationNotActive
-	ErrAssignmentTimeConflict      = model.ErrAssignmentTimeConflict
 	ErrAssignmentUserAlreadyInSlot = model.ErrAssignmentUserAlreadyInSlot
 	ErrSchedulingRetryable         = model.ErrSchedulingRetryable
 	ErrNotQualified                = model.ErrNotQualified
@@ -60,7 +59,6 @@ type publicationRepository interface {
 	CreateAssignment(ctx context.Context, params repository.CreateAssignmentParams) (*model.Assignment, error)
 	DeleteAssignment(ctx context.Context, params repository.DeleteAssignmentParams) error
 	GetAssignment(ctx context.Context, id int64) (*model.Assignment, error)
-	ListUserAssignmentsOnWeekdayInPublication(ctx context.Context, publicationID, userID int64, weekday int) ([]*model.AssignmentSlotView, error)
 	ReplaceAssignments(ctx context.Context, params repository.ReplaceAssignmentsParams) error
 	ActivatePublication(ctx context.Context, params repository.ActivatePublicationParams) (*repository.ActivatePublicationResult, error)
 	PublishPublication(ctx context.Context, params repository.PublishPublicationParams) (*model.Publication, error)
@@ -558,8 +556,6 @@ func mapPublicationRepositoryError(err error) error {
 		return ErrUserNotFound
 	case errors.Is(err, repository.ErrAssignmentUserAlreadyInSlot):
 		return ErrAssignmentUserAlreadyInSlot
-	case errors.Is(err, repository.ErrTimeConflict):
-		return ErrAssignmentTimeConflict
 	case errors.Is(err, repository.ErrUserDisabled):
 		return ErrUserDisabled
 	case errors.Is(err, repository.ErrSchedulingRetryable):
