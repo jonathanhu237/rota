@@ -31,7 +31,7 @@ The seeded data SHALL satisfy the existing schema constraints (foreign keys, UNI
 
 - **WHEN** the developer runs `make seed SCENARIO=stress`
 - **THEN** approximately 50 employees, 8 positions, and a template with ~80 slot-positions are present
-- **AND** four publications exist: two `ENDED`, one `ACTIVE` with full assignment coverage, one effective-state `ASSIGNING` with partial submissions
+- **AND** four publications exist: three `ENDED` fixture/historical publications and one `ACTIVE` publication with assignment coverage
 - **AND** the resulting state respects the single-non-ENDED publication invariant (D2)
 - **AND** at least one pending shift-change request exists per type (swap, give_direct, give_pool)
 

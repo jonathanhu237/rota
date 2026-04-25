@@ -147,19 +147,17 @@ template: 1, with slots:
   ~80 slot-position rows total
 publications: 4
   - 2 ENDED (historical, 4 weeks ago and 2 weeks ago)
-  - 1 ACTIVE (current week, fully assigned)
-  - 1 ASSIGNING (next week, 40% submissions, 0 assignments)
-  Note: D2 invariant requires at most one publication with state != 'ENDED' at any time.
-        Stress sets two ENDED + one ACTIVE + one ASSIGNING; the ACTIVE is the "live" non-ENDED
-        publication, while the ASSIGNING one is in DRAFT-stored-state but ASSIGNING-effective-state
-        because it's bypassing D2's effective-state rule via direct SQL. This is a deliberate
-        seed shortcut and noted in the seed code as a comment.
-availability_submissions: ~6 per employee in the ASSIGNING publication
-assignments: full coverage of the ACTIVE publication (~40 rows)
+  - 1 ENDED submission-heavy fixture
+  - 1 ACTIVE (current week, assigned)
+  Note: the partial unique index `publications_single_non_ended_idx` enforces at most one
+        stored non-ENDED publication. Stress therefore keeps only the ACTIVE publication
+        non-ENDED; the submission-heavy fixture is ENDED so the seed remains valid under D2.
+availability_submissions: dense submissions in the ENDED fixture publication
+assignments: coverage of the ACTIVE publication
 shift_change_requests: 3 pending (1 swap, 1 give_direct, 1 give_pool)
 ```
 
-**Note** on the D2 invariant in `stress`: spec promises "at most one publication with state != 'ENDED'." Direct SQL can technically violate this (the partial unique index on the `publications` table — let me check; if it's enforced at DB level, stress's setup needs a tweak). If the partial unique index is in place, stress will set ENDED states correctly so only one non-ENDED publication exists at any wall-clock instant. **Actionable in tasks.md**: confirm the index, adjust seed if needed.
+**Note** on the D2 invariant in `stress`: `publications_single_non_ended_idx` is enforced at the database layer, so the final seeded state cannot contain both ACTIVE and effective ASSIGNING publications. Stress keeps the ACTIVE publication as the single non-ENDED row and uses an ENDED publication as the dense submissions fixture.
 
 ### Makefile target
 

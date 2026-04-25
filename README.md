@@ -32,6 +32,22 @@ A shift scheduling system for departments.
 
 The Vite dev server uses `/api/*` and proxies those requests to `http://localhost:8080`, which matches the production Caddy routing shape.
 
+### Seeding Dev Data
+
+`make seed` wipes the configured local Postgres data tables with `TRUNCATE ... RESTART IDENTITY CASCADE`, then inserts a known-good development dataset. It prints the target database before wiping, refuses to run when `APP_ENV=production`, and uses `pa55word` for all seeded user passwords unless the bootstrap admin password is set in `.env`.
+
+```bash
+make seed
+make seed SCENARIO=full
+make seed SCENARIO=stress
+```
+
+Scenarios:
+
+- `basic`: bootstrap admin, 5 employees, 3 positions, and one empty template.
+- `full`: 8 employees, 4 positions, a populated template, one effective `ASSIGNING` publication, and availability submissions ready for auto-assign.
+- `stress`: 50 employees, 8 positions, dense template data, one `ACTIVE` publication with assignments and pending shift-change requests, plus ended historical fixture data. The database permits only one non-`ENDED` publication at a time.
+
 ## Testing
 
 - Backend unit tests: `make test-backend`
@@ -73,6 +89,7 @@ make prod-pull
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `APP_ENV` | `development` | Runtime environment name. `make seed` refuses to run when this is `production`. |
 | `SERVER_PORT` | `8080` | Backend listen port inside the container. |
 | `POSTGRES_HOST` | `localhost` | Database host for local development. Production Compose overrides this to `postgres`. |
 | `POSTGRES_PORT` | `5432` | Database port. |

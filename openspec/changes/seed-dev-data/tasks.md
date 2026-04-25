@@ -1,13 +1,13 @@
 ## 1. Skeleton
 
-- [ ] 1.1 Create `backend/cmd/seed/main.go` with: env loading via `config.Load()`, production guard (panic on `cfg.AppEnv == "production"`), `--scenario` flag parsing (default `basic`, accepted values `basic|full|stress`), DB open. Verify: `cd backend && go build ./cmd/seed`.
-- [ ] 1.2 Create `backend/cmd/seed/internal/wipe.go` with `func WipeAllData(ctx context.Context, tx *sql.Tx) error`. Implementation: a single `TRUNCATE TABLE ... RESTART IDENTITY CASCADE` covering `audit_logs, shift_change_requests, assignments, availability_submissions, user_setup_tokens, user_positions, template_slot_positions, template_slots, publications, templates, positions, users`. Verify: `cd backend && go build ./...`.
-- [ ] 1.3 Create `backend/cmd/seed/internal/users.go` with `func InsertUser(tx, email, name, password, isAdmin) (int64, error)`. Implementation: hash password via `bcrypt.GenerateFromPassword(... bcrypt.DefaultCost)`, INSERT user row with `status='active'`, return id. Verify: same.
-- [ ] 1.4 Add a top-of-binary stdout banner: `WIPING database <db>@<host>:<port> ...` so it's visible what's about to be destroyed. Add 1-second sleep when `isatty(stdout)` to be a faint safety pause; skip if non-TTY (CI). Verify: `cd backend && go run ./cmd/seed --scenario=basic` (against a local DB) prints the banner.
+- [x] 1.1 Create `backend/cmd/seed/main.go` with: env loading via `config.Load()`, production guard (panic on `cfg.AppEnv == "production"`), `--scenario` flag parsing (default `basic`, accepted values `basic|full|stress`), DB open. Verify: `cd backend && go build ./cmd/seed`.
+- [x] 1.2 Create `backend/cmd/seed/internal/wipe.go` with `func WipeAllData(ctx context.Context, tx *sql.Tx) error`. Implementation: a single `TRUNCATE TABLE ... RESTART IDENTITY CASCADE` covering `audit_logs, shift_change_requests, assignments, availability_submissions, user_setup_tokens, user_positions, template_slot_positions, template_slots, publications, templates, positions, users`. Verify: `cd backend && go build ./...`.
+- [x] 1.3 Create `backend/cmd/seed/internal/users.go` with `func InsertUser(tx, email, name, password, isAdmin) (int64, error)`. Implementation: hash password via `bcrypt.GenerateFromPassword(... bcrypt.DefaultCost)`, INSERT user row with `status='active'`, return id. Verify: same.
+- [x] 1.4 Add a top-of-binary stdout banner: `WIPING database <db>@<host>:<port> ...` so it's visible what's about to be destroyed. Add 1-second sleep when `isatty(stdout)` to be a faint safety pause; skip if non-TTY (CI). Verify: `cd backend && go run ./cmd/seed --scenario=basic` (against a local DB) prints the banner.
 
 ## 2. Scenario: basic
 
-- [ ] 2.1 Create `backend/cmd/seed/scenarios/basic.go` with `func Run(ctx, tx) error`. Implementation:
+- [x] 2.1 Create `backend/cmd/seed/scenarios/basic.go` with `func Run(ctx, tx) error`. Implementation:
   - Reseed bootstrap admin (email/name/password from `BOOTSTRAP_ADMIN_*` env, `is_admin=true`).
   - Insert 5 employees (`employee1..5@example.com`, name `Employee N`, password `"pa55word"`, `is_admin=false`).
   - Insert 3 positions: `"Position A"`, `"Position B"`, `"Position C"`.
@@ -17,7 +17,7 @@
 
 ## 3. Scenario: full
 
-- [ ] 3.1 Create `backend/cmd/seed/scenarios/full.go` with `func Run(ctx, tx) error`. Implementation:
+- [x] 3.1 Create `backend/cmd/seed/scenarios/full.go` with `func Run(ctx, tx) error`. Implementation:
   - Insert bootstrap admin + 8 employees (`employee1..8@example.com`).
   - Insert 4 positions: A/B/C/D.
   - Each employee qualified for 2 positions (round-robin).
@@ -30,21 +30,21 @@
 
 ## 4. Scenario: stress
 
-- [ ] 4.1 Confirm whether `publications` has a partial unique index on `state != 'ENDED'`. Read the migration file (`migrations/00009_*.sql` or similar) to verify. If the index exists, design `stress` so that exactly one publication is non-ENDED at any moment. If it doesn't exist, the seed can be more aggressive. Document the finding in this task. Verify: `psql -c "\d publications"` reveals the indexes.
-- [ ] 4.2 Create `backend/cmd/seed/scenarios/stress.go` with `func Run(ctx, tx) error`. Implementation, conditioned on §4.1's finding:
+- [x] 4.1 Confirm whether `publications` has a partial unique index on `state != 'ENDED'`. Read the migration file (`migrations/00009_*.sql` or similar) to verify. If the index exists, design `stress` so that exactly one publication is non-ENDED at any moment. If it doesn't exist, the seed can be more aggressive. Document the finding in this task. Finding: `migrations/00005_create_publications_and_submissions_table.sql` creates `publications_single_non_ended_idx ON publications ((TRUE)) WHERE state != 'ENDED'`, so stress must keep exactly one stored non-ENDED publication. Verify: `psql -c "\d publications"` reveals the indexes.
+- [x] 4.2 Create `backend/cmd/seed/scenarios/stress.go` with `func Run(ctx, tx) error`. Implementation, conditioned on §4.1's finding:
   - Insert bootstrap admin + 50 employees.
   - 8 positions.
   - Each employee qualified for 2-3 positions.
   - 1 template, ~20 slots (Mon-Fri × 4 daytime slots × 3 positions + Mon-Sun × 1 evening × 2 positions).
-  - 4 publications: 2 ENDED (historical), 1 ACTIVE (current week), 1 ASSIGNING (next week). Adjust state values to satisfy the D2 invariant once §4.1 is resolved.
-  - For the ACTIVE publication: full assignment coverage (~40 rows).
-  - For the ASSIGNING publication: ~40% submissions, 0 assignments.
+  - 4 publications: 3 ENDED (2 historical + 1 submission-heavy fixture), 1 ACTIVE (current week). Only the ACTIVE publication is stored non-ENDED.
+  - For the ACTIVE publication: assignment coverage.
+  - For the ENDED fixture publication: dense submissions.
   - 3 pending shift-change requests (1 swap, 1 give_direct, 1 give_pool) on the ACTIVE publication.
   Verify: `make seed SCENARIO=stress` succeeds. Counts: 51 users, 8 positions, ~20 slots, ~80 slot_positions, 4 publications, hundreds of submissions, ~40 assignments, 3 shift_change_requests. UI loaded against this DB feels like a "real" deployment.
 
 ## 5. Makefile target
 
-- [ ] 5.1 Add `seed:` target to root `Makefile`:
+- [x] 5.1 Add `seed:` target to root `Makefile`:
   ```
   SCENARIO ?= basic
   
@@ -55,18 +55,18 @@
 
 ## 6. Production guard test
 
-- [ ] 6.1 Add a unit test in `backend/cmd/seed/main_test.go` that loads a fake `cfg.AppEnv = "production"` and asserts the binary's main function (extracted to a testable `func run(cfg) error`) returns an error. Verify: `cd backend && go test ./cmd/seed -count=1`.
+- [x] 6.1 Add a unit test in `backend/cmd/seed/main_test.go` that loads a fake `cfg.AppEnv = "production"` and asserts the binary's main function (extracted to a testable `func run(cfg) error`) returns an error. Verify: `cd backend && go test ./cmd/seed -count=1`.
 
 ## 7. Documentation
 
-- [ ] 7.1 Add a "Seeding dev data" subsection to the project's README (or `AGENTS.md` Commands section) covering: what `make seed` does, scenario differences, the wipe-and-reseed contract, the production guard, and the password convention (`pa55word` for all seeded users). Verify: render the README locally and re-read for clarity.
+- [x] 7.1 Add a "Seeding dev data" subsection to the project's README (or `AGENTS.md` Commands section) covering: what `make seed` does, scenario differences, the wipe-and-reseed contract, the production guard, and the password convention (`pa55word` for all seeded users). Verify: render the README locally and re-read for clarity.
 
 ## 8. Final verification
 
-- [ ] 8.1 `cd backend && go build ./... && go vet ./... && go test ./... && govulncheck ./...` — all clean.
-- [ ] 8.2 Smoke test:
+- [x] 8.1 `cd backend && go build ./... && go vet ./... && go test ./... && govulncheck ./...` — all clean.
+- [x] 8.2 Smoke test:
   - (a) `make migrate-down && make migrate-up && make seed`. Login as `admin@example.com` / `pa55word`. Verify positions, template, employees visible in admin UI (or via `GET /api/users`, `/api/positions`, `/api/templates`).
   - (b) `make migrate-down && make migrate-up && make seed SCENARIO=full`. Login as admin, `POST /api/publications/1/auto-assign`, verify assignments materialize.
   - (c) `make migrate-down && make migrate-up && make seed SCENARIO=stress`. Open the assignment-board UI, observe ACTIVE publication with full coverage.
   - (d) Set `AppEnv=production` in `.env` (back it up first), run `make seed`. Verify it refuses with a clear message and exits non-zero. Restore `.env`.
-- [ ] 8.3 Confirm the existing CI (`backend-test`, `frontend-test`, `migrations-roundtrip`, `docker-build`, `govulncheck`) is unaffected by this change. CI does not run `make seed` and should not need to.
+- [x] 8.3 Confirm the existing CI (`backend-test`, `frontend-test`, `migrations-roundtrip`, `docker-build`, `govulncheck`) is unaffected by this change. CI does not run `make seed` and should not need to.
