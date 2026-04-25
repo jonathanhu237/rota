@@ -31,6 +31,7 @@ Skill details live under `.claude/skills/openspec-*/SKILL.md` (mirrored to `.cod
 ### Rules of engagement
 
 - **One live writer per change.** Do not have Claude and Codex editing the same files concurrently. Handoff happens through the OpenSpec artifacts, not through the working tree.
+- **Apply runs on a feature branch, not on `main`.** Before `/opsx:apply`, check out a branch named `change/<change-name>` from `main`. Codex's apply, Claude's review, the post-archive commit, and any post-smoke fix-up commits all happen on that branch. The branch merges back to `main` (`git merge --no-ff`) only after `/opsx:archive` succeeds and the post-archive commit is in place. This lets `main` stay green while a long-running apply is in progress, and lets Claude propose / explore / verify other changes in parallel without working-tree contention.
 - **Behavior drift → fix the artifact first.** If review finds the implementation diverges from `design.md` / `tasks.md` / specs in a way that changes user-visible behavior or interfaces, update the artifact first and re-apply. Typos, renames, refactors that preserve behavior, comment tweaks, and logging changes can be patched directly without an artifact update.
 - **Parallelism is for independent work.** Spawn parallel agents only when tasks genuinely don't share files or state; never to "speed up" the same change folder.
 
