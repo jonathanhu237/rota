@@ -91,12 +91,13 @@ export type Publication = {
   template_id: number
   template_name: string
   name: string
+  description: string
   state: PublicationState
   submission_start_at: string
   submission_end_at: string
   planned_active_from: string
+  planned_active_until: string
   activated_at: string | null
-  ended_at: string | null
   created_at: string
   updated_at: string
 }
@@ -158,6 +159,7 @@ export type RosterPosition = {
 
 export type RosterSlot = {
   slot: PublicationSlot
+  occurrence_date: string
   positions: RosterPosition[]
 }
 
@@ -168,6 +170,7 @@ export type RosterWeekday = {
 
 export type Roster = {
   publication: Publication | null
+  week_start: string
   weekdays: RosterWeekday[]
 }
 
@@ -187,8 +190,10 @@ export type ShiftChangeRequest = {
   type: ShiftChangeType
   requester_user_id: number
   requester_assignment_id: number
+  occurrence_date: string
   counterpart_user_id: number | null
   counterpart_assignment_id: number | null
+  counterpart_occurrence_date: string | null
   state: ShiftChangeState
   decided_by_user_id: number | null
   created_at: string

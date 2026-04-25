@@ -27,6 +27,7 @@ describe("WeeklyRoster", () => {
       weekday: 3,
       slots: [
         {
+          occurrence_date: "2026-04-15",
           slot: {
             id: 3,
             weekday: 3,

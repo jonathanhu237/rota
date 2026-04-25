@@ -87,18 +87,19 @@ func TestPublicationResponseIncludesFrontendFields(t *testing.T) {
 	t.Parallel()
 
 	publication := &model.Publication{
-		ID:                9,
-		TemplateID:        3,
-		TemplateName:      "Weekday Template",
-		Name:              "April schedule",
-		State:             model.PublicationStateCollecting,
-		SubmissionStartAt: time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC),
-		SubmissionEndAt:   time.Date(2026, 4, 16, 17, 0, 0, 0, time.UTC),
-		PlannedActiveFrom: time.Date(2026, 4, 17, 9, 0, 0, 0, time.UTC),
-		ActivatedAt:       ptrTime(time.Date(2026, 4, 17, 9, 5, 0, 0, time.UTC)),
-		EndedAt:           ptrTime(time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC)),
-		CreatedAt:         time.Date(2026, 4, 15, 8, 0, 0, 0, time.UTC),
-		UpdatedAt:         time.Date(2026, 4, 16, 8, 0, 0, 0, time.UTC),
+		ID:                 9,
+		TemplateID:         3,
+		TemplateName:       "Weekday Template",
+		Name:               "April schedule",
+		Description:        "April description",
+		State:              model.PublicationStateCollecting,
+		SubmissionStartAt:  time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC),
+		SubmissionEndAt:    time.Date(2026, 4, 16, 17, 0, 0, 0, time.UTC),
+		PlannedActiveFrom:  time.Date(2026, 4, 17, 9, 0, 0, 0, time.UTC),
+		PlannedActiveUntil: time.Date(2026, 5, 17, 9, 0, 0, 0, time.UTC),
+		ActivatedAt:        ptrTime(time.Date(2026, 4, 17, 9, 5, 0, 0, time.UTC)),
+		CreatedAt:          time.Date(2026, 4, 15, 8, 0, 0, 0, time.UTC),
+		UpdatedAt:          time.Date(2026, 4, 16, 8, 0, 0, 0, time.UTC),
 	}
 
 	payload, err := json.Marshal(publicationDetailResponse{
@@ -113,12 +114,13 @@ func TestPublicationResponseIncludesFrontendFields(t *testing.T) {
 		"template_id",
 		"template_name",
 		"name",
+		"description",
 		"state",
 		"submission_start_at",
 		"submission_end_at",
 		"planned_active_from",
+		"planned_active_until",
 		"activated_at",
-		"ended_at",
 		"created_at",
 		"updated_at",
 	}
@@ -134,17 +136,18 @@ func TestRosterResponseOmitsAssignmentEmail(t *testing.T) {
 
 	payload, err := json.Marshal(newRosterResponse(&service.RosterResult{
 		Publication: &model.Publication{
-			ID:                9,
-			TemplateID:        3,
-			TemplateName:      "Weekday Template",
-			Name:              "April schedule",
-			State:             model.PublicationStateActive,
-			SubmissionStartAt: time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC),
-			SubmissionEndAt:   time.Date(2026, 4, 16, 17, 0, 0, 0, time.UTC),
-			PlannedActiveFrom: time.Date(2026, 4, 17, 9, 0, 0, 0, time.UTC),
-			ActivatedAt:       ptrTime(time.Date(2026, 4, 17, 9, 5, 0, 0, time.UTC)),
-			CreatedAt:         time.Date(2026, 4, 15, 8, 0, 0, 0, time.UTC),
-			UpdatedAt:         time.Date(2026, 4, 16, 8, 0, 0, 0, time.UTC),
+			ID:                 9,
+			TemplateID:         3,
+			TemplateName:       "Weekday Template",
+			Name:               "April schedule",
+			State:              model.PublicationStateActive,
+			SubmissionStartAt:  time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC),
+			SubmissionEndAt:    time.Date(2026, 4, 16, 17, 0, 0, 0, time.UTC),
+			PlannedActiveFrom:  time.Date(2026, 4, 17, 9, 0, 0, 0, time.UTC),
+			PlannedActiveUntil: time.Date(2026, 5, 17, 9, 0, 0, 0, time.UTC),
+			ActivatedAt:        ptrTime(time.Date(2026, 4, 17, 9, 5, 0, 0, time.UTC)),
+			CreatedAt:          time.Date(2026, 4, 15, 8, 0, 0, 0, time.UTC),
+			UpdatedAt:          time.Date(2026, 4, 16, 8, 0, 0, 0, time.UTC),
 		},
 		Weekdays: []*service.RosterWeekdayResult{
 			{

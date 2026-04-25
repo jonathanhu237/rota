@@ -19,6 +19,7 @@ const maxPublicationNameLength = 100
 
 var (
 	ErrInvalidPublicationWindow    = model.ErrInvalidPublicationWindow
+	ErrInvalidOccurrenceDate       = model.ErrInvalidOccurrenceDate
 	ErrPublicationAlreadyExists    = model.ErrPublicationAlreadyExists
 	ErrPublicationNotFound         = model.ErrPublicationNotFound
 	ErrPublicationNotDeletable     = model.ErrPublicationNotDeletable
@@ -48,6 +49,7 @@ type publicationRepository interface {
 	GetCurrent(ctx context.Context) (*model.Publication, error)
 	GetUserByID(ctx context.Context, id int64) (*model.User, error)
 	CreatePublication(ctx context.Context, params repository.CreatePublicationParams) (*model.Publication, error)
+	UpdatePublicationFields(ctx context.Context, params repository.UpdatePublicationFieldsParams) (*model.Publication, error)
 	DeletePublication(ctx context.Context, params repository.DeletePublicationParams) error
 	ListSubmissionShiftIDs(ctx context.Context, publicationID, userID int64) ([]int64, error)
 	UpsertSubmission(ctx context.Context, params repository.UpsertAvailabilitySubmissionParams) (*model.AvailabilitySubmission, error)
@@ -58,16 +60,17 @@ type publicationRepository interface {
 	ListQualifiedShifts(ctx context.Context, publicationID, userID int64) ([]*model.TemplateShift, error)
 	CreateAssignment(ctx context.Context, params repository.CreateAssignmentParams) (*model.Assignment, error)
 	DeleteAssignment(ctx context.Context, params repository.DeleteAssignmentParams) error
+	CountAssignmentOverridesByAssignment(ctx context.Context, assignmentID int64) (int64, error)
 	GetAssignment(ctx context.Context, id int64) (*model.Assignment, error)
 	ReplaceAssignments(ctx context.Context, params repository.ReplaceAssignmentsParams) error
 	ActivatePublication(ctx context.Context, params repository.ActivatePublicationParams) (*repository.ActivatePublicationResult, error)
 	PublishPublication(ctx context.Context, params repository.PublishPublicationParams) (*model.Publication, error)
-	EndPublication(ctx context.Context, params repository.EndPublicationParams) (*model.Publication, error)
 	GetAssignmentBoardView(ctx context.Context, publicationID int64) (map[int64]*repository.AssignmentBoardSlotView, error)
 	ListPublicationShifts(ctx context.Context, publicationID int64) ([]*model.PublicationShift, error)
 	ListAssignmentCandidates(ctx context.Context, publicationID int64) ([]*model.AssignmentCandidate, error)
 	ListQualifiedUsersForPositions(ctx context.Context, positionIDs []int64) (map[int64][]*model.AssignmentCandidate, error)
 	ListPublicationAssignments(ctx context.Context, publicationID int64) ([]*model.AssignmentParticipant, error)
+	ListPublicationAssignmentsForWeek(ctx context.Context, publicationID int64, weekStart time.Time) ([]*model.AssignmentParticipant, error)
 }
 
 type publicationShiftChangeRepository interface {
@@ -100,11 +103,20 @@ type ListPublicationsResult struct {
 }
 
 type CreatePublicationInput struct {
-	TemplateID        int64
-	Name              string
-	SubmissionStartAt time.Time
-	SubmissionEndAt   time.Time
-	PlannedActiveFrom time.Time
+	TemplateID         int64
+	Name               string
+	Description        string
+	SubmissionStartAt  time.Time
+	SubmissionEndAt    time.Time
+	PlannedActiveFrom  time.Time
+	PlannedActiveUntil time.Time
+}
+
+type UpdatePublicationInput struct {
+	ID                 int64
+	Name               *string
+	Description        *string
+	PlannedActiveUntil *time.Time
 }
 
 type CreateAvailabilitySubmissionInput struct {
@@ -223,19 +235,22 @@ func (s *PublicationService) CreatePublication(
 		input.SubmissionStartAt,
 		input.SubmissionEndAt,
 		input.PlannedActiveFrom,
+		input.PlannedActiveUntil,
 	); err != nil {
 		return nil, err
 	}
 
 	now := s.clock.Now()
 	publication, err := s.publicationRepo.CreatePublication(ctx, repository.CreatePublicationParams{
-		TemplateID:        input.TemplateID,
-		Name:              name,
-		State:             model.PublicationStateDraft,
-		SubmissionStartAt: input.SubmissionStartAt,
-		SubmissionEndAt:   input.SubmissionEndAt,
-		PlannedActiveFrom: input.PlannedActiveFrom,
-		CreatedAt:         now,
+		TemplateID:         input.TemplateID,
+		Name:               name,
+		Description:        strings.TrimSpace(input.Description),
+		State:              model.PublicationStateDraft,
+		SubmissionStartAt:  input.SubmissionStartAt,
+		SubmissionEndAt:    input.SubmissionEndAt,
+		PlannedActiveFrom:  input.PlannedActiveFrom,
+		PlannedActiveUntil: input.PlannedActiveUntil,
+		CreatedAt:          now,
 	})
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
@@ -247,15 +262,83 @@ func (s *PublicationService) CreatePublication(
 		TargetType: audit.TargetTypePublication,
 		TargetID:   &targetID,
 		Metadata: map[string]any{
-			"template_id":         publication.TemplateID,
-			"name":                publication.Name,
-			"submission_start_at": publication.SubmissionStartAt.Format(time.RFC3339),
-			"submission_end_at":   publication.SubmissionEndAt.Format(time.RFC3339),
-			"planned_active_from": publication.PlannedActiveFrom.Format(time.RFC3339),
+			"template_id":          publication.TemplateID,
+			"name":                 publication.Name,
+			"description":          publication.Description,
+			"submission_start_at":  publication.SubmissionStartAt.Format(time.RFC3339),
+			"submission_end_at":    publication.SubmissionEndAt.Format(time.RFC3339),
+			"planned_active_from":  publication.PlannedActiveFrom.Format(time.RFC3339),
+			"planned_active_until": publication.PlannedActiveUntil.Format(time.RFC3339),
 		},
 	})
 
 	return publicationWithEffectiveState(publication, now), nil
+}
+
+func (s *PublicationService) UpdatePublication(
+	ctx context.Context,
+	input UpdatePublicationInput,
+) (*model.Publication, error) {
+	if input.ID <= 0 {
+		return nil, ErrInvalidInput
+	}
+	if input.Name == nil && input.Description == nil && input.PlannedActiveUntil == nil {
+		publication, err := s.publicationRepo.GetByID(ctx, input.ID)
+		if err != nil {
+			return nil, mapPublicationRepositoryError(err)
+		}
+		return publicationWithEffectiveState(publication, s.clock.Now()), nil
+	}
+
+	current, err := s.publicationRepo.GetByID(ctx, input.ID)
+	if err != nil {
+		return nil, mapPublicationRepositoryError(err)
+	}
+
+	var normalizedName *string
+	if input.Name != nil {
+		name, err := normalizePublicationName(*input.Name)
+		if err != nil {
+			return nil, err
+		}
+		normalizedName = &name
+	}
+
+	var normalizedDescription *string
+	if input.Description != nil {
+		description := strings.TrimSpace(*input.Description)
+		normalizedDescription = &description
+	}
+
+	newUntil := current.PlannedActiveUntil
+	if input.PlannedActiveUntil != nil {
+		newUntil = *input.PlannedActiveUntil
+	}
+	if !current.PlannedActiveFrom.Before(newUntil) {
+		return nil, ErrInvalidPublicationWindow
+	}
+
+	now := s.clock.Now()
+	updated, err := s.publicationRepo.UpdatePublicationFields(ctx, repository.UpdatePublicationFieldsParams{
+		ID:                 input.ID,
+		Name:               normalizedName,
+		Description:        normalizedDescription,
+		PlannedActiveUntil: input.PlannedActiveUntil,
+		UpdatedAt:          now,
+	})
+	if err != nil {
+		return nil, mapPublicationRepositoryError(err)
+	}
+
+	targetID := updated.ID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionPublicationUpdate,
+		TargetType: audit.TargetTypePublication,
+		TargetID:   &targetID,
+		Metadata:   publicationUpdateMetadata(current, updated, input),
+	})
+
+	return publicationWithEffectiveState(updated, now), nil
 }
 
 func (s *PublicationService) GetPublicationByID(
@@ -503,12 +586,38 @@ func validatePublicationWindow(
 	submissionStartAt time.Time,
 	submissionEndAt time.Time,
 	plannedActiveFrom time.Time,
+	plannedActiveUntil time.Time,
 ) error {
-	if !submissionStartAt.Before(submissionEndAt) || plannedActiveFrom.Before(submissionEndAt) {
+	if !submissionStartAt.Before(submissionEndAt) ||
+		plannedActiveFrom.Before(submissionEndAt) ||
+		!plannedActiveFrom.Before(plannedActiveUntil) {
 		return ErrInvalidPublicationWindow
 	}
 
 	return nil
+}
+
+func publicationUpdateMetadata(
+	before *model.Publication,
+	after *model.Publication,
+	input UpdatePublicationInput,
+) map[string]any {
+	metadata := map[string]any{
+		"publication_id": after.ID,
+	}
+	if input.Name != nil && before.Name != after.Name {
+		metadata["name"] = map[string]any{"from": before.Name, "to": after.Name}
+	}
+	if input.Description != nil && before.Description != after.Description {
+		metadata["description"] = map[string]any{"from": before.Description, "to": after.Description}
+	}
+	if input.PlannedActiveUntil != nil && !before.PlannedActiveUntil.Equal(after.PlannedActiveUntil) {
+		metadata["planned_active_until"] = map[string]any{
+			"from": before.PlannedActiveUntil.Format(time.RFC3339),
+			"to":   after.PlannedActiveUntil.Format(time.RFC3339),
+		}
+	}
+	return metadata
 }
 
 func publicationWithEffectiveState(

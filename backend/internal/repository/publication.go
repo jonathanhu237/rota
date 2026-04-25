@@ -27,13 +27,23 @@ type ListPublicationsParams struct {
 }
 
 type CreatePublicationParams struct {
-	TemplateID        int64
-	Name              string
-	State             model.PublicationState
-	SubmissionStartAt time.Time
-	SubmissionEndAt   time.Time
-	PlannedActiveFrom time.Time
-	CreatedAt         time.Time
+	TemplateID         int64
+	Name               string
+	Description        string
+	State              model.PublicationState
+	SubmissionStartAt  time.Time
+	SubmissionEndAt    time.Time
+	PlannedActiveFrom  time.Time
+	PlannedActiveUntil time.Time
+	CreatedAt          time.Time
+}
+
+type UpdatePublicationFieldsParams struct {
+	ID                 int64
+	Name               *string
+	Description        *string
+	PlannedActiveUntil *time.Time
+	UpdatedAt          time.Time
 }
 
 type DeletePublicationParams struct {
@@ -85,12 +95,13 @@ func (r *PublicationRepository) ListPaginated(
 			p.template_id,
 			t.name,
 			p.name,
+			p.description,
 			p.state,
 			p.submission_start_at,
 			p.submission_end_at,
 			p.planned_active_from,
+			p.planned_active_until,
 			p.activated_at,
-			p.ended_at,
 			p.created_at,
 			p.updated_at
 		FROM publications p
@@ -131,12 +142,13 @@ func (r *PublicationRepository) GetCurrent(ctx context.Context) (*model.Publicat
 			p.template_id,
 			t.name,
 			p.name,
+			p.description,
 			p.state,
 			p.submission_start_at,
 			p.submission_end_at,
 			p.planned_active_from,
+			p.planned_active_until,
 			p.activated_at,
-			p.ended_at,
 			p.created_at,
 			p.updated_at
 		FROM publications p
@@ -187,29 +199,41 @@ func (r *PublicationRepository) CreatePublication(
 		}
 	}
 
+	const sweepQuery = `
+		UPDATE publications
+		SET state = 'ENDED', updated_at = $1
+		WHERE state = 'ACTIVE' AND planned_active_until <= $1;
+	`
+	if _, err := tx.ExecContext(ctx, sweepQuery, params.CreatedAt); err != nil {
+		return nil, err
+	}
+
 	const query = `
 		INSERT INTO publications (
 			template_id,
 			name,
+			description,
 			state,
 			submission_start_at,
 			submission_end_at,
 			planned_active_from,
+			planned_active_until,
 			created_at,
 			updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
 		RETURNING
 			id,
 			template_id,
-			$8 AS template_name,
+			$10 AS template_name,
 			name,
+			description,
 			state,
 			submission_start_at,
 			submission_end_at,
 			planned_active_from,
+			planned_active_until,
 			activated_at,
-			ended_at,
 			created_at,
 			updated_at;
 	`
@@ -219,10 +243,12 @@ func (r *PublicationRepository) CreatePublication(
 		query,
 		params.TemplateID,
 		params.Name,
+		params.Description,
 		params.State,
 		params.SubmissionStartAt,
 		params.SubmissionEndAt,
 		params.PlannedActiveFrom,
+		params.PlannedActiveUntil,
 		params.CreatedAt,
 		template.Name,
 	))
@@ -234,6 +260,67 @@ func (r *PublicationRepository) CreatePublication(
 		return nil, mapPublicationWriteError(err)
 	}
 
+	return publication, nil
+}
+
+func (r *PublicationRepository) UpdatePublicationFields(
+	ctx context.Context,
+	params UpdatePublicationFieldsParams,
+) (*model.Publication, error) {
+	const query = `
+		UPDATE publications p
+		SET
+			name = COALESCE($2, p.name),
+			description = COALESCE($3, p.description),
+			planned_active_until = COALESCE($4, p.planned_active_until),
+			updated_at = $5
+		FROM templates t
+		WHERE p.id = $1
+			AND p.template_id = t.id
+		RETURNING
+			p.id,
+			p.template_id,
+			t.name,
+			p.name,
+			p.description,
+			p.state,
+			p.submission_start_at,
+			p.submission_end_at,
+			p.planned_active_from,
+			p.planned_active_until,
+			p.activated_at,
+			p.created_at,
+			p.updated_at;
+	`
+
+	var name sql.NullString
+	if params.Name != nil {
+		name = sql.NullString{String: *params.Name, Valid: true}
+	}
+	var description sql.NullString
+	if params.Description != nil {
+		description = sql.NullString{String: *params.Description, Valid: true}
+	}
+	var plannedActiveUntil sql.NullTime
+	if params.PlannedActiveUntil != nil {
+		plannedActiveUntil = sql.NullTime{Time: *params.PlannedActiveUntil, Valid: true}
+	}
+
+	publication, err := scanPublication(r.db.QueryRowContext(
+		ctx,
+		query,
+		params.ID,
+		name,
+		description,
+		plannedActiveUntil,
+		params.UpdatedAt,
+	))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrPublicationNotFound
+	}
+	if err != nil {
+		return nil, mapPublicationWriteError(err)
+	}
 	return publication, nil
 }
 
@@ -537,12 +624,13 @@ func getPublicationByID(ctx context.Context, db dbtx, id int64) (*model.Publicat
 			p.template_id,
 			t.name,
 			p.name,
+			p.description,
 			p.state,
 			p.submission_start_at,
 			p.submission_end_at,
 			p.planned_active_from,
+			p.planned_active_until,
 			p.activated_at,
-			p.ended_at,
 			p.created_at,
 			p.updated_at
 		FROM publications p
@@ -671,12 +759,13 @@ func scanPublication(row scanner) (*model.Publication, error) {
 		&publication.TemplateID,
 		&publication.TemplateName,
 		&publication.Name,
+		&publication.Description,
 		&publication.State,
 		&publication.SubmissionStartAt,
 		&publication.SubmissionEndAt,
 		&publication.PlannedActiveFrom,
+		&publication.PlannedActiveUntil,
 		&publication.ActivatedAt,
-		&publication.EndedAt,
 		&publication.CreatedAt,
 		&publication.UpdatedAt,
 	)

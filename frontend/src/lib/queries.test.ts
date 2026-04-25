@@ -44,6 +44,7 @@ import {
   replaceUserPositions,
   resendInvitation,
   setupPassword,
+  updatePublication,
   updateTemplate,
 } from "./queries"
 
@@ -100,6 +101,8 @@ describe("updateTemplate", () => {
   })
 })
 
+const toIso = (value: string) => new Date(value).toISOString()
+
 describe("createPublication", () => {
   beforeEach(() => {
     deleteMock.mockReset()
@@ -109,7 +112,7 @@ describe("createPublication", () => {
     putMock.mockReset()
   })
 
-  it("posts the publication payload unchanged", async () => {
+  it("posts the publication payload with RFC3339 timestamps", async () => {
     postMock.mockResolvedValue({
       data: {
         publication: {
@@ -117,12 +120,13 @@ describe("createPublication", () => {
           template_id: 2,
           template_name: "Weekday Template",
           name: "May Coverage",
+          description: "",
           state: "DRAFT",
           submission_start_at: "2026-05-01T09:00:00Z",
           submission_end_at: "2026-05-03T09:00:00Z",
           planned_active_from: "2026-05-04T09:00:00Z",
+          planned_active_until: "2026-06-29T09:00:00Z",
           activated_at: null,
-          ended_at: null,
           created_at: "2026-04-20T08:00:00Z",
           updated_at: "2026-04-20T08:00:00Z",
         },
@@ -135,14 +139,46 @@ describe("createPublication", () => {
       submission_start_at: "2026-05-01T09:00",
       submission_end_at: "2026-05-03T09:00",
       planned_active_from: "2026-05-04T09:00",
+      planned_active_until: "2026-06-29T09:00",
     })
 
     expect(postMock).toHaveBeenCalledWith("/publications", {
       template_id: 2,
       name: "May Coverage",
-      submission_start_at: "2026-05-01T09:00",
-      submission_end_at: "2026-05-03T09:00",
-      planned_active_from: "2026-05-04T09:00",
+      submission_start_at: toIso("2026-05-01T09:00"),
+      submission_end_at: toIso("2026-05-03T09:00"),
+      planned_active_from: toIso("2026-05-04T09:00"),
+      planned_active_until: toIso("2026-06-29T09:00"),
+    })
+  })
+
+  it("patches publication fields with the partial payload", async () => {
+    patchMock.mockResolvedValue({
+      data: {
+        publication: {
+          id: 9,
+          template_id: 2,
+          template_name: "Weekday Template",
+          name: "May Coverage",
+          description: "Updated",
+          state: "ACTIVE",
+          submission_start_at: "2026-05-01T09:00:00Z",
+          submission_end_at: "2026-05-03T09:00:00Z",
+          planned_active_from: "2026-05-04T09:00:00Z",
+          planned_active_until: "2026-07-06T09:00:00Z",
+          activated_at: "2026-05-04T09:00:00Z",
+          created_at: "2026-04-20T08:00:00Z",
+          updated_at: "2026-04-21T08:00:00Z",
+        },
+      },
+    })
+
+    await updatePublication(9, {
+      planned_active_until: "2026-07-06T09:00:00Z",
+    })
+
+    expect(patchMock).toHaveBeenCalledWith("/publications/9", {
+      planned_active_until: "2026-07-06T09:00:00Z",
     })
   })
 })
@@ -252,12 +288,13 @@ describe("auto assign publication", () => {
           template_id: 2,
           template_name: "Weekday Template",
           name: "May Coverage",
+          description: "",
           state: "ASSIGNING",
           submission_start_at: "2026-05-01T09:00:00Z",
           submission_end_at: "2026-05-03T09:00:00Z",
           planned_active_from: "2026-05-04T09:00:00Z",
+          planned_active_until: "2026-06-29T09:00:00Z",
           activated_at: null,
-          ended_at: null,
           created_at: "2026-04-20T08:00:00Z",
           updated_at: "2026-04-20T08:00:00Z",
         },

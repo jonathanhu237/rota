@@ -255,12 +255,14 @@ export function RequestsList({
         request.counterpart_assignment_id,
       )
       return t("requests.card.swapSummary", {
-        requesterShift,
-        counterpartShift,
+        requesterShift: `${requesterShift} · ${request.occurrence_date}`,
+        counterpartShift: `${counterpartShift} · ${
+          request.counterpart_occurrence_date ?? request.occurrence_date
+        }`,
       })
     }
 
-    return requesterShift
+    return `${requesterShift} · ${request.occurrence_date}`
   }
 
   const renderCard = (

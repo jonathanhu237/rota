@@ -914,7 +914,7 @@ func TestPublicationServiceActivatePublication(t *testing.T) {
 }
 
 func TestPublicationServiceEndPublication(t *testing.T) {
-	t.Run("ends active publication and sets ended_at", func(t *testing.T) {
+	t.Run("ends active publication by shortening planned_active_until", func(t *testing.T) {
 		t.Parallel()
 
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
@@ -932,8 +932,8 @@ func TestPublicationServiceEndPublication(t *testing.T) {
 		if publication.State != model.PublicationStateEnded {
 			t.Fatalf("expected ended state, got %s", publication.State)
 		}
-		if publication.EndedAt == nil || !publication.EndedAt.Equal(now) {
-			t.Fatalf("expected ended_at %v, got %+v", now, publication.EndedAt)
+		if !publication.PlannedActiveUntil.Equal(now) {
+			t.Fatalf("expected planned_active_until %v, got %+v", now, publication.PlannedActiveUntil)
 		}
 
 		event := stub.FindByAction(audit.ActionPublicationEnd)
@@ -1126,7 +1126,7 @@ func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
 		}
 		service := NewPublicationService(repo, fixedClock{now: now})
 
-		roster, err := service.GetPublicationRoster(context.Background(), 1)
+		roster, err := service.GetPublicationRoster(context.Background(), 1, nil)
 		if err != nil {
 			t.Fatalf("GetPublicationRoster returned error: %v", err)
 		}
@@ -1176,46 +1176,49 @@ func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
 
 func draftPublication(now time.Time) *model.Publication {
 	return &model.Publication{
-		ID:                1,
-		TemplateID:        1,
-		TemplateName:      "Core Week",
-		Name:              "Draft",
-		State:             model.PublicationStateDraft,
-		SubmissionStartAt: now.Add(2 * time.Hour),
-		SubmissionEndAt:   now.Add(24 * time.Hour),
-		PlannedActiveFrom: now.Add(48 * time.Hour),
-		CreatedAt:         now.Add(-24 * time.Hour),
-		UpdatedAt:         now.Add(-24 * time.Hour),
+		ID:                 1,
+		TemplateID:         1,
+		TemplateName:       "Core Week",
+		Name:               "Draft",
+		State:              model.PublicationStateDraft,
+		SubmissionStartAt:  now.Add(2 * time.Hour),
+		SubmissionEndAt:    now.Add(24 * time.Hour),
+		PlannedActiveFrom:  now.Add(48 * time.Hour),
+		PlannedActiveUntil: now.Add(48*time.Hour + 8*7*24*time.Hour),
+		CreatedAt:          now.Add(-24 * time.Hour),
+		UpdatedAt:          now.Add(-24 * time.Hour),
 	}
 }
 
 func assigningPublication(now time.Time) *model.Publication {
 	return &model.Publication{
-		ID:                1,
-		TemplateID:        1,
-		TemplateName:      "Core Week",
-		Name:              "Assigning",
-		State:             model.PublicationStateDraft,
-		SubmissionStartAt: now.Add(-72 * time.Hour),
-		SubmissionEndAt:   now.Add(-24 * time.Hour),
-		PlannedActiveFrom: now.Add(24 * time.Hour),
-		CreatedAt:         now.Add(-96 * time.Hour),
-		UpdatedAt:         now.Add(-48 * time.Hour),
+		ID:                 1,
+		TemplateID:         1,
+		TemplateName:       "Core Week",
+		Name:               "Assigning",
+		State:              model.PublicationStateDraft,
+		SubmissionStartAt:  now.Add(-72 * time.Hour),
+		SubmissionEndAt:    now.Add(-24 * time.Hour),
+		PlannedActiveFrom:  now.Add(24 * time.Hour),
+		PlannedActiveUntil: now.Add(24*time.Hour + 8*7*24*time.Hour),
+		CreatedAt:          now.Add(-96 * time.Hour),
+		UpdatedAt:          now.Add(-48 * time.Hour),
 	}
 }
 
 func publishedPublication(now time.Time) *model.Publication {
 	return &model.Publication{
-		ID:                1,
-		TemplateID:        1,
-		TemplateName:      "Core Week",
-		Name:              "Published",
-		State:             model.PublicationStatePublished,
-		SubmissionStartAt: now.Add(-72 * time.Hour),
-		SubmissionEndAt:   now.Add(-48 * time.Hour),
-		PlannedActiveFrom: now.Add(24 * time.Hour),
-		CreatedAt:         now.Add(-96 * time.Hour),
-		UpdatedAt:         now.Add(-2 * time.Hour),
+		ID:                 1,
+		TemplateID:         1,
+		TemplateName:       "Core Week",
+		Name:               "Published",
+		State:              model.PublicationStatePublished,
+		SubmissionStartAt:  now.Add(-72 * time.Hour),
+		SubmissionEndAt:    now.Add(-48 * time.Hour),
+		PlannedActiveFrom:  now.Add(24 * time.Hour),
+		PlannedActiveUntil: now.Add(24*time.Hour + 8*7*24*time.Hour),
+		CreatedAt:          now.Add(-96 * time.Hour),
+		UpdatedAt:          now.Add(-2 * time.Hour),
 	}
 }
 
@@ -1223,36 +1226,36 @@ func activePublication(now time.Time) *model.Publication {
 	activatedAt := now.Add(-2 * time.Hour)
 
 	return &model.Publication{
-		ID:                1,
-		TemplateID:        1,
-		TemplateName:      "Core Week",
-		Name:              "Active",
-		State:             model.PublicationStateActive,
-		SubmissionStartAt: now.Add(-72 * time.Hour),
-		SubmissionEndAt:   now.Add(-48 * time.Hour),
-		PlannedActiveFrom: now.Add(-24 * time.Hour),
-		ActivatedAt:       &activatedAt,
-		CreatedAt:         now.Add(-96 * time.Hour),
-		UpdatedAt:         now.Add(-2 * time.Hour),
+		ID:                 1,
+		TemplateID:         1,
+		TemplateName:       "Core Week",
+		Name:               "Active",
+		State:              model.PublicationStateActive,
+		SubmissionStartAt:  now.Add(-72 * time.Hour),
+		SubmissionEndAt:    now.Add(-48 * time.Hour),
+		PlannedActiveFrom:  now.Add(-49 * time.Hour),
+		PlannedActiveUntil: now.Add(8 * 7 * 24 * time.Hour),
+		ActivatedAt:        &activatedAt,
+		CreatedAt:          now.Add(-96 * time.Hour),
+		UpdatedAt:          now.Add(-2 * time.Hour),
 	}
 }
 
 func endedPublication(now time.Time) *model.Publication {
 	activatedAt := now.Add(-48 * time.Hour)
-	endedAt := now.Add(-2 * time.Hour)
 
 	return &model.Publication{
-		ID:                1,
-		TemplateID:        1,
-		TemplateName:      "Core Week",
-		Name:              "Ended",
-		State:             model.PublicationStateEnded,
-		SubmissionStartAt: now.Add(-96 * time.Hour),
-		SubmissionEndAt:   now.Add(-72 * time.Hour),
-		PlannedActiveFrom: now.Add(-48 * time.Hour),
-		ActivatedAt:       &activatedAt,
-		EndedAt:           &endedAt,
-		CreatedAt:         now.Add(-120 * time.Hour),
-		UpdatedAt:         now.Add(-2 * time.Hour),
+		ID:                 1,
+		TemplateID:         1,
+		TemplateName:       "Core Week",
+		Name:               "Ended",
+		State:              model.PublicationStateEnded,
+		SubmissionStartAt:  now.Add(-96 * time.Hour),
+		SubmissionEndAt:    now.Add(-72 * time.Hour),
+		PlannedActiveFrom:  now.Add(-48 * time.Hour),
+		PlannedActiveUntil: now.Add(-2 * time.Hour),
+		ActivatedAt:        &activatedAt,
+		CreatedAt:          now.Add(-120 * time.Hour),
+		UpdatedAt:          now.Add(-2 * time.Hour),
 	}
 }

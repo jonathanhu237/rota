@@ -22,6 +22,7 @@ type GivePoolDialogProps = {
   open: boolean
   publicationID: number
   myAssignmentID: number | null
+  occurrenceDate: string | null
   onOpenChange: (open: boolean) => void
 }
 
@@ -29,6 +30,7 @@ export function GivePoolDialog({
   open,
   publicationID,
   myAssignmentID,
+  occurrenceDate,
   onOpenChange,
 }: GivePoolDialogProps) {
   const { t } = useTranslation()
@@ -37,12 +39,13 @@ export function GivePoolDialog({
 
   const mutation = useMutation({
     mutationFn: async () => {
-      if (!myAssignmentID) {
+      if (!myAssignmentID || !occurrenceDate) {
         throw new Error("missing assignment")
       }
       return createShiftChangeRequest(publicationID, {
         type: "give_pool",
         requester_assignment_id: myAssignmentID,
+        occurrence_date: occurrenceDate,
       })
     },
     onSuccess: async () => {
@@ -83,6 +86,11 @@ export function GivePoolDialog({
             {t("requests.givePoolDialog.description")}
           </DialogDescription>
         </DialogHeader>
+        {occurrenceDate && (
+          <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+            {t("requests.occurrenceLabel", { date: occurrenceDate })}
+          </div>
+        )}
         <DialogFooter>
           <Button
             type="button"
@@ -94,7 +102,7 @@ export function GivePoolDialog({
           <Button
             type="button"
             onClick={() => mutation.mutate()}
-            disabled={mutation.isPending || !myAssignmentID}
+            disabled={mutation.isPending || !myAssignmentID || !occurrenceDate}
           >
             {mutation.isPending
               ? t("requests.givePoolDialog.submitting")

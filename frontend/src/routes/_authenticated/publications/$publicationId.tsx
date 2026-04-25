@@ -18,6 +18,8 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/toast"
 import { getTranslatedApiError } from "@/lib/api-error"
 import { getPublicationLifecycleAction } from "@/lib/publications"
@@ -28,6 +30,7 @@ import {
   endPublication,
   publicationQueryOptions,
   publishPublication,
+  updatePublication,
 } from "@/lib/queries"
 
 export const Route = createFileRoute("/_authenticated/publications/$publicationId")({
@@ -53,10 +56,22 @@ function PublicationDetailPage() {
   const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false)
   const [isActivateDialogOpen, setIsActivateDialogOpen] = useState(false)
   const [isEndDialogOpen, setIsEndDialogOpen] = useState(false)
+  const [plannedUntilDraft, setPlannedUntilDraft] = useState<{
+    publicationID: number
+    value: string
+  } | null>(null)
 
   const { data: currentUser } = useQuery(currentUserQueryOptions)
   const publicationQuery = useQuery(publicationQueryOptions(numericPublicationID))
   const publication = publicationQuery.data
+
+  const plannedUntilInput =
+    publication && plannedUntilDraft?.publicationID === publication.id
+      ? plannedUntilDraft.value
+      : publication
+        ? toDateTimeLocal(publication.planned_active_until)
+        : ""
+  const plannedUntilTimestamp = Date.parse(plannedUntilInput)
 
   useEffect(() => {
     if (currentUser && !currentUser.is_admin) {
@@ -185,6 +200,36 @@ function PublicationDetailPage() {
     },
   })
 
+  const updatePublicationMutation = useMutation({
+    mutationFn: () => {
+      if (!publication || Number.isNaN(plannedUntilTimestamp)) {
+        throw new Error("invalid planned_active_until")
+      }
+      return updatePublication(numericPublicationID, {
+        planned_active_until: new Date(plannedUntilTimestamp).toISOString(),
+      })
+    },
+    onSuccess: async () => {
+      setPlannedUntilDraft(null)
+      await invalidatePublicationState()
+      toast({
+        variant: "default",
+        description: t("publications.success.updated"),
+      })
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        description: getTranslatedApiError(
+          t,
+          error,
+          "publications.errors",
+          "publications.errors.INTERNAL_ERROR",
+        ),
+      })
+    },
+  })
+
   const getStateDescription = () => {
     if (!publication) {
       return ""
@@ -209,7 +254,7 @@ function PublicationDetailPage() {
         })
       case "ENDED":
         return t("publications.detail.stateDescription.ended", {
-          time: formatTimestamp(publication.ended_at),
+          time: formatTimestamp(publication.planned_active_until),
         })
     }
   }
@@ -337,12 +382,12 @@ function PublicationDetailPage() {
                 value={formatTimestamp(publication.planned_active_from)}
               />
               <MetadataItem
-                label={t("publications.detail.activatedAt")}
-                value={formatTimestamp(publication.activated_at)}
+                label={t("publications.detail.plannedActiveUntil")}
+                value={formatTimestamp(publication.planned_active_until)}
               />
               <MetadataItem
-                label={t("publications.detail.endedAt")}
-                value={formatTimestamp(publication.ended_at)}
+                label={t("publications.detail.activatedAt")}
+                value={formatTimestamp(publication.activated_at)}
               />
               <MetadataItem
                 label={t("publications.detail.createdAt")}
@@ -353,6 +398,42 @@ function PublicationDetailPage() {
                 value={formatTimestamp(publication.updated_at)}
               />
             </div>
+            <form
+              className="grid gap-3 rounded-lg border p-3 sm:max-w-md"
+              onSubmit={(event) => {
+                event.preventDefault()
+                updatePublicationMutation.mutate()
+              }}
+            >
+              <Label htmlFor="publication-planned-until-edit">
+                {t("publications.detail.editPlannedActiveUntil")}
+              </Label>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  id="publication-planned-until-edit"
+                  type="datetime-local"
+                  value={plannedUntilInput}
+                  onChange={(event) =>
+                    setPlannedUntilDraft({
+                      publicationID: publication.id,
+                      value: event.target.value,
+                    })
+                  }
+                />
+                <Button
+                  type="submit"
+                  disabled={
+                    updatePublicationMutation.isPending ||
+                    !plannedUntilInput ||
+                    Number.isNaN(plannedUntilTimestamp)
+                  }
+                >
+                  {updatePublicationMutation.isPending
+                    ? t("publications.detail.saving")
+                    : t("publications.detail.save")}
+                </Button>
+              </div>
+            </form>
           </CardContent>
         </Card>
       </div>
@@ -386,6 +467,12 @@ function PublicationDetailPage() {
       />
     </>
   )
+}
+
+function toDateTimeLocal(value: string) {
+  const date = new Date(value)
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16)
 }
 
 function MetadataItem({

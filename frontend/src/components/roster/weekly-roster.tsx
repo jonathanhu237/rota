@@ -35,6 +35,7 @@ export type WeeklyRosterShiftAction =
 export type WeeklyRosterOwnShift = {
   assignmentID: number
   weekday: number
+  occurrenceDate: string
   slot: PublicationSlot
   position: PublicationPosition
 }
@@ -169,6 +170,8 @@ export function WeeklyRoster({
                                                   assignmentID:
                                                     assignment.assignment_id,
                                                   weekday: weekday.weekday,
+                                                  occurrenceDate:
+                                                    slotEntry.occurrence_date,
                                                   slot: slotEntry.slot,
                                                   position: positionEntry.position,
                                                 },
@@ -185,6 +188,8 @@ export function WeeklyRoster({
                                                   assignmentID:
                                                     assignment.assignment_id,
                                                   weekday: weekday.weekday,
+                                                  occurrenceDate:
+                                                    slotEntry.occurrence_date,
                                                   slot: slotEntry.slot,
                                                   position: positionEntry.position,
                                                 },
@@ -201,6 +206,8 @@ export function WeeklyRoster({
                                                   assignmentID:
                                                     assignment.assignment_id,
                                                   weekday: weekday.weekday,
+                                                  occurrenceDate:
+                                                    slotEntry.occurrence_date,
                                                   slot: slotEntry.slot,
                                                   position: positionEntry.position,
                                                 },

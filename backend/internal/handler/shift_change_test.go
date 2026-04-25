@@ -60,26 +60,31 @@ func sampleShiftChangeRequest() *model.ShiftChangeRequest {
 	counterpartUser := int64(2)
 	counterpartAssignment := int64(20)
 	now := time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC)
+	counterpartOccurrence := time.Date(2026, 4, 22, 0, 0, 0, 0, time.UTC)
 	return &model.ShiftChangeRequest{
-		ID:                      42,
-		PublicationID:           1,
-		Type:                    model.ShiftChangeTypeSwap,
-		RequesterUserID:         1,
-		RequesterAssignmentID:   10,
-		CounterpartUserID:       &counterpartUser,
-		CounterpartAssignmentID: &counterpartAssignment,
-		State:                   model.ShiftChangeStatePending,
-		CreatedAt:               now,
-		ExpiresAt:               now.Add(48 * time.Hour),
+		ID:                        42,
+		PublicationID:             1,
+		Type:                      model.ShiftChangeTypeSwap,
+		RequesterUserID:           1,
+		RequesterAssignmentID:     10,
+		OccurrenceDate:            time.Date(2026, 4, 20, 0, 0, 0, 0, time.UTC),
+		CounterpartUserID:         &counterpartUser,
+		CounterpartAssignmentID:   &counterpartAssignment,
+		CounterpartOccurrenceDate: &counterpartOccurrence,
+		State:                     model.ShiftChangeStatePending,
+		CreatedAt:                 now,
+		ExpiresAt:                 now.Add(48 * time.Hour),
 	}
 }
 
 func sampleCreateShiftChangePayload() map[string]any {
 	return map[string]any{
-		"type":                      "swap",
-		"requester_assignment_id":   10,
-		"counterpart_user_id":       2,
-		"counterpart_assignment_id": 20,
+		"type":                        "swap",
+		"requester_assignment_id":     10,
+		"occurrence_date":             "2026-04-20",
+		"counterpart_user_id":         2,
+		"counterpart_assignment_id":   20,
+		"counterpart_occurrence_date": "2026-04-22",
 	}
 }
 

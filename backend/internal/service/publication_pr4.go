@@ -33,6 +33,7 @@ type AssignmentBoardPositionResult struct {
 
 type RosterResult struct {
 	Publication *model.Publication
+	WeekStart   time.Time
 	Weekdays    []*RosterWeekdayResult
 }
 
@@ -42,8 +43,9 @@ type RosterWeekdayResult struct {
 }
 
 type RosterSlotResult struct {
-	Slot      *model.TemplateSlot
-	Positions []*RosterPositionResult
+	Slot           *model.TemplateSlot
+	OccurrenceDate time.Time
+	Positions      []*RosterPositionResult
 }
 
 type RosterPositionResult struct {
@@ -145,6 +147,11 @@ func (s *PublicationService) DeleteAssignment(
 	}
 
 	deletedAssignment := s.assignmentSnapshotForCascade(ctx, input.AssignmentID)
+	assignmentOverridesRemoved, err := s.publicationRepo.CountAssignmentOverridesByAssignment(ctx, input.AssignmentID)
+	if err != nil {
+		s.logger.Warn("publication: count assignment overrides for delete", "assignment_id", input.AssignmentID, "error", err)
+		assignmentOverridesRemoved = 0
+	}
 
 	if err := s.publicationRepo.DeleteAssignment(ctx, repository.DeleteAssignmentParams{
 		PublicationID: input.PublicationID,
@@ -155,7 +162,8 @@ func (s *PublicationService) DeleteAssignment(
 
 	targetID := input.AssignmentID
 	metadata := map[string]any{
-		"publication_id": input.PublicationID,
+		"publication_id":               input.PublicationID,
+		"assignment_overrides_removed": assignmentOverridesRemoved,
 	}
 	if deletedAssignment != nil {
 		metadata["user_id"] = deletedAssignment.UserID
@@ -297,19 +305,12 @@ func (s *PublicationService) EndPublication(
 		return nil, ErrPublicationNotActive
 	}
 
-	updated, err := s.publicationRepo.EndPublication(ctx, repository.EndPublicationParams{
-		ID:  publicationID,
-		Now: now,
+	updated, err := s.UpdatePublication(ctx, UpdatePublicationInput{
+		ID:                 publicationID,
+		PlannedActiveUntil: &now,
 	})
-	if errors.Is(err, sql.ErrNoRows) {
-		_, reloadErr := s.publicationRepo.GetByID(ctx, publicationID)
-		if reloadErr != nil {
-			return nil, mapPublicationRepositoryError(reloadErr)
-		}
-		return nil, ErrPublicationNotActive
-	}
 	if err != nil {
-		return nil, mapPublicationRepositoryError(err)
+		return nil, err
 	}
 
 	targetID := updated.ID
@@ -417,6 +418,7 @@ func (s *PublicationService) GetAssignmentBoard(
 func (s *PublicationService) GetPublicationRoster(
 	ctx context.Context,
 	publicationID int64,
+	weekStart *time.Time,
 ) (*RosterResult, error) {
 	if publicationID <= 0 {
 		return nil, ErrInvalidInput
@@ -432,7 +434,12 @@ func (s *PublicationService) GetPublicationRoster(
 		return nil, ErrPublicationNotActive
 	}
 
-	return s.buildRoster(ctx, publication, now)
+	resolvedWeekStart, err := resolveRosterWeekStart(publication, weekStart, now)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.buildRoster(ctx, publication, resolvedWeekStart, now)
 }
 
 func isPublicationMutableForAssignments(state model.PublicationState) bool {
@@ -598,6 +605,7 @@ func (s *PublicationService) GetCurrentRoster(ctx context.Context) (*RosterResul
 	if publication == nil {
 		return &RosterResult{
 			Publication: nil,
+			WeekStart:   time.Time{},
 			Weekdays:    make([]*RosterWeekdayResult, 0),
 		}, nil
 	}
@@ -605,23 +613,29 @@ func (s *PublicationService) GetCurrentRoster(ctx context.Context) (*RosterResul
 	if effective != model.PublicationStatePublished && effective != model.PublicationStateActive {
 		return &RosterResult{
 			Publication: nil,
+			WeekStart:   time.Time{},
 			Weekdays:    make([]*RosterWeekdayResult, 0),
 		}, nil
 	}
 
-	return s.buildRoster(ctx, publication, now)
+	weekStart, err := resolveRosterWeekStart(publication, nil, now)
+	if err != nil {
+		return nil, err
+	}
+	return s.buildRoster(ctx, publication, weekStart, now)
 }
 
 func (s *PublicationService) buildRoster(
 	ctx context.Context,
 	publication *model.Publication,
+	weekStart time.Time,
 	now time.Time,
 ) (*RosterResult, error) {
 	shifts, err := s.publicationRepo.ListPublicationShifts(ctx, publication.ID)
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
-	assignments, err := s.publicationRepo.ListPublicationAssignments(ctx, publication.ID)
+	assignments, err := s.publicationRepo.ListPublicationAssignmentsForWeek(ctx, publication.ID, weekStart)
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
@@ -639,6 +653,15 @@ func (s *PublicationService) buildRoster(
 	slotsByWeekday := make(map[int][]*RosterSlotResult)
 	slotByWeekdayAndID := make(map[int]map[int64]*RosterSlotResult)
 	for _, shift := range shifts {
+		occurrenceDate := occurrenceDateForWeekday(weekStart, shift.Weekday)
+		occurrenceStart, err := model.OccurrenceStart(publicationShiftSlot(shift), occurrenceDate)
+		if err != nil {
+			return nil, err
+		}
+		if occurrenceStart.Before(publication.PlannedActiveFrom) || !occurrenceStart.Before(publication.PlannedActiveUntil) {
+			continue
+		}
+
 		if slotByWeekdayAndID[shift.Weekday] == nil {
 			slotByWeekdayAndID[shift.Weekday] = make(map[int64]*RosterSlotResult)
 		}
@@ -646,8 +669,9 @@ func (s *PublicationService) buildRoster(
 		slotResult, ok := slotByWeekdayAndID[shift.Weekday][shift.SlotID]
 		if !ok {
 			slotResult = &RosterSlotResult{
-				Slot:      publicationShiftSlot(shift),
-				Positions: make([]*RosterPositionResult, 0),
+				Slot:           publicationShiftSlot(shift),
+				OccurrenceDate: occurrenceDate,
+				Positions:      make([]*RosterPositionResult, 0),
 			}
 			slotByWeekdayAndID[shift.Weekday][shift.SlotID] = slotResult
 			slotsByWeekday[shift.Weekday] = append(slotsByWeekday[shift.Weekday], slotResult)
@@ -676,8 +700,52 @@ func (s *PublicationService) buildRoster(
 
 	return &RosterResult{
 		Publication: publicationWithEffectiveState(publication, now),
+		WeekStart:   weekStart,
 		Weekdays:    weekdays,
 	}, nil
+}
+
+func resolveRosterWeekStart(
+	publication *model.Publication,
+	requested *time.Time,
+	now time.Time,
+) (time.Time, error) {
+	if publication == nil {
+		return time.Time{}, ErrPublicationNotFound
+	}
+
+	if requested != nil {
+		weekStart := model.NormalizeOccurrenceDate(*requested)
+		if weekdayToSlotValue(weekStart.Weekday()) != 1 {
+			return time.Time{}, ErrInvalidOccurrenceDate
+		}
+		if weekStart.Before(model.NormalizeOccurrenceDate(publication.PlannedActiveFrom)) ||
+			!weekStart.Before(model.NormalizeOccurrenceDate(publication.PlannedActiveUntil)) {
+			return time.Time{}, ErrInvalidOccurrenceDate
+		}
+		return weekStart, nil
+	}
+
+	if !now.Before(publication.PlannedActiveFrom) && now.Before(publication.PlannedActiveUntil) {
+		return mondayOf(model.NormalizeOccurrenceDate(now)), nil
+	}
+	return mondayOf(model.NormalizeOccurrenceDate(publication.PlannedActiveFrom)), nil
+}
+
+func occurrenceDateForWeekday(weekStart time.Time, weekday int) time.Time {
+	return model.NormalizeOccurrenceDate(weekStart).AddDate(0, 0, weekday-1)
+}
+
+func mondayOf(date time.Time) time.Time {
+	weekday := weekdayToSlotValue(date.Weekday())
+	return model.NormalizeOccurrenceDate(date).AddDate(0, 0, -(weekday - 1))
+}
+
+func weekdayToSlotValue(weekday time.Weekday) int {
+	if weekday == time.Sunday {
+		return 7
+	}
+	return int(weekday)
 }
 
 type slotPositionKey struct {

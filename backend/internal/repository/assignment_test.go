@@ -85,6 +85,30 @@ func TestAssignmentRepositoryIntegration(t *testing.T) {
 		repo := NewPublicationRepository(db)
 		publication, _, _, slotPositionID, user := seedAssignmentPrerequisites(t, db)
 		assignment := seedAssignment(t, db, publication.ID, user.ID, slotPositionID, testTime())
+		occurrence := time.Date(2026, 4, 20, 0, 0, 0, 0, time.UTC)
+		if _, err := repo.InsertAssignmentOverride(ctx, InsertAssignmentOverrideParams{
+			AssignmentID:   assignment.ID,
+			OccurrenceDate: occurrence,
+			UserID:         user.ID,
+			CreatedAt:      testTime(),
+		}); err != nil {
+			t.Fatalf("insert first assignment override: %v", err)
+		}
+		if _, err := repo.InsertAssignmentOverride(ctx, InsertAssignmentOverrideParams{
+			AssignmentID:   assignment.ID,
+			OccurrenceDate: occurrence.AddDate(0, 0, 7),
+			UserID:         user.ID,
+			CreatedAt:      testTime(),
+		}); err != nil {
+			t.Fatalf("insert second assignment override: %v", err)
+		}
+		count, err := repo.CountAssignmentOverridesByAssignment(ctx, assignment.ID)
+		if err != nil {
+			t.Fatalf("count assignment overrides: %v", err)
+		}
+		if count != 2 {
+			t.Fatalf("expected 2 assignment overrides before delete, got %d", count)
+		}
 
 		if err := repo.DeleteAssignment(ctx, DeleteAssignmentParams{
 			PublicationID: publication.ID,
@@ -98,6 +122,13 @@ func TestAssignmentRepositoryIntegration(t *testing.T) {
 			AssignmentID:  assignment.ID,
 		}); err != nil {
 			t.Fatalf("delete assignment second time: %v", err)
+		}
+		count, err = repo.CountAssignmentOverridesByAssignment(ctx, assignment.ID)
+		if err != nil {
+			t.Fatalf("count assignment overrides after delete: %v", err)
+		}
+		if count != 0 {
+			t.Fatalf("expected assignment overrides to cascade on delete, got %d", count)
 		}
 	})
 

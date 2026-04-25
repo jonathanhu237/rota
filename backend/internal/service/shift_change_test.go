@@ -39,9 +39,8 @@ type shiftChangeRepositoryStatefulMock struct {
 	nextID                             int64
 	invalidateRequestsForAssignmentErr error
 
-	// pub is the paired publication repo used for assignment mutations in
-	// ApplySwap / ApplyGive. Keyed like the real code uses for the assignments
-	// map (pubID:userID:shiftID).
+	// pub is the paired publication repo used to model baseline assignments
+	// plus assignment_overrides in ApplySwap / ApplyGive tests.
 	pub *publicationRepositoryStatefulMock
 }
 
@@ -66,6 +65,10 @@ func cloneShiftChangeRequest(r *model.ShiftChangeRequest) *model.ShiftChangeRequ
 		v := *r.CounterpartAssignmentID
 		cloned.CounterpartAssignmentID = &v
 	}
+	if r.CounterpartOccurrenceDate != nil {
+		v := *r.CounterpartOccurrenceDate
+		cloned.CounterpartOccurrenceDate = &v
+	}
 	if r.DecidedByUserID != nil {
 		v := *r.DecidedByUserID
 		cloned.DecidedByUserID = &v
@@ -85,16 +88,18 @@ func (m *shiftChangeRepositoryStatefulMock) Create(
 	defer m.mu.Unlock()
 
 	req := &model.ShiftChangeRequest{
-		ID:                      m.nextID,
-		PublicationID:           params.PublicationID,
-		Type:                    params.Type,
-		RequesterUserID:         params.RequesterUserID,
-		RequesterAssignmentID:   params.RequesterAssignmentID,
-		CounterpartUserID:       params.CounterpartUserID,
-		CounterpartAssignmentID: params.CounterpartAssignmentID,
-		State:                   model.ShiftChangeStatePending,
-		CreatedAt:               params.CreatedAt,
-		ExpiresAt:               params.ExpiresAt,
+		ID:                        m.nextID,
+		PublicationID:             params.PublicationID,
+		Type:                      params.Type,
+		RequesterUserID:           params.RequesterUserID,
+		RequesterAssignmentID:     params.RequesterAssignmentID,
+		OccurrenceDate:            params.OccurrenceDate,
+		CounterpartUserID:         params.CounterpartUserID,
+		CounterpartAssignmentID:   params.CounterpartAssignmentID,
+		CounterpartOccurrenceDate: params.CounterpartOccurrenceDate,
+		State:                     model.ShiftChangeStatePending,
+		CreatedAt:                 params.CreatedAt,
+		ExpiresAt:                 params.ExpiresAt,
 	}
 	m.nextID++
 	m.requests[req.ID] = cloneShiftChangeRequest(req)
@@ -437,6 +442,27 @@ func newTestShiftChangeService(
 	return NewShiftChangeService(sc, pub, emailer, "https://rota.example.com", fixedClock{now: now}, nil)
 }
 
+func mondayOccurrence(now time.Time) time.Time {
+	return nextOccurrenceForWeekday(now, time.Monday)
+}
+
+func wednesdayOccurrence(now time.Time) time.Time {
+	return nextOccurrenceForWeekday(now, time.Wednesday)
+}
+
+func nextOccurrenceForWeekday(now time.Time, weekday time.Weekday) time.Time {
+	date := model.NormalizeOccurrenceDate(now)
+	days := (int(weekday) - int(date.Weekday()) + 7) % 7
+	if days == 0 {
+		days = 7
+	}
+	return date.AddDate(0, 0, days)
+}
+
+func timePtr(value time.Time) *time.Time {
+	return &value
+}
+
 // assertNoMetadataLeak JSON-marshals each event's metadata and verifies it
 // contains none of the forbidden substrings.
 func assertNoMetadataLeak(t *testing.T, events []audit.RecordedEvent) {
@@ -475,12 +501,14 @@ func TestShiftChangeServiceCreate(t *testing.T) {
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(101)
 		req, err := svc.CreateShiftChangeRequest(ctx, CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		})
 		if err != nil {
 			t.Fatalf("CreateShiftChangeRequest returned error: %v", err)
@@ -530,12 +558,14 @@ func TestShiftChangeServiceCreate(t *testing.T) {
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(101)
 		_, err := svc.CreateShiftChangeRequest(ctx, CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		})
 		if !errors.Is(err, ErrShiftChangeNotQualified) {
 			t.Fatalf("expected ErrShiftChangeNotQualified, got %v", err)
@@ -563,12 +593,14 @@ func TestShiftChangeServiceCreate(t *testing.T) {
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(101)
 		_, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		})
 		if !errors.Is(err, ErrShiftChangeNotQualified) {
 			t.Fatalf("expected ErrShiftChangeNotQualified, got %v", err)
@@ -585,12 +617,14 @@ func TestShiftChangeServiceCreate(t *testing.T) {
 		counterpartUserID := int64(7) // same as requester
 		counterpartAssignmentID := int64(100)
 		_, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		})
 		if !errors.Is(err, ErrShiftChangeSelf) {
 			t.Fatalf("expected ErrShiftChangeSelf, got %v", err)
@@ -611,6 +645,7 @@ func TestShiftChangeServiceCreate(t *testing.T) {
 			RequesterUserID:       7,
 			Type:                  model.ShiftChangeTypeGiveDirect,
 			RequesterAssignmentID: 100,
+			OccurrenceDate:        mondayOccurrence(now),
 			CounterpartUserID:     &counterpartUserID,
 		})
 		if err != nil {
@@ -638,6 +673,7 @@ func TestShiftChangeServiceCreate(t *testing.T) {
 			RequesterUserID:       7,
 			Type:                  model.ShiftChangeTypeGiveDirect,
 			RequesterAssignmentID: 100,
+			OccurrenceDate:        mondayOccurrence(now),
 			CounterpartUserID:     &counterpartUserID,
 		})
 		if !errors.Is(err, ErrShiftChangeNotQualified) {
@@ -658,6 +694,7 @@ func TestShiftChangeServiceCreate(t *testing.T) {
 			RequesterUserID:       7,
 			Type:                  model.ShiftChangeTypeGivePool,
 			RequesterAssignmentID: 100,
+			OccurrenceDate:        mondayOccurrence(now),
 		})
 		if err != nil {
 			t.Fatalf("CreateShiftChangeRequest returned error: %v", err)
@@ -681,12 +718,14 @@ func TestShiftChangeServiceCreate(t *testing.T) {
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(101)
 		_, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		})
 		if !errors.Is(err, ErrPublicationNotPublished) {
 			t.Fatalf("expected ErrPublicationNotPublished, got %v", err)
@@ -705,12 +744,14 @@ func TestShiftChangeServiceCreate(t *testing.T) {
 		// Pass assignment 101 (user 8's) as requester's assignment; user 7
 		// doesn't own it.
 		_, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   101,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     101,
+			OccurrenceDate:            wednesdayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		})
 		if !errors.Is(err, ErrShiftChangeNotOwner) {
 			t.Fatalf("expected ErrShiftChangeNotOwner, got %v", err)
@@ -727,12 +768,14 @@ func TestShiftChangeServiceCreate(t *testing.T) {
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(100) // This belongs to user 7.
 		_, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		})
 		if !errors.Is(err, ErrShiftChangeNotFound) {
 			t.Fatalf("expected ErrShiftChangeNotFound, got %v", err)
@@ -754,12 +797,14 @@ func TestShiftChangeServiceApprove(t *testing.T) {
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(101)
 		created, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		})
 		if err != nil {
 			t.Fatalf("create setup failed: %v", err)
@@ -820,6 +865,7 @@ func TestShiftChangeServiceApprove(t *testing.T) {
 			RequesterUserID:       7,
 			Type:                  model.ShiftChangeTypeGiveDirect,
 			RequesterAssignmentID: 100,
+			OccurrenceDate:        mondayOccurrence(now),
 			CounterpartUserID:     &counterpartUserID,
 		})
 		if err != nil {
@@ -852,6 +898,7 @@ func TestShiftChangeServiceApprove(t *testing.T) {
 			RequesterUserID:       7,
 			Type:                  model.ShiftChangeTypeGivePool,
 			RequesterAssignmentID: 100,
+			OccurrenceDate:        mondayOccurrence(now),
 		})
 		if err != nil {
 			t.Fatalf("create setup failed: %v", err)
@@ -888,12 +935,14 @@ func TestShiftChangeServiceApprove(t *testing.T) {
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(101)
 		created, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		})
 		if err != nil {
 			t.Fatalf("create setup failed: %v", err)
@@ -922,12 +971,14 @@ func TestShiftChangeServiceApprove(t *testing.T) {
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(101)
 		created, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		})
 		if err != nil {
 			t.Fatalf("create setup failed: %v", err)
@@ -952,6 +1003,7 @@ func TestShiftChangeServiceApprove(t *testing.T) {
 			RequesterUserID:       7,
 			Type:                  model.ShiftChangeTypeGivePool,
 			RequesterAssignmentID: 100,
+			OccurrenceDate:        mondayOccurrence(now),
 		})
 		if err != nil {
 			t.Fatalf("create setup failed: %v", err)
@@ -977,6 +1029,7 @@ func TestShiftChangeServiceApprove(t *testing.T) {
 			RequesterUserID:       7,
 			Type:                  model.ShiftChangeTypeGivePool,
 			RequesterAssignmentID: 100,
+			OccurrenceDate:        mondayOccurrence(now),
 		})
 		if err != nil {
 			t.Fatalf("create setup failed: %v", err)
@@ -998,12 +1051,14 @@ func TestShiftChangeServiceApprove(t *testing.T) {
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(101)
 		created, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		})
 		if err != nil {
 			t.Fatalf("create setup failed: %v", err)
@@ -1022,27 +1077,26 @@ func TestShiftChangeServiceApprove(t *testing.T) {
 
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
 		pub, sc := buildShiftChangeFixture(now)
-		// Make the publication expire-at in the past by setting a planned
-		// active from that is already past. Create with create-time clock,
-		// then approve with a much-later clock so the request is expired.
 		pub.publications[1].PlannedActiveFrom = now.Add(1 * time.Minute)
 		svcCreate := newTestShiftChangeService(pub, sc, &emailStub{}, now)
 
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(101)
 		created, err := svcCreate.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		})
 		if err != nil {
 			t.Fatalf("create setup failed: %v", err)
 		}
 
-		later := now.Add(1 * time.Hour)
+		later := mondayOccurrence(now).Add(10 * time.Hour)
 		svcApprove := newTestShiftChangeService(pub, sc, &emailStub{}, later)
 		err = svcApprove.ApproveShiftChangeRequest(context.Background(), created.ID, 8)
 		if !errors.Is(err, ErrShiftChangeExpired) {
@@ -1063,12 +1117,14 @@ func TestShiftChangeServiceApprove(t *testing.T) {
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(101)
 		created, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		})
 		if err != nil {
 			t.Fatalf("create setup failed: %v", err)
@@ -1098,12 +1154,14 @@ func TestShiftChangeServiceReject(t *testing.T) {
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(101)
 		created, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		})
 		if err != nil {
 			t.Fatalf("create setup failed: %v", err)
@@ -1141,6 +1199,7 @@ func TestShiftChangeServiceReject(t *testing.T) {
 			RequesterUserID:       7,
 			Type:                  model.ShiftChangeTypeGiveDirect,
 			RequesterAssignmentID: 100,
+			OccurrenceDate:        mondayOccurrence(now),
 			CounterpartUserID:     &counterpartUserID,
 		})
 		if err != nil {
@@ -1165,12 +1224,14 @@ func TestShiftChangeServiceReject(t *testing.T) {
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(101)
 		created, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		})
 		if err != nil {
 			t.Fatalf("create setup failed: %v", err)
@@ -1194,6 +1255,7 @@ func TestShiftChangeServiceReject(t *testing.T) {
 			RequesterUserID:       7,
 			Type:                  model.ShiftChangeTypeGivePool,
 			RequesterAssignmentID: 100,
+			OccurrenceDate:        mondayOccurrence(now),
 		})
 		if err != nil {
 			t.Fatalf("create setup failed: %v", err)
@@ -1215,12 +1277,14 @@ func TestShiftChangeServiceReject(t *testing.T) {
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(101)
 		created, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		})
 		if err != nil {
 			t.Fatalf("create setup failed: %v", err)
@@ -1244,18 +1308,20 @@ func TestShiftChangeServiceReject(t *testing.T) {
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(101)
 		created, err := svcCreate.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		})
 		if err != nil {
 			t.Fatalf("create setup failed: %v", err)
 		}
 
-		later := now.Add(2 * time.Hour)
+		later := mondayOccurrence(now).Add(10 * time.Hour)
 		svcLater := newTestShiftChangeService(pub, sc, &emailStub{}, later)
 		err = svcLater.RejectShiftChangeRequest(context.Background(), created.ID, 8)
 		if !errors.Is(err, ErrShiftChangeExpired) {
@@ -1277,12 +1343,14 @@ func TestShiftChangeServiceCancel(t *testing.T) {
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(101)
 		created, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		})
 		if err != nil {
 			t.Fatalf("create setup failed: %v", err)
@@ -1306,12 +1374,14 @@ func TestShiftChangeServiceCancel(t *testing.T) {
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(101)
 		created, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		})
 		if err != nil {
 			t.Fatalf("create setup failed: %v", err)
@@ -1337,12 +1407,14 @@ func TestShiftChangeServiceListGetCount(t *testing.T) {
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(101)
 		if _, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		}); err != nil {
 			t.Fatalf("create setup failed: %v", err)
 		}
@@ -1351,6 +1423,7 @@ func TestShiftChangeServiceListGetCount(t *testing.T) {
 			RequesterUserID:       7,
 			Type:                  model.ShiftChangeTypeGivePool,
 			RequesterAssignmentID: 100,
+			OccurrenceDate:        mondayOccurrence(now),
 		}); err != nil {
 			t.Fatalf("create setup failed: %v", err)
 		}
@@ -1384,12 +1457,14 @@ func TestShiftChangeServiceListGetCount(t *testing.T) {
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(101)
 		if _, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		}); err != nil {
 			t.Fatalf("create setup failed: %v", err)
 		}
@@ -1399,6 +1474,7 @@ func TestShiftChangeServiceListGetCount(t *testing.T) {
 			RequesterUserID:       7,
 			Type:                  model.ShiftChangeTypeGivePool,
 			RequesterAssignmentID: 100,
+			OccurrenceDate:        mondayOccurrence(now),
 		}); err != nil {
 			t.Fatalf("create setup failed: %v", err)
 		}
@@ -1438,6 +1514,7 @@ func TestShiftChangeServiceListGetCount(t *testing.T) {
 			RequesterUserID:       7,
 			Type:                  model.ShiftChangeTypeGiveDirect,
 			RequesterAssignmentID: 100,
+			OccurrenceDate:        mondayOccurrence(now),
 			CounterpartUserID:     &counterpartUserID,
 		})
 		if err != nil {
@@ -1473,12 +1550,14 @@ func TestShiftChangeServiceListGetCount(t *testing.T) {
 		counterpartUserID := int64(8)
 		counterpartAssignmentID := int64(101)
 		if _, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
-			PublicationID:           1,
-			RequesterUserID:         7,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterAssignmentID:   100,
-			CounterpartUserID:       &counterpartUserID,
-			CounterpartAssignmentID: &counterpartAssignmentID,
+			PublicationID:             1,
+			RequesterUserID:           7,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterAssignmentID:     100,
+			OccurrenceDate:            mondayOccurrence(now),
+			CounterpartUserID:         &counterpartUserID,
+			CounterpartAssignmentID:   &counterpartAssignmentID,
+			CounterpartOccurrenceDate: timePtr(wednesdayOccurrence(now)),
 		}); err != nil {
 			t.Fatalf("create setup failed: %v", err)
 		}
@@ -1488,6 +1567,7 @@ func TestShiftChangeServiceListGetCount(t *testing.T) {
 			RequesterUserID:       7,
 			Type:                  model.ShiftChangeTypeGivePool,
 			RequesterAssignmentID: 100,
+			OccurrenceDate:        mondayOccurrence(now),
 		}); err != nil {
 			t.Fatalf("create setup failed: %v", err)
 		}

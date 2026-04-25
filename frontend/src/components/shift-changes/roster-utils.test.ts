@@ -9,6 +9,7 @@ const sampleWeekdays: RosterWeekday[] = [
     weekday: 1,
     slots: [
       {
+        occurrence_date: "2026-04-20",
         slot: {
           id: 101,
           weekday: 1,
@@ -30,6 +31,7 @@ const sampleWeekdays: RosterWeekday[] = [
         ],
       },
       {
+        occurrence_date: "2026-04-20",
         slot: {
           id: 102,
           weekday: 1,
@@ -53,6 +55,7 @@ const sampleWeekdays: RosterWeekday[] = [
     weekday: 3,
     slots: [
       {
+        occurrence_date: "2026-04-22",
         slot: {
           id: 103,
           weekday: 3,
@@ -80,6 +83,7 @@ describe("findShiftsForMember", () => {
 
     expect(result.map((o) => o.assignmentID)).toEqual([11, 13])
     expect(result[0].weekday).toBe(1)
+    expect(result[0].occurrenceDate).toBe("2026-04-20")
     expect(result[0].slot.start_time).toBe("09:00")
     expect(result[1].slot.start_time).toBe("13:00")
   })

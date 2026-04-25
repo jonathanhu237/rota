@@ -37,6 +37,7 @@ import {
 export type SwapDialogMyShift = {
   assignmentID: number
   weekday: number
+  occurrenceDate: string
   slot: PublicationSlot
   position: PublicationPosition
 }
@@ -132,11 +133,19 @@ export function SwapDialog({
       if (!myShift) {
         throw new Error("missing assignment")
       }
+      const counterpartShift = counterpartShifts.find(
+        (shift) => shift.assignmentID === values.counterpart_assignment_id,
+      )
+      if (!counterpartShift) {
+        throw new Error("missing counterpart occurrence")
+      }
       return createShiftChangeRequest(publicationID, {
         type: "swap",
         requester_assignment_id: myShift.assignmentID,
+        occurrence_date: myShift.occurrenceDate,
         counterpart_user_id: values.counterpart_user_id,
         counterpart_assignment_id: values.counterpart_assignment_id,
+        counterpart_occurrence_date: counterpartShift.occurrenceDate,
       })
     },
     onSuccess: async () => {
@@ -195,6 +204,9 @@ export function SwapDialog({
                 startTime: myShift.slot.start_time,
                 endTime: myShift.slot.end_time,
               })}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {t("requests.occurrenceLabel", { date: myShift.occurrenceDate })}
             </div>
           </div>
         )}
@@ -266,7 +278,7 @@ export function SwapDialog({
                       {t("requests.swapDialog.shiftSummary", {
                         startTime: option.slot.start_time,
                         endTime: option.slot.end_time,
-                      })}
+                      })} · {option.occurrenceDate}
                     </option>
                   ))}
                 </select>

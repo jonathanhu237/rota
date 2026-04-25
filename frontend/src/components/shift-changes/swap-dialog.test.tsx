@@ -18,6 +18,7 @@ const rosterWeekdays: RosterWeekday[] = [
     weekday: 2,
     slots: [
       {
+        occurrence_date: "2026-04-21",
         slot: {
           id: 200,
           weekday: 2,
@@ -42,6 +43,7 @@ const rosterWeekdays: RosterWeekday[] = [
 const myShift: SwapDialogMyShift = {
   assignmentID: 1,
   weekday: 1,
+  occurrenceDate: "2026-04-20",
   slot: {
     id: 100,
     weekday: 1,

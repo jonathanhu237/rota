@@ -37,6 +37,7 @@ const rosterWeekdays: RosterWeekday[] = [
     weekday: 1,
     slots: [
       {
+        occurrence_date: "2026-04-20",
         slot: {
           id: 10,
           weekday: 1,
@@ -55,6 +56,7 @@ const rosterWeekdays: RosterWeekday[] = [
         ],
       },
       {
+        occurrence_date: "2026-04-20",
         slot: {
           id: 20,
           weekday: 1,
@@ -84,8 +86,10 @@ function buildRequest(
     type: "swap",
     requester_user_id: 2,
     requester_assignment_id: 100,
+    occurrence_date: "2026-04-20",
     counterpart_user_id: 1,
     counterpart_assignment_id: 200,
+    counterpart_occurrence_date: "2026-04-20",
     state: "pending",
     decided_by_user_id: null,
     created_at: "2026-04-18T09:00:00Z",
@@ -244,6 +248,6 @@ describe("RequestsList", () => {
       }),
     ])
 
-    expect(getByText("requests.card.shiftSummary")).toBeInTheDocument()
+    expect(getByText("requests.card.shiftSummary · 2026-04-20")).toBeInTheDocument()
   })
 })

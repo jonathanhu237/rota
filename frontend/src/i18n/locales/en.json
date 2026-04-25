@@ -447,6 +447,7 @@
     "submissionStartAt": "Submission Start",
     "submissionEndAt": "Submission End",
     "plannedActiveFrom": "Planned Active From",
+    "plannedActiveUntil": "Planned Active Until",
     "empty": "No publications found.",
     "pageSummary": "Showing {{start}}-{{end}} of {{total}} publications",
     "table": {
@@ -454,7 +455,7 @@
       "template": "Template",
       "state": "State",
       "submissionWindow": "Submission Window",
-      "plannedActiveFrom": "Planned Active From",
+      "activeWindow": "Active Window",
       "createdAt": "Created",
       "actions": "Actions"
     },
@@ -489,10 +490,13 @@
       "submissionStartAt": "Submission start",
       "submissionEndAt": "Submission end",
       "plannedActiveFrom": "Planned active from",
+      "plannedActiveUntil": "Planned active until",
       "activatedAt": "Activated at",
-      "endedAt": "Ended at",
       "createdAt": "Created at",
       "updatedAt": "Updated at",
+      "editPlannedActiveUntil": "Edit planned end",
+      "save": "Save",
+      "saving": "Saving...",
       "stateDescription": {
         "draft": "Submissions open at {{time}}.",
         "collecting": "Submissions remain open until {{time}}.",
@@ -553,6 +557,7 @@
         "type": "Type",
         "requester": "Requester",
         "counterpart": "Counterpart",
+        "occurrence": "Occurrence",
         "state": "State",
         "createdAt": "Created",
         "decidedAt": "Decided"
@@ -578,17 +583,20 @@
       "submissionStartRequired": "Submission start is required",
       "submissionEndRequired": "Submission end is required",
       "plannedActiveFromRequired": "Planned active from is required",
-      "invalidWindow": "Submission start must be before submission end, and submission end must be on or before the planned active time"
+      "plannedActiveUntilRequired": "Planned active until is required",
+      "invalidWindow": "Submission start, submission end, planned active start, and planned active end must be in chronological order"
     },
     "success": {
       "created": "Publication created successfully.",
       "deleted": "Publication deleted successfully.",
       "published": "Publication published successfully.",
       "activated": "Publication activated successfully.",
-      "ended": "Publication ended successfully."
+      "ended": "Publication ended successfully.",
+      "updated": "Publication updated successfully."
     },
     "errors": {
       "FORBIDDEN": "Forbidden",
+      "INVALID_OCCURRENCE_DATE": "Choose a Monday inside the publication active window.",
       "INVALID_PUBLICATION_WINDOW": "The publication timestamps are not in chronological order",
       "INVALID_REQUEST": "Invalid request",
       "INTERNAL_ERROR": "Internal server error",
@@ -648,6 +656,8 @@
     "descriptionWithPublication": "Showing the active weekly roster for {{name}}.",
     "loadError": "The roster could not be loaded right now.",
     "empty": "There is no active publication right now.",
+    "previousWeek": "Previous week",
+    "nextWeek": "Next week",
     "today": "Today",
     "emptyWeekday": "No shifts are scheduled for this weekday.",
     "emptyAssignments": "No employees are assigned to this shift yet.",
@@ -690,6 +700,7 @@
     "descriptionWithPublication": "Requests for {{name}}.",
     "empty": "No requests available right now.",
     "unknownUser": "User #{{id}}",
+    "occurrenceLabel": "Occurrence: {{date}}",
     "sections": {
       "waiting": "Waiting for my response",
       "sent": "Sent by me",
@@ -774,6 +785,7 @@
     },
     "errors": {
       "FORBIDDEN": "Forbidden",
+      "INVALID_OCCURRENCE_DATE": "Choose a valid future occurrence for this shift.",
       "INVALID_REQUEST": "Invalid request",
       "INTERNAL_ERROR": "Something went wrong. Please try again.",
       "PUBLICATION_NOT_FOUND": "Publication not found",

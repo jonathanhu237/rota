@@ -41,7 +41,7 @@ func RunFull(ctx context.Context, tx *sql.Tx, opts Options) error {
 		opts.Now.Add(-14*24*time.Hour),
 		opts.Now.Add(-7*24*time.Hour),
 		opts.Now.Add(7*24*time.Hour),
-		nil,
+		opts.Now.Add(9*7*24*time.Hour),
 		nil,
 		opts.Now,
 	)

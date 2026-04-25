@@ -36,6 +36,7 @@ describe("CreatePublicationDialog", () => {
     expect(getByLabelText("publications.submissionStartAt")).toBeInTheDocument()
     expect(getByLabelText("publications.submissionEndAt")).toBeInTheDocument()
     expect(getByLabelText("publications.plannedActiveFrom")).toBeInTheDocument()
+    expect(getByLabelText("publications.plannedActiveUntil")).toBeInTheDocument()
   })
 
   it("submits valid values", async () => {
@@ -71,6 +72,10 @@ describe("CreatePublicationDialog", () => {
       within(dialog).getByLabelText("publications.plannedActiveFrom"),
       { target: { value: "2026-04-17T13:00" } },
     )
+    fireEvent.change(
+      within(dialog).getByLabelText("publications.plannedActiveUntil"),
+      { target: { value: "2026-05-01T13:00" } },
+    )
     await user.click(dialog.querySelector('button[type="submit"]')!)
 
     expect(onSubmit).toHaveBeenCalledWith({
@@ -79,6 +84,7 @@ describe("CreatePublicationDialog", () => {
       submission_start_at: "2026-04-17T09:00",
       submission_end_at: "2026-04-17T12:00",
       planned_active_from: "2026-04-17T13:00",
+      planned_active_until: "2026-05-01T13:00",
     })
   })
 
@@ -114,6 +120,10 @@ describe("CreatePublicationDialog", () => {
     fireEvent.change(
       within(dialog).getByLabelText("publications.plannedActiveFrom"),
       { target: { value: "2026-04-17T13:00" } },
+    )
+    fireEvent.change(
+      within(dialog).getByLabelText("publications.plannedActiveUntil"),
+      { target: { value: "2026-05-01T13:00" } },
     )
     await user.click(dialog.querySelector('button[type="submit"]')!)
 

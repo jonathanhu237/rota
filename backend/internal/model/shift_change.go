@@ -44,18 +44,20 @@ const (
 // for both give types (there is no counterpart shift; the requester is
 // giving away a shift).
 type ShiftChangeRequest struct {
-	ID                      int64
-	PublicationID           int64
-	Type                    ShiftChangeType
-	RequesterUserID         int64
-	RequesterAssignmentID   int64
-	CounterpartUserID       *int64
-	CounterpartAssignmentID *int64
-	State                   ShiftChangeState
-	DecidedByUserID         *int64
-	CreatedAt               time.Time
-	DecidedAt               *time.Time
-	ExpiresAt               time.Time
+	ID                        int64
+	PublicationID             int64
+	Type                      ShiftChangeType
+	RequesterUserID           int64
+	RequesterAssignmentID     int64
+	OccurrenceDate            time.Time
+	CounterpartUserID         *int64
+	CounterpartAssignmentID   *int64
+	CounterpartOccurrenceDate *time.Time
+	State                     ShiftChangeState
+	DecidedByUserID           *int64
+	CreatedAt                 time.Time
+	DecidedAt                 *time.Time
+	ExpiresAt                 time.Time
 }
 
 // EffectiveShiftChangeState resolves a stored state against the current
