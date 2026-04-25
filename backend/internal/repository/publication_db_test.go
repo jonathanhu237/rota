@@ -22,13 +22,14 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		createdAt := testTime()
 
 		publication, err := repo.CreatePublication(ctx, CreatePublicationParams{
-			TemplateID:        template.ID,
-			Name:              "April Week 1",
-			State:             model.PublicationStateDraft,
-			SubmissionStartAt: createdAt.Add(1 * time.Hour),
-			SubmissionEndAt:   createdAt.Add(2 * time.Hour),
-			PlannedActiveFrom: createdAt.Add(3 * time.Hour),
-			CreatedAt:         createdAt,
+			TemplateID:         template.ID,
+			Name:               "April Week 1",
+			State:              model.PublicationStateDraft,
+			SubmissionStartAt:  createdAt.Add(1 * time.Hour),
+			SubmissionEndAt:    createdAt.Add(2 * time.Hour),
+			PlannedActiveFrom:  createdAt.Add(3 * time.Hour),
+			PlannedActiveUntil: createdAt.Add(10 * time.Hour),
+			CreatedAt:          createdAt,
 		})
 		if err != nil {
 			t.Fatalf("create publication: %v", err)
@@ -63,13 +64,14 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		})
 
 		_, err := repo.CreatePublication(ctx, CreatePublicationParams{
-			TemplateID:        secondTemplate.ID,
-			Name:              "Conflicting",
-			State:             model.PublicationStateCollecting,
-			SubmissionStartAt: testTime().Add(4 * time.Hour),
-			SubmissionEndAt:   testTime().Add(5 * time.Hour),
-			PlannedActiveFrom: testTime().Add(6 * time.Hour),
-			CreatedAt:         testTime().Add(30 * time.Minute),
+			TemplateID:         secondTemplate.ID,
+			Name:               "Conflicting",
+			State:              model.PublicationStateCollecting,
+			SubmissionStartAt:  testTime().Add(4 * time.Hour),
+			SubmissionEndAt:    testTime().Add(5 * time.Hour),
+			PlannedActiveFrom:  testTime().Add(6 * time.Hour),
+			PlannedActiveUntil: testTime().Add(10 * time.Hour),
+			CreatedAt:          testTime().Add(30 * time.Minute),
 		})
 		if !errors.Is(err, ErrPublicationAlreadyExists) {
 			t.Fatalf("expected ErrPublicationAlreadyExists, got %v", err)
@@ -129,7 +131,7 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 
 		// End the now-active publication so we can seed a second one without
 		// tripping the single-non-ENDED invariant.
-		if _, err := db.ExecContext(ctx, `UPDATE publications SET state = 'ENDED', ended_at = NOW() WHERE id = $1;`, published.ID); err != nil {
+		if _, err := db.ExecContext(ctx, `UPDATE publications SET state = 'ENDED' WHERE id = $1;`, published.ID); err != nil {
 			t.Fatalf("end first publication: %v", err)
 		}
 
@@ -181,8 +183,11 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("end publication: %v", err)
 		}
-		if ended.State != model.PublicationStateEnded || ended.EndedAt == nil {
-			t.Fatalf("expected ended publication, got %+v", ended)
+		if ended.State != model.PublicationStateActive || !ended.PlannedActiveUntil.Equal(testTime()) {
+			t.Fatalf("expected active row shortened to planned_active_until, got %+v", ended)
+		}
+		if _, err := db.ExecContext(ctx, `UPDATE publications SET state = 'ENDED' WHERE id = $1;`, active.ID); err != nil {
+			t.Fatalf("mark active publication ended for next seed: %v", err)
 		}
 
 		draftTemplate, _, _ := seedPublicationPrerequisites(t, db)

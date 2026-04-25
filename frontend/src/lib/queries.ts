@@ -166,9 +166,17 @@ export type UpdateTemplateSlotPositionInput = CreateTemplateSlotPositionInput
 export type CreatePublicationInput = {
   template_id: number
   name: string
+  description?: string
   submission_start_at: string
   submission_end_at: string
   planned_active_from: string
+  planned_active_until: string
+}
+
+export type UpdatePublicationInput = {
+  name?: string
+  description?: string
+  planned_active_until?: string
 }
 
 export type CreateAssignmentInput = {
@@ -370,11 +378,17 @@ export const rosterCurrentQueryOptions = queryOptions({
   },
 })
 
-export const publicationRosterQueryOptions = (publicationID: number) =>
+export const publicationRosterQueryOptions = (
+  publicationID: number,
+  week?: string,
+) =>
   queryOptions({
-    queryKey: ["publications", "detail", publicationID, "roster"],
+    queryKey: ["publications", "detail", publicationID, "roster", week ?? ""],
     queryFn: async () => {
-      const res = await api.get<RosterResponse>(`/publications/${publicationID}/roster`)
+      const res = await api.get<RosterResponse>(
+        `/publications/${publicationID}/roster`,
+        { params: week ? { week } : undefined },
+      )
       return res.data
     },
     enabled: publicationID > 0,
@@ -573,7 +587,24 @@ export async function deleteTemplateShift(templateID: number, shiftID: number) {
 }
 
 export async function createPublication(input: CreatePublicationInput) {
-  const res = await api.post<PublicationResponse>("/publications", input)
+  const res = await api.post<PublicationResponse>("/publications", {
+    ...input,
+    submission_start_at: toApiTimestamp(input.submission_start_at),
+    submission_end_at: toApiTimestamp(input.submission_end_at),
+    planned_active_from: toApiTimestamp(input.planned_active_from),
+    planned_active_until: toApiTimestamp(input.planned_active_until),
+  })
+  return res.data.publication
+}
+
+export async function updatePublication(
+  publicationID: number,
+  input: UpdatePublicationInput,
+) {
+  const res = await api.patch<PublicationResponse>(
+    `/publications/${publicationID}`,
+    input,
+  )
   return res.data.publication
 }
 
@@ -591,6 +622,10 @@ export async function endPublication(publicationID: number) {
 
 export async function deletePublication(publicationID: number) {
   await api.delete(`/publications/${publicationID}`)
+}
+
+function toApiTimestamp(value: string) {
+  return new Date(value).toISOString()
 }
 
 export async function createAssignment(
@@ -649,8 +684,10 @@ export type UnreadCountResponse = {
 export type CreateShiftChangeInput = {
   type: ShiftChangeType
   requester_assignment_id: number
+  occurrence_date: string
   counterpart_user_id?: number | null
   counterpart_assignment_id?: number | null
+  counterpart_occurrence_date?: string | null
 }
 
 export const shiftChangeRequestsQueryOptions = (publicationID: number) =>

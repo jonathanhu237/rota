@@ -257,8 +257,8 @@ func insertPublication(
 	templateID int64,
 	name string,
 	state model.PublicationState,
-	submissionStartAt, submissionEndAt, plannedActiveFrom time.Time,
-	activatedAt, endedAt *time.Time,
+	submissionStartAt, submissionEndAt, plannedActiveFrom, plannedActiveUntil time.Time,
+	activatedAt *time.Time,
 	now time.Time,
 ) (int64, error) {
 	var id int64
@@ -268,16 +268,17 @@ func insertPublication(
 			INSERT INTO publications (
 				template_id,
 				name,
+				description,
 				state,
 				submission_start_at,
 				submission_end_at,
 				planned_active_from,
+				planned_active_until,
 				activated_at,
-				ended_at,
 				created_at,
 				updated_at
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
+			VALUES ($1, $2, '', $3, $4, $5, $6, $7, $8, $9, $9)
 			RETURNING id;
 		`,
 		templateID,
@@ -286,8 +287,8 @@ func insertPublication(
 		submissionStartAt,
 		submissionEndAt,
 		plannedActiveFrom,
+		plannedActiveUntil,
 		activatedAt,
-		endedAt,
 		now,
 	).Scan(&id)
 	if err != nil {

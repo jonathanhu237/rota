@@ -35,6 +35,7 @@ const (
 	ActionTemplateShiftDelete = "template.shift.delete"
 
 	ActionPublicationCreate     = "publication.create"
+	ActionPublicationUpdate     = "publication.update"
 	ActionPublicationDelete     = "publication.delete"
 	ActionPublicationPublish    = "publication.publish"
 	ActionPublicationActivate   = "publication.activate"

@@ -31,6 +31,7 @@ describe("GiveDirectDialog", () => {
         open
         publicationID={1}
         myAssignmentID={42}
+        occurrenceDate="2026-04-20"
         members={members}
         onOpenChange={vi.fn()}
       />,
@@ -51,6 +52,7 @@ describe("GiveDirectDialog", () => {
         open
         publicationID={1}
         myAssignmentID={null}
+        occurrenceDate="2026-04-20"
         members={members}
         onOpenChange={vi.fn()}
       />,
@@ -70,6 +72,7 @@ describe("GiveDirectDialog", () => {
         open
         publicationID={1}
         myAssignmentID={42}
+        occurrenceDate="2026-04-20"
         members={members}
         onOpenChange={onOpenChange}
       />,

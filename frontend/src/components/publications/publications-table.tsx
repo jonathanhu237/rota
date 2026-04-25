@@ -74,7 +74,7 @@ export function PublicationsTable({
                 {t("publications.table.submissionWindow")}
               </th>
               <th className="px-4 py-3 font-medium">
-                {t("publications.table.plannedActiveFrom")}
+                {t("publications.table.activeWindow")}
               </th>
               <th className="px-4 py-3 font-medium">
                 {t("publications.table.createdAt")}
@@ -89,7 +89,7 @@ export function PublicationsTable({
               <tr>
                 <td
                   className="px-4 py-6 text-center text-muted-foreground"
-                  colSpan={6}
+                  colSpan={7}
                 >
                   {t("publications.empty")}
                 </td>
@@ -120,7 +120,8 @@ export function PublicationsTable({
                   <div>{formatter.format(new Date(publication.submission_end_at))}</div>
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">
-                  {formatter.format(new Date(publication.planned_active_from))}
+                  <div>{formatter.format(new Date(publication.planned_active_from))}</div>
+                  <div>{formatter.format(new Date(publication.planned_active_until))}</div>
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">
                   {formatter.format(new Date(publication.created_at))}

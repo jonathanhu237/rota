@@ -15,6 +15,7 @@ import (
 type stubPublicationService struct {
 	listPublicationsFunc               func(ctx context.Context, input service.ListPublicationsInput) (*service.ListPublicationsResult, error)
 	createPublicationFunc              func(ctx context.Context, input service.CreatePublicationInput) (*model.Publication, error)
+	updatePublicationFunc              func(ctx context.Context, input service.UpdatePublicationInput) (*model.Publication, error)
 	getPublicationByIDFunc             func(ctx context.Context, id int64) (*model.Publication, error)
 	deletePublicationFunc              func(ctx context.Context, id int64) error
 	getCurrentPublicationFunc          func(ctx context.Context) (*model.Publication, error)
@@ -30,6 +31,7 @@ type stubPublicationService struct {
 	publishPublicationFunc             func(ctx context.Context, publicationID int64) (*model.Publication, error)
 	endPublicationFunc                 func(ctx context.Context, publicationID int64) (*model.Publication, error)
 	getPublicationRosterFunc           func(ctx context.Context, publicationID int64) (*service.RosterResult, error)
+	getPublicationRosterWithWeekFunc   func(ctx context.Context, publicationID int64, weekStart *time.Time) (*service.RosterResult, error)
 	getCurrentRosterFunc               func(ctx context.Context) (*service.RosterResult, error)
 }
 
@@ -39,6 +41,10 @@ func (s *stubPublicationService) ListPublications(ctx context.Context, input ser
 
 func (s *stubPublicationService) CreatePublication(ctx context.Context, input service.CreatePublicationInput) (*model.Publication, error) {
 	return s.createPublicationFunc(ctx, input)
+}
+
+func (s *stubPublicationService) UpdatePublication(ctx context.Context, input service.UpdatePublicationInput) (*model.Publication, error) {
+	return s.updatePublicationFunc(ctx, input)
 }
 
 func (s *stubPublicationService) GetPublicationByID(ctx context.Context, id int64) (*model.Publication, error) {
@@ -97,7 +103,10 @@ func (s *stubPublicationService) PublishPublication(ctx context.Context, publica
 	return s.publishPublicationFunc(ctx, publicationID)
 }
 
-func (s *stubPublicationService) GetPublicationRoster(ctx context.Context, publicationID int64) (*service.RosterResult, error) {
+func (s *stubPublicationService) GetPublicationRoster(ctx context.Context, publicationID int64, weekStart *time.Time) (*service.RosterResult, error) {
+	if s.getPublicationRosterWithWeekFunc != nil {
+		return s.getPublicationRosterWithWeekFunc(ctx, publicationID, weekStart)
+	}
 	return s.getPublicationRosterFunc(ctx, publicationID)
 }
 
@@ -695,8 +704,7 @@ func TestPublicationHandler(t *testing.T) {
 			endPublicationFunc: func(ctx context.Context, publicationID int64) (*model.Publication, error) {
 				publication := samplePublication()
 				publication.State = model.PublicationStateEnded
-				endedAt := samplePublicationTime()
-				publication.EndedAt = &endedAt
+				publication.PlannedActiveUntil = samplePublicationTime()
 				return publication, nil
 			},
 		})
@@ -831,16 +839,17 @@ func TestPublicationHandler(t *testing.T) {
 func samplePublication() *model.Publication {
 	now := samplePublicationTime()
 	return &model.Publication{
-		ID:                1,
-		TemplateID:        1,
-		TemplateName:      "Weekday Template",
-		Name:              "Week 16",
-		State:             model.PublicationStateCollecting,
-		SubmissionStartAt: now.Add(-24 * time.Hour),
-		SubmissionEndAt:   now.Add(24 * time.Hour),
-		PlannedActiveFrom: now.Add(48 * time.Hour),
-		CreatedAt:         now,
-		UpdatedAt:         now,
+		ID:                 1,
+		TemplateID:         1,
+		TemplateName:       "Weekday Template",
+		Name:               "Week 16",
+		State:              model.PublicationStateCollecting,
+		SubmissionStartAt:  now.Add(-24 * time.Hour),
+		SubmissionEndAt:    now.Add(24 * time.Hour),
+		PlannedActiveFrom:  now.Add(48 * time.Hour),
+		PlannedActiveUntil: now.Add(8 * 7 * 24 * time.Hour),
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 }
 
@@ -913,12 +922,14 @@ func sampleAssignmentBoardResult() *service.AssignmentBoardResult {
 func sampleRosterResult() *service.RosterResult {
 	return &service.RosterResult{
 		Publication: samplePublication(),
+		WeekStart:   time.Date(2026, 4, 20, 0, 0, 0, 0, time.UTC),
 		Weekdays: []*service.RosterWeekdayResult{
 			{
 				Weekday: 1,
 				Slots: []*service.RosterSlotResult{
 					{
-						Slot: samplePublicationSlot(),
+						Slot:           samplePublicationSlot(),
+						OccurrenceDate: time.Date(2026, 4, 20, 0, 0, 0, 0, time.UTC),
 						Positions: []*service.RosterPositionResult{
 							{
 								Position:          samplePublicationPosition(),
@@ -946,11 +957,12 @@ func sampleRosterResult() *service.RosterResult {
 func sampleCreatePublicationPayload() map[string]any {
 	now := samplePublicationTime()
 	return map[string]any{
-		"template_id":         1,
-		"name":                "Week 16",
-		"submission_start_at": now,
-		"submission_end_at":   now.Add(24 * time.Hour),
-		"planned_active_from": now.Add(48 * time.Hour),
+		"template_id":          1,
+		"name":                 "Week 16",
+		"submission_start_at":  now,
+		"submission_end_at":    now.Add(24 * time.Hour),
+		"planned_active_from":  now.Add(48 * time.Hour),
+		"planned_active_until": now.Add(8 * 7 * 24 * time.Hour),
 	}
 }
 

@@ -295,12 +295,13 @@ func (r *PublicationRepository) ActivatePublication(
 			p.template_id,
 			t.name,
 			p.name,
+			p.description,
 			p.state,
 			p.submission_start_at,
 			p.submission_end_at,
 			p.planned_active_from,
+			p.planned_active_until,
 			p.activated_at,
-			p.ended_at,
 			p.created_at,
 			p.updated_at;
 	`
@@ -364,12 +365,13 @@ func (r *PublicationRepository) PublishPublication(
 			p.template_id,
 			t.name,
 			p.name,
+			p.description,
 			p.state,
 			p.submission_start_at,
 			p.submission_end_at,
 			p.planned_active_from,
+			p.planned_active_until,
 			p.activated_at,
-			p.ended_at,
 			p.created_at,
 			p.updated_at;
 	`
@@ -391,7 +393,7 @@ func (r *PublicationRepository) EndPublication(
 ) (*model.Publication, error) {
 	const query = `
 		UPDATE publications p
-		SET state = 'ENDED', ended_at = $2, updated_at = $2
+		SET planned_active_until = $2, updated_at = $2
 		FROM templates t
 		WHERE p.id = $1
 			AND p.template_id = t.id
@@ -401,12 +403,13 @@ func (r *PublicationRepository) EndPublication(
 			p.template_id,
 			t.name,
 			p.name,
+			p.description,
 			p.state,
 			p.submission_start_at,
 			p.submission_end_at,
 			p.planned_active_from,
+			p.planned_active_until,
 			p.activated_at,
-			p.ended_at,
 			p.created_at,
 			p.updated_at;
 	`
@@ -528,9 +531,10 @@ func (r *PublicationRepository) ListAssignmentCandidates(
 	return candidates, nil
 }
 
-// LockAndCheckUserStatus serializes assignment mutations for one publication/user
-// and re-checks users.status inside the caller's transaction. The users row lock
-// can still surface a Postgres deadlock, so callers preserve ErrSchedulingRetryable.
+// LockAndCheckUserStatus serializes assignment and override writes for one
+// publication/user and re-checks users.status inside the caller's transaction.
+// The users row lock can still surface a Postgres deadlock, so callers preserve
+// ErrSchedulingRetryable.
 func LockAndCheckUserStatus(
 	ctx context.Context,
 	tx *sql.Tx,

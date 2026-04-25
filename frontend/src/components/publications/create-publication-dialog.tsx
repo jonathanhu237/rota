@@ -55,6 +55,7 @@ export function CreatePublicationDialog({
       submission_start_at: "",
       submission_end_at: "",
       planned_active_from: "",
+      planned_active_until: "",
     },
   })
 
@@ -66,6 +67,7 @@ export function CreatePublicationDialog({
         submission_start_at: "",
         submission_end_at: "",
         planned_active_from: "",
+        planned_active_until: "",
       })
     }
   }, [open, reset])
@@ -173,6 +175,21 @@ export function CreatePublicationDialog({
             {errors.planned_active_from && (
               <p className="text-sm text-destructive">
                 {errors.planned_active_from.message}
+              </p>
+            )}
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="publication-planned-active-until">
+              {t("publications.plannedActiveUntil")}
+            </Label>
+            <Input
+              id="publication-planned-active-until"
+              type="datetime-local"
+              {...register("planned_active_until")}
+            />
+            {errors.planned_active_until && (
+              <p className="text-sm text-destructive">
+                {errors.planned_active_until.message}
               </p>
             )}
           </div>

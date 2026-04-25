@@ -94,18 +94,19 @@ type templateShiftResponse struct {
 }
 
 type publicationResponse struct {
-	ID                int64                  `json:"id"`
-	TemplateID        int64                  `json:"template_id"`
-	TemplateName      string                 `json:"template_name"`
-	Name              string                 `json:"name"`
-	State             model.PublicationState `json:"state"`
-	SubmissionStartAt time.Time              `json:"submission_start_at"`
-	SubmissionEndAt   time.Time              `json:"submission_end_at"`
-	PlannedActiveFrom time.Time              `json:"planned_active_from"`
-	ActivatedAt       *time.Time             `json:"activated_at"`
-	EndedAt           *time.Time             `json:"ended_at"`
-	CreatedAt         time.Time              `json:"created_at"`
-	UpdatedAt         time.Time              `json:"updated_at"`
+	ID                 int64                  `json:"id"`
+	TemplateID         int64                  `json:"template_id"`
+	TemplateName       string                 `json:"template_name"`
+	Name               string                 `json:"name"`
+	Description        string                 `json:"description"`
+	State              model.PublicationState `json:"state"`
+	SubmissionStartAt  time.Time              `json:"submission_start_at"`
+	SubmissionEndAt    time.Time              `json:"submission_end_at"`
+	PlannedActiveFrom  time.Time              `json:"planned_active_from"`
+	PlannedActiveUntil time.Time              `json:"planned_active_until"`
+	ActivatedAt        *time.Time             `json:"activated_at"`
+	CreatedAt          time.Time              `json:"created_at"`
+	UpdatedAt          time.Time              `json:"updated_at"`
 }
 
 type publicationSlotResponse struct {
@@ -152,8 +153,9 @@ type assignmentBoardResponse struct {
 }
 
 type rosterAssignmentResponse struct {
-	UserID int64  `json:"user_id"`
-	Name   string `json:"name"`
+	AssignmentID int64  `json:"assignment_id"`
+	UserID       int64  `json:"user_id"`
+	Name         string `json:"name"`
 }
 
 type rosterPositionResponse struct {
@@ -163,8 +165,9 @@ type rosterPositionResponse struct {
 }
 
 type rosterSlotResponse struct {
-	Slot      publicationSlotResponse  `json:"slot"`
-	Positions []rosterPositionResponse `json:"positions"`
+	Slot           publicationSlotResponse  `json:"slot"`
+	OccurrenceDate string                   `json:"occurrence_date"`
+	Positions      []rosterPositionResponse `json:"positions"`
 }
 
 type rosterWeekdayResponse struct {
@@ -174,6 +177,7 @@ type rosterWeekdayResponse struct {
 
 type rosterResponse struct {
 	Publication *publicationResponse    `json:"publication"`
+	WeekStart   string                  `json:"week_start"`
 	Weekdays    []rosterWeekdayResponse `json:"weekdays"`
 }
 
@@ -279,18 +283,19 @@ func newPublicationResponse(publication *model.Publication) *publicationResponse
 	}
 
 	return &publicationResponse{
-		ID:                publication.ID,
-		TemplateID:        publication.TemplateID,
-		TemplateName:      publication.TemplateName,
-		Name:              publication.Name,
-		State:             publication.State,
-		SubmissionStartAt: publication.SubmissionStartAt,
-		SubmissionEndAt:   publication.SubmissionEndAt,
-		PlannedActiveFrom: publication.PlannedActiveFrom,
-		ActivatedAt:       publication.ActivatedAt,
-		EndedAt:           publication.EndedAt,
-		CreatedAt:         publication.CreatedAt,
-		UpdatedAt:         publication.UpdatedAt,
+		ID:                 publication.ID,
+		TemplateID:         publication.TemplateID,
+		TemplateName:       publication.TemplateName,
+		Name:               publication.Name,
+		Description:        publication.Description,
+		State:              publication.State,
+		SubmissionStartAt:  publication.SubmissionStartAt,
+		SubmissionEndAt:    publication.SubmissionEndAt,
+		PlannedActiveFrom:  publication.PlannedActiveFrom,
+		PlannedActiveUntil: publication.PlannedActiveUntil,
+		ActivatedAt:        publication.ActivatedAt,
+		CreatedAt:          publication.CreatedAt,
+		UpdatedAt:          publication.UpdatedAt,
 	}
 }
 

@@ -21,10 +21,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   currentUserQueryOptions,
   publicationMembersQueryOptions,
+  publicationRosterQueryOptions,
   rosterCurrentQueryOptions,
 } from "@/lib/queries"
 
@@ -38,8 +40,15 @@ function RosterPage() {
   const { t } = useTranslation()
   const { data: currentUser } = useQuery(currentUserQueryOptions)
   const rosterQuery = useQuery(rosterCurrentQueryOptions)
+  const [weekStart, setWeekStart] = useState<string | null>(null)
 
   const publicationID = rosterQuery.data?.publication?.id ?? 0
+  const selectedRosterQuery = useQuery({
+    ...publicationRosterQueryOptions(publicationID, weekStart ?? undefined),
+    enabled: publicationID > 0 && weekStart != null,
+  })
+  const activeRosterQuery = weekStart ? selectedRosterQuery : rosterQuery
+  const activeRoster = activeRosterQuery.data
   const isPublished = rosterQuery.data?.publication?.state === "PUBLISHED"
 
   // Eagerly load members during PUBLISHED so dialogs open without a flash.
@@ -65,7 +74,7 @@ function RosterPage() {
     setActiveDialog(null)
   }
 
-  if (rosterQuery.isLoading) {
+  if (activeRosterQuery.isLoading) {
     return (
       <div className="grid gap-4">
         <Skeleton className="h-28 w-full" />
@@ -74,7 +83,7 @@ function RosterPage() {
     )
   }
 
-  if (rosterQuery.isError) {
+  if (activeRosterQuery.isError) {
     return (
       <Card>
         <CardHeader>
@@ -85,7 +94,7 @@ function RosterPage() {
     )
   }
 
-  const roster = rosterQuery.data
+  const roster = activeRoster
   if (!roster?.publication) {
     return (
       <Card>
@@ -111,6 +120,7 @@ function RosterPage() {
     ? {
         assignmentID: activeShift.assignmentID,
         weekday: activeShift.weekday,
+        occurrenceDate: activeShift.occurrenceDate,
         slot: activeShift.slot,
         position: activeShift.position,
       }
@@ -127,6 +137,25 @@ function RosterPage() {
             })}
           </CardDescription>
         </CardHeader>
+        <CardContent className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setWeekStart(addDays(roster.week_start, -7))}
+          >
+            {t("roster.previousWeek")}
+          </Button>
+          <div className="text-sm text-muted-foreground">
+            {formatDate(roster.week_start)}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setWeekStart(addDays(roster.week_start, 7))}
+          >
+            {t("roster.nextWeek")}
+          </Button>
+        </CardContent>
       </Card>
       <WeeklyRoster
         weekdays={roster.weekdays}
@@ -150,6 +179,7 @@ function RosterPage() {
         open={activeDialog === "give_direct"}
         publicationID={roster.publication.id}
         myAssignmentID={activeShift?.assignmentID ?? null}
+        occurrenceDate={activeShift?.occurrenceDate ?? null}
         members={otherMembers}
         onOpenChange={(open) => {
           if (!open) {
@@ -161,6 +191,7 @@ function RosterPage() {
         open={activeDialog === "give_pool"}
         publicationID={roster.publication.id}
         myAssignmentID={activeShift?.assignmentID ?? null}
+        occurrenceDate={activeShift?.occurrenceDate ?? null}
         onOpenChange={(open) => {
           if (!open) {
             closeDialog()
@@ -169,4 +200,14 @@ function RosterPage() {
       />
     </div>
   )
+}
+
+function addDays(dateValue: string, days: number) {
+  const date = new Date(`${dateValue}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
+function formatDate(dateValue: string) {
+  return new Date(`${dateValue}T00:00:00Z`).toLocaleDateString()
 }

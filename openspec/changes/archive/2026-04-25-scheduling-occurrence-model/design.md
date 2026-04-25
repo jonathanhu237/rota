@@ -4,7 +4,7 @@ The current scheduling model treats `assignments` as a single row that says "use
 
 Separately, `publications` has only `planned_active_from` (no end date). The duration is implicit in admin-issued `POST /end` calls. Without an end date, the model cannot enumerate concrete week occurrences, which is exactly what occurrence-level shift-changes need.
 
-This design introduces (a) a planned end date on publications and (b) an occurrence layer on top of the existing baseline `assignments`. No new functionality is exposed to users beyond the corresponding UI surface for selecting "which week"; the user-visible feature unlocked by this change is `add-leave`, which is a separate proposal.
+This design introduces (a) a planned end date on publications and (b) an occurrence layer on top of the existing baseline `assignments`. No new functionality is exposed to users beyond the corresponding UI surface for navigating concrete weeks; the user-visible feature unlocked by this change is `add-leave`, which is a separate proposal.
 
 ## Goals / Non-Goals
 
@@ -74,7 +74,7 @@ PUBLISHED (stored)
   │ admin: POST /activate
   ▼
 ACTIVE (stored)
-  │ time: NOW > planned_active_until
+  │ time: NOW >= planned_active_until
   ▼
 ENDED (effective; stored may still be ACTIVE
        until the on-create sweep advances it)
@@ -137,13 +137,17 @@ Existing codes that change behavior:
 
 ### D-11. Migration
 
-Single migration adds the schema changes. Goose Up:
+Single migration adds the schema changes. The `description` column is included
+because the PATCH endpoint accepts it, and `counterpart_occurrence_date` is
+included because swap requests require a concrete counterpart occurrence. Goose
+Up:
 
 ```sql
 -- +goose Up
 -- +goose StatementBegin
 
 ALTER TABLE publications
+    ADD COLUMN description TEXT NOT NULL DEFAULT '',
     DROP COLUMN ended_at,
     ADD COLUMN planned_active_until TIMESTAMPTZ;
 
@@ -171,7 +175,8 @@ CREATE TABLE assignment_overrides (
 CREATE INDEX assignment_overrides_user_id_idx ON assignment_overrides (user_id);
 
 ALTER TABLE shift_change_requests
-    ADD COLUMN occurrence_date DATE;
+    ADD COLUMN occurrence_date DATE,
+    ADD COLUMN counterpart_occurrence_date DATE;
 
 UPDATE shift_change_requests AS s
    SET occurrence_date = (SELECT planned_active_from::date
@@ -192,7 +197,9 @@ Goose Down:
 -- +goose Down
 -- +goose StatementBegin
 
-ALTER TABLE shift_change_requests DROP COLUMN occurrence_date;
+ALTER TABLE shift_change_requests
+    DROP COLUMN counterpart_occurrence_date,
+    DROP COLUMN occurrence_date;
 
 DROP INDEX assignment_overrides_user_id_idx;
 DROP TABLE assignment_overrides;
@@ -205,16 +212,17 @@ ALTER TABLE publications
 
 ALTER TABLE publications
     ADD COLUMN ended_at TIMESTAMPTZ,
-    DROP COLUMN planned_active_until;
+    DROP COLUMN planned_active_until,
+    DROP COLUMN description;
 
 -- +goose StatementEnd
 ```
 
 The migrations-roundtrip CI exercises Down→Up→Down, so any data in `assignment_overrides` or any `occurrence_date` value would be lost on roll-back; we accept this because there is no production data and roll-back is a developer / CI concern.
 
-### D-12. UI: occurrence selector on shift-change creation
+### D-12. UI: roster week selection drives shift-change occurrence
 
-**Decision:** the create form gains a "which week?" dropdown listing every concrete `occurrence_date` for the requester's selected assignment in the current publication, filtered to those whose actual start time is `> NOW()`. Approve UI shows the date alongside the slot.
+**Decision:** the roster gains week-by-week navigation over the publication's valid active window. Give/swap dialogs are opened from a concrete roster week and carry that slot's `occurrence_date` into the create request; the dialog displays the chosen occurrence alongside the slot so the user can verify the week before submitting. Approve/list UI shows the date alongside the slot.
 
 This is the only user-visible UI change in this proposal; without it, occurrences are invisible. Roster view also gains week-by-week navigation.
 

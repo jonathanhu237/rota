@@ -9,14 +9,14 @@ Both issues stem from the same root: the scheduling model has no first-class con
 ## What Changes
 
 - **BREAKING (DB schema):** `publications` adds `planned_active_until TIMESTAMPTZ NOT NULL`. The window CHECK becomes `submission_start_at < submission_end_at <= planned_active_from < planned_active_until`. All seed/test fixtures need updating.
-- Effective-state resolution gains an "ended by clock" rule: a stored `ACTIVE` publication whose `NOW() > planned_active_until` resolves to effective `ENDED`.
+- Effective-state resolution gains an "ended by clock" rule: a stored `ACTIVE` publication whose `NOW() >= planned_active_until` resolves to effective `ENDED`.
 - `PATCH /publications/{id}` is introduced; admin can extend or shorten a publication by changing `planned_active_until`. Reopening an "ended-by-clock" publication is just pushing `until` further into the future.
 - `POST /publications/{id}/end` is reframed as syntactic sugar for `PATCH ... { planned_active_until: NOW() }`. Existing callers continue to work; semantics are unchanged.
 - New `assignment_overrides` table: `(assignment_id, occurrence_date, user_id)` records "this specific occurrence belongs to a different user than the baseline assignment row says". Roster reads layer overrides on top of assignments.
 - `shift_change_requests` adds `occurrence_date DATE NOT NULL`. The natural key for a request becomes `(requester_assignment_id, occurrence_date)`. Approving a swap or give writes one or two override rows; it no longer mutates the `assignments` table.
 - `shift_change_requests.expires_at` is derived per request from the occurrence's actual start time (`planned_active_from + (weekday-1) days + slot.start_time`), not from the publication's `planned_active_from`.
-- D2 invariant (single non-ENDED publication) is preserved via a "sweep before create": when admin creates a new publication, the service first transitions any `state=ACTIVE` publication whose `NOW > planned_active_until` to `state=ENDED` in a write-through, then enforces the partial unique index.
-- Frontend shift-change UI gains an occurrence selector (which week the requester wants to give/swap).
+- D2 invariant (single non-ENDED publication) is preserved via a "sweep before create": when admin creates a new publication, the service first transitions any `state=ACTIVE` publication whose `NOW >= planned_active_until` to `state=ENDED` in a write-through, then enforces the partial unique index.
+- Frontend shift-change UI makes occurrence explicit by adding week navigation to the roster and passing the selected concrete week into give/swap requests.
 - Roster read (`GET /publications/{id}/roster`) accepts a `?week=YYYY-MM-DD` parameter and returns the concrete week with overrides applied.
 - No data migration: confirmed during exploration that no production publications exist yet.
 
@@ -48,7 +48,7 @@ None.
   - Repository layer: new `AssignmentOverride` repo with CRUD plus the "for-roster" join query; updated `ShiftChange` repo for the new natural key and `occurrence_date`; updated `Roster` queries to layer overrides.
   - Handler layer: new `PATCH /publications/{id}`; updated `POST /publications/{id}/shift-changes` request body (carries `occurrence_date`); updated `GET /publications/{id}/roster` with the `week` query param.
 - **Frontend code**:
-  - Shift-change creation flow: occurrence selector (which week within the publication).
+  - Shift-change creation flow: occurrence selected from the roster week being viewed.
   - Shift-change list / detail: surface the concrete `occurrence_date` next to the slot.
   - Publication admin view: show and edit `planned_active_until`.
   - Roster view: week-by-week navigation within a publication.

@@ -223,6 +223,7 @@ func main() {
 	mux.HandleFunc("GET /publications", authHandler.RequireAdmin(publicationHandler.List))
 	mux.HandleFunc("POST /publications", authHandler.RequireAdmin(publicationHandler.Create))
 	mux.HandleFunc("GET /publications/{id}", authHandler.RequireAdmin(publicationHandler.GetByID))
+	mux.HandleFunc("PATCH /publications/{id}", authHandler.RequireAdmin(publicationHandler.Update))
 	mux.HandleFunc("DELETE /publications/{id}", authHandler.RequireAdmin(publicationHandler.Delete))
 	mux.HandleFunc("GET /publications/{id}/assignment-board", authHandler.RequireAdmin(publicationHandler.GetAssignmentBoard))
 	mux.HandleFunc("POST /publications/{id}/auto-assign", authHandler.RequireAdmin(publicationHandler.AutoAssign))

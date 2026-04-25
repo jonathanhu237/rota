@@ -34,21 +34,25 @@ func seedShiftChangeRequest(
 			type,
 			requester_user_id,
 			requester_assignment_id,
+			occurrence_date,
 			counterpart_user_id,
 			counterpart_assignment_id,
+			counterpart_occurrence_date,
 			state,
 			created_at,
 			expires_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING
 			id,
 			publication_id,
 			type,
 			requester_user_id,
 			requester_assignment_id,
+			occurrence_date,
 			counterpart_user_id,
 			counterpart_assignment_id,
+			counterpart_occurrence_date,
 			state,
 			decided_by_user_id,
 			created_at,
@@ -64,6 +68,11 @@ func seedShiftChangeRequest(
 	if counterpartAssignmentID != nil {
 		cpAssignment = sql.NullInt64{Int64: *counterpartAssignmentID, Valid: true}
 	}
+	occurrenceDate := time.Date(2026, 4, 27, 0, 0, 0, 0, time.UTC)
+	cpOccurrence := sql.NullTime{}
+	if counterpartAssignmentID != nil {
+		cpOccurrence = sql.NullTime{Time: occurrenceDate.AddDate(0, 0, 1), Valid: true}
+	}
 
 	req, err := scanShiftChangeRequest(db.QueryRowContext(
 		context.Background(),
@@ -72,8 +81,10 @@ func seedShiftChangeRequest(
 		changeType,
 		requesterUserID,
 		requesterAssignmentID,
+		occurrenceDate,
 		cpUser,
 		cpAssignment,
+		cpOccurrence,
 		state,
 		createdAt,
 		expiresAt,
@@ -99,7 +110,7 @@ func fetchRequestState(t testing.TB, db *sql.DB, id int64) model.ShiftChangeStat
 	return state
 }
 
-// fetchAssignmentUserID returns the current user_id on an assignment row.
+// fetchAssignmentUserID returns the current baseline user_id on an assignment row.
 func fetchAssignmentUserID(t testing.TB, db *sql.DB, id int64) int64 {
 	t.Helper()
 
@@ -110,6 +121,30 @@ func fetchAssignmentUserID(t testing.TB, db *sql.DB, id int64) int64 {
 		id,
 	).Scan(&userID); err != nil {
 		t.Fatalf("fetch assignment user_id: %v", err)
+	}
+	return userID
+}
+
+func fetchAssignmentOverrideUserID(
+	t testing.TB,
+	db *sql.DB,
+	assignmentID int64,
+	occurrenceDate time.Time,
+) int64 {
+	t.Helper()
+
+	var userID int64
+	if err := db.QueryRowContext(
+		context.Background(),
+		`
+			SELECT user_id
+			FROM assignment_overrides
+			WHERE assignment_id = $1 AND occurrence_date = $2;
+		`,
+		assignmentID,
+		model.NormalizeOccurrenceDate(occurrenceDate),
+	).Scan(&userID); err != nil {
+		t.Fatalf("fetch assignment override user_id: %v", err)
 	}
 	return userID
 }
@@ -174,8 +209,10 @@ func TestShiftChangeRepositoryClaimRace(t *testing.T) {
 		<-start
 		_, err := repo.ApplyGive(ctx, ApplyGiveParams{
 			RequestID:             request.ID,
+			PublicationID:         publication.ID,
 			RequesterAssignmentID: assignment.ID,
 			RequesterUserID:       requester.ID,
+			OccurrenceDate:        request.OccurrenceDate,
 			ReceiverUserID:        receiver.ID,
 			DecidedByUserID:       admin.ID,
 			Now:                   testTime().Add(time.Hour),
@@ -219,8 +256,11 @@ func TestShiftChangeRepositoryClaimRace(t *testing.T) {
 	if got := fetchRequestState(t, db, request.ID); got != model.ShiftChangeStateApproved {
 		t.Fatalf("expected request state approved, got %q", got)
 	}
-	if got := fetchAssignmentUserID(t, db, assignment.ID); got != winner.receiverID {
-		t.Fatalf("expected assignment user_id = winner %d, got %d", winner.receiverID, got)
+	if got := fetchAssignmentUserID(t, db, assignment.ID); got != requester.ID {
+		t.Fatalf("expected baseline assignment user_id = requester %d, got %d", requester.ID, got)
+	}
+	if got := fetchAssignmentOverrideUserID(t, db, assignment.ID, request.OccurrenceDate); got != winner.receiverID {
+		t.Fatalf("expected override user_id = winner %d, got %d", winner.receiverID, got)
 	}
 }
 
@@ -259,17 +299,23 @@ func TestShiftChangeRepositoryCreateAndLoad(t *testing.T) {
 
 	base := testTime()
 	expires := base.Add(24 * time.Hour)
+	monday := time.Date(2026, 4, 27, 0, 0, 0, 0, time.UTC)
+	nextMonday := monday.AddDate(0, 0, 7)
+	thirdMonday := monday.AddDate(0, 0, 14)
+	tuesday := monday.AddDate(0, 0, 1)
 
 	t.Run("swap round-trip", func(t *testing.T) {
 		created, err := repo.Create(ctx, CreateShiftChangeRequestParams{
-			PublicationID:           publication.ID,
-			Type:                    model.ShiftChangeTypeSwap,
-			RequesterUserID:         requester.ID,
-			RequesterAssignmentID:   requesterAssignment.ID,
-			CounterpartUserID:       &counterpart.ID,
-			CounterpartAssignmentID: &counterpartAssignment.ID,
-			ExpiresAt:               expires,
-			CreatedAt:               base,
+			PublicationID:             publication.ID,
+			Type:                      model.ShiftChangeTypeSwap,
+			RequesterUserID:           requester.ID,
+			RequesterAssignmentID:     requesterAssignment.ID,
+			OccurrenceDate:            monday,
+			CounterpartUserID:         &counterpart.ID,
+			CounterpartAssignmentID:   &counterpartAssignment.ID,
+			CounterpartOccurrenceDate: &tuesday,
+			ExpiresAt:                 expires,
+			CreatedAt:                 base,
 		})
 		if err != nil {
 			t.Fatalf("create swap request: %v", err)
@@ -291,6 +337,12 @@ func TestShiftChangeRepositoryCreateAndLoad(t *testing.T) {
 		if got.CounterpartAssignmentID == nil || *got.CounterpartAssignmentID != counterpartAssignment.ID {
 			t.Fatalf("expected counterpart assignment id %d, got %+v", counterpartAssignment.ID, got.CounterpartAssignmentID)
 		}
+		if !got.OccurrenceDate.Equal(monday) {
+			t.Fatalf("expected occurrence date %v, got %v", monday, got.OccurrenceDate)
+		}
+		if got.CounterpartOccurrenceDate == nil || !got.CounterpartOccurrenceDate.Equal(tuesday) {
+			t.Fatalf("expected counterpart occurrence date %v, got %+v", tuesday, got.CounterpartOccurrenceDate)
+		}
 		if got.DecidedByUserID != nil {
 			t.Fatalf("expected decided_by_user_id NULL, got %+v", got.DecidedByUserID)
 		}
@@ -305,6 +357,7 @@ func TestShiftChangeRepositoryCreateAndLoad(t *testing.T) {
 			Type:                  model.ShiftChangeTypeGiveDirect,
 			RequesterUserID:       requester.ID,
 			RequesterAssignmentID: requesterAssignment.ID,
+			OccurrenceDate:        nextMonday,
 			CounterpartUserID:     &counterpart.ID,
 			// CounterpartAssignmentID nil: the counterpart has no shift yet.
 			ExpiresAt: expires,
@@ -335,6 +388,7 @@ func TestShiftChangeRepositoryCreateAndLoad(t *testing.T) {
 			Type:                  model.ShiftChangeTypeGivePool,
 			RequesterUserID:       requester.ID,
 			RequesterAssignmentID: requesterAssignment.ID,
+			OccurrenceDate:        thirdMonday,
 			// Both counterpart fields nil for pool.
 			ExpiresAt: expires,
 			CreatedAt: base,
@@ -414,13 +468,16 @@ func TestShiftChangeRepositoryApplySwap(t *testing.T) {
 	)
 
 	result, err := repo.ApplySwap(ctx, ApplySwapParams{
-		RequestID:               request.ID,
-		RequesterAssignmentID:   assignmentX.ID,
-		RequesterUserID:         userX.ID,
-		CounterpartAssignmentID: assignmentY.ID,
-		CounterpartUserID:       userY.ID,
-		DecidedByUserID:         admin.ID,
-		Now:                     testTime().Add(time.Hour),
+		RequestID:                 request.ID,
+		PublicationID:             publication.ID,
+		RequesterAssignmentID:     assignmentX.ID,
+		RequesterUserID:           userX.ID,
+		OccurrenceDate:            request.OccurrenceDate,
+		CounterpartAssignmentID:   assignmentY.ID,
+		CounterpartUserID:         userY.ID,
+		CounterpartOccurrenceDate: *request.CounterpartOccurrenceDate,
+		DecidedByUserID:           admin.ID,
+		Now:                       testTime().Add(time.Hour),
 	})
 	if err != nil {
 		t.Fatalf("apply swap: %v", err)
@@ -429,18 +486,23 @@ func TestShiftChangeRepositoryApplySwap(t *testing.T) {
 		t.Fatalf("expected non-nil swap result, got %+v", result)
 	}
 
-	// After the swap, assignmentX now belongs to userY, and assignmentY to userX.
-	if got := fetchAssignmentUserID(t, db, assignmentX.ID); got != userY.ID {
-		t.Fatalf("expected assignmentX user_id = %d, got %d", userY.ID, got)
+	if got := fetchAssignmentUserID(t, db, assignmentX.ID); got != userX.ID {
+		t.Fatalf("expected assignmentX baseline user_id = %d, got %d", userX.ID, got)
 	}
-	if got := fetchAssignmentUserID(t, db, assignmentY.ID); got != userX.ID {
-		t.Fatalf("expected assignmentY user_id = %d, got %d", userX.ID, got)
+	if got := fetchAssignmentUserID(t, db, assignmentY.ID); got != userY.ID {
+		t.Fatalf("expected assignmentY baseline user_id = %d, got %d", userY.ID, got)
 	}
-	if result.RequesterAssignment.UserID != userY.ID {
-		t.Fatalf("expected requester assignment user %d in result, got %d", userY.ID, result.RequesterAssignment.UserID)
+	if got := fetchAssignmentOverrideUserID(t, db, assignmentX.ID, request.OccurrenceDate); got != userY.ID {
+		t.Fatalf("expected requester override user_id = %d, got %d", userY.ID, got)
 	}
-	if result.CounterpartAssignment.UserID != userX.ID {
-		t.Fatalf("expected counterpart assignment user %d in result, got %d", userX.ID, result.CounterpartAssignment.UserID)
+	if got := fetchAssignmentOverrideUserID(t, db, assignmentY.ID, *request.CounterpartOccurrenceDate); got != userX.ID {
+		t.Fatalf("expected counterpart override user_id = %d, got %d", userX.ID, got)
+	}
+	if result.RequesterAssignment.UserID != userX.ID {
+		t.Fatalf("expected requester baseline user %d in result, got %d", userX.ID, result.RequesterAssignment.UserID)
+	}
+	if result.CounterpartAssignment.UserID != userY.ID {
+		t.Fatalf("expected counterpart baseline user %d in result, got %d", userY.ID, result.CounterpartAssignment.UserID)
 	}
 
 	if got := fetchRequestState(t, db, request.ID); got != model.ShiftChangeStateApproved {
@@ -507,13 +569,16 @@ func TestShiftChangeRepositoryApplySwapInvalidated(t *testing.T) {
 	}
 
 	result, err := repo.ApplySwap(ctx, ApplySwapParams{
-		RequestID:               request.ID,
-		RequesterAssignmentID:   assignmentX.ID,
-		RequesterUserID:         userX.ID,
-		CounterpartAssignmentID: assignmentY.ID,
-		CounterpartUserID:       userY.ID,
-		DecidedByUserID:         admin.ID,
-		Now:                     testTime().Add(time.Hour),
+		RequestID:                 request.ID,
+		PublicationID:             publication.ID,
+		RequesterAssignmentID:     assignmentX.ID,
+		RequesterUserID:           userX.ID,
+		OccurrenceDate:            request.OccurrenceDate,
+		CounterpartAssignmentID:   assignmentY.ID,
+		CounterpartUserID:         userY.ID,
+		CounterpartOccurrenceDate: *request.CounterpartOccurrenceDate,
+		DecidedByUserID:           admin.ID,
+		Now:                       testTime().Add(time.Hour),
 	})
 	if !errors.Is(err, ErrShiftChangeAssignmentMiss) {
 		t.Fatalf("expected ErrShiftChangeAssignmentMiss, got err=%v result=%+v", err, result)

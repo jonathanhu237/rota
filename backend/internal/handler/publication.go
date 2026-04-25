@@ -13,6 +13,7 @@ import (
 type publicationService interface {
 	ListPublications(ctx context.Context, input service.ListPublicationsInput) (*service.ListPublicationsResult, error)
 	CreatePublication(ctx context.Context, input service.CreatePublicationInput) (*model.Publication, error)
+	UpdatePublication(ctx context.Context, input service.UpdatePublicationInput) (*model.Publication, error)
 	GetPublicationByID(ctx context.Context, id int64) (*model.Publication, error)
 	DeletePublication(ctx context.Context, id int64) error
 	GetCurrentPublication(ctx context.Context) (*model.Publication, error)
@@ -27,7 +28,7 @@ type publicationService interface {
 	ActivatePublication(ctx context.Context, publicationID int64) (*model.Publication, error)
 	PublishPublication(ctx context.Context, publicationID int64) (*model.Publication, error)
 	EndPublication(ctx context.Context, publicationID int64) (*model.Publication, error)
-	GetPublicationRoster(ctx context.Context, publicationID int64) (*service.RosterResult, error)
+	GetPublicationRoster(ctx context.Context, publicationID int64, weekStart *time.Time) (*service.RosterResult, error)
 	GetCurrentRoster(ctx context.Context) (*service.RosterResult, error)
 }
 
@@ -57,11 +58,19 @@ type shiftsMeResponse struct {
 }
 
 type createPublicationRequest struct {
-	TemplateID        int64     `json:"template_id"`
-	Name              string    `json:"name"`
-	SubmissionStartAt time.Time `json:"submission_start_at"`
-	SubmissionEndAt   time.Time `json:"submission_end_at"`
-	PlannedActiveFrom time.Time `json:"planned_active_from"`
+	TemplateID         int64     `json:"template_id"`
+	Name               string    `json:"name"`
+	Description        string    `json:"description"`
+	SubmissionStartAt  time.Time `json:"submission_start_at"`
+	SubmissionEndAt    time.Time `json:"submission_end_at"`
+	PlannedActiveFrom  time.Time `json:"planned_active_from"`
+	PlannedActiveUntil time.Time `json:"planned_active_until"`
+}
+
+type updatePublicationRequest struct {
+	Name               *string    `json:"name"`
+	Description        *string    `json:"description"`
+	PlannedActiveUntil *time.Time `json:"planned_active_until"`
 }
 
 type createSubmissionRequest struct {
@@ -123,17 +132,24 @@ func (h *PublicationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
 		return
 	}
-	if req.TemplateID <= 0 || req.Name == "" || req.SubmissionStartAt.IsZero() || req.SubmissionEndAt.IsZero() || req.PlannedActiveFrom.IsZero() {
+	if req.TemplateID <= 0 ||
+		req.Name == "" ||
+		req.SubmissionStartAt.IsZero() ||
+		req.SubmissionEndAt.IsZero() ||
+		req.PlannedActiveFrom.IsZero() ||
+		req.PlannedActiveUntil.IsZero() {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
 		return
 	}
 
 	publication, err := h.publicationService.CreatePublication(r.Context(), service.CreatePublicationInput{
-		TemplateID:        req.TemplateID,
-		Name:              req.Name,
-		SubmissionStartAt: req.SubmissionStartAt,
-		SubmissionEndAt:   req.SubmissionEndAt,
-		PlannedActiveFrom: req.PlannedActiveFrom,
+		TemplateID:         req.TemplateID,
+		Name:               req.Name,
+		Description:        req.Description,
+		SubmissionStartAt:  req.SubmissionStartAt,
+		SubmissionEndAt:    req.SubmissionEndAt,
+		PlannedActiveFrom:  req.PlannedActiveFrom,
+		PlannedActiveUntil: req.PlannedActiveUntil,
 	})
 	if err != nil {
 		h.writePublicationServiceError(w, err)
@@ -141,6 +157,35 @@ func (h *PublicationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, http.StatusCreated, publicationDetailResponse{
+		Publication: newPublicationResponse(publication),
+	})
+}
+
+func (h *PublicationHandler) Update(w http.ResponseWriter, r *http.Request) {
+	id, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	var req updatePublicationRequest
+	if err := readJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+
+	publication, err := h.publicationService.UpdatePublication(r.Context(), service.UpdatePublicationInput{
+		ID:                 id,
+		Name:               req.Name,
+		Description:        req.Description,
+		PlannedActiveUntil: req.PlannedActiveUntil,
+	})
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, publicationDetailResponse{
 		Publication: newPublicationResponse(publication),
 	})
 }
@@ -452,7 +497,13 @@ func (h *PublicationHandler) GetRoster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.publicationService.GetPublicationRoster(r.Context(), publicationID)
+	weekStart, err := parseOptionalWeekStart(r.URL.Query().Get("week"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid week parameter")
+		return
+	}
+
+	result, err := h.publicationService.GetPublicationRoster(r.Context(), publicationID, weekStart)
 	if err != nil {
 		h.writePublicationServiceError(w, err)
 		return
@@ -549,8 +600,9 @@ func newRosterResponse(result *service.RosterResult) rosterResponse {
 				assignments := make([]rosterAssignmentResponse, 0, len(positionResult.Assignments))
 				for _, assignment := range positionResult.Assignments {
 					assignments = append(assignments, rosterAssignmentResponse{
-						UserID: assignment.UserID,
-						Name:   assignment.Name,
+						AssignmentID: assignment.AssignmentID,
+						UserID:       assignment.UserID,
+						Name:         assignment.Name,
 					})
 				}
 
@@ -562,8 +614,9 @@ func newRosterResponse(result *service.RosterResult) rosterResponse {
 			}
 
 			slots = append(slots, rosterSlotResponse{
-				Slot:      newPublicationSlotResponse(slotResult.Slot),
-				Positions: positions,
+				Slot:           newPublicationSlotResponse(slotResult.Slot),
+				OccurrenceDate: slotResult.OccurrenceDate.Format("2006-01-02"),
+				Positions:      positions,
 			})
 		}
 
@@ -573,8 +626,13 @@ func newRosterResponse(result *service.RosterResult) rosterResponse {
 		})
 	}
 
+	weekStart := ""
+	if !result.WeekStart.IsZero() {
+		weekStart = result.WeekStart.Format("2006-01-02")
+	}
 	return rosterResponse{
 		Publication: newPublicationResponse(result.Publication),
+		WeekStart:   weekStart,
 		Weekdays:    weekdays,
 	}
 }
@@ -585,6 +643,8 @@ func (h *PublicationHandler) writePublicationServiceError(w http.ResponseWriter,
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request")
 	case errors.Is(err, service.ErrInvalidPublicationWindow):
 		writeError(w, http.StatusBadRequest, "INVALID_PUBLICATION_WINDOW", "Invalid publication window")
+	case errors.Is(err, service.ErrInvalidOccurrenceDate):
+		writeError(w, http.StatusBadRequest, "INVALID_OCCURRENCE_DATE", "Invalid occurrence date")
 	case errors.Is(err, service.ErrPublicationAlreadyExists):
 		writeError(w, http.StatusConflict, "PUBLICATION_ALREADY_EXISTS", "Publication already exists")
 	case errors.Is(err, service.ErrPublicationNotFound):
@@ -622,4 +682,15 @@ func (h *PublicationHandler) writePublicationServiceError(w http.ResponseWriter,
 	default:
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
 	}
+}
+
+func parseOptionalWeekStart(raw string) (*time.Time, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	parsed, err := time.Parse("2006-01-02", raw)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
 }

@@ -7,6 +7,7 @@ import type {
 export type MemberShiftOption = {
   assignmentID: number
   weekday: number
+  occurrenceDate: string
   slot: PublicationSlot
   position: PublicationPosition
 }
@@ -33,6 +34,7 @@ export function findShiftsForMember(
             options.push({
               assignmentID: assignment.assignment_id,
               weekday: weekday.weekday,
+              occurrenceDate: slot.occurrence_date,
               slot: slot.slot,
               position: position.position,
             })

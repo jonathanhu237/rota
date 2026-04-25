@@ -28,14 +28,16 @@ func NewShiftChangeRepository(db *sql.DB) *ShiftChangeRepository {
 
 // CreateShiftChangeRequestParams describes a new request.
 type CreateShiftChangeRequestParams struct {
-	PublicationID           int64
-	Type                    model.ShiftChangeType
-	RequesterUserID         int64
-	RequesterAssignmentID   int64
-	CounterpartUserID       *int64
-	CounterpartAssignmentID *int64
-	ExpiresAt               time.Time
-	CreatedAt               time.Time
+	PublicationID             int64
+	Type                      model.ShiftChangeType
+	RequesterUserID           int64
+	RequesterAssignmentID     int64
+	OccurrenceDate            time.Time
+	CounterpartUserID         *int64
+	CounterpartAssignmentID   *int64
+	CounterpartOccurrenceDate *time.Time
+	ExpiresAt                 time.Time
+	CreatedAt                 time.Time
 }
 
 // Create inserts a new shift_change_request.
@@ -49,21 +51,25 @@ func (r *ShiftChangeRepository) Create(
 			type,
 			requester_user_id,
 			requester_assignment_id,
+			occurrence_date,
 			counterpart_user_id,
 			counterpart_assignment_id,
+			counterpart_occurrence_date,
 			state,
 			created_at,
 			expires_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10)
 		RETURNING
 			id,
 			publication_id,
 			type,
 			requester_user_id,
 			requester_assignment_id,
+			occurrence_date,
 			counterpart_user_id,
 			counterpart_assignment_id,
+			counterpart_occurrence_date,
 			state,
 			decided_by_user_id,
 			created_at,
@@ -79,6 +85,10 @@ func (r *ShiftChangeRepository) Create(
 	if params.CounterpartAssignmentID != nil {
 		counterpartAssignment = sql.NullInt64{Int64: *params.CounterpartAssignmentID, Valid: true}
 	}
+	var counterpartOccurrence sql.NullTime
+	if params.CounterpartOccurrenceDate != nil {
+		counterpartOccurrence = sql.NullTime{Time: model.NormalizeOccurrenceDate(*params.CounterpartOccurrenceDate), Valid: true}
+	}
 
 	return scanShiftChangeRequest(r.db.QueryRowContext(
 		ctx,
@@ -87,8 +97,10 @@ func (r *ShiftChangeRepository) Create(
 		params.Type,
 		params.RequesterUserID,
 		params.RequesterAssignmentID,
+		model.NormalizeOccurrenceDate(params.OccurrenceDate),
 		counterpartUser,
 		counterpartAssignment,
+		counterpartOccurrence,
 		params.CreatedAt,
 		params.ExpiresAt,
 	))
@@ -106,8 +118,10 @@ func (r *ShiftChangeRepository) GetByID(
 			type,
 			requester_user_id,
 			requester_assignment_id,
+			occurrence_date,
 			counterpart_user_id,
 			counterpart_assignment_id,
+			counterpart_occurrence_date,
 			state,
 			decided_by_user_id,
 			created_at,
@@ -158,8 +172,10 @@ func (r *ShiftChangeRepository) ListForPublication(
 				type,
 				requester_user_id,
 				requester_assignment_id,
+				occurrence_date,
 				counterpart_user_id,
 				counterpart_assignment_id,
+				counterpart_occurrence_date,
 				state,
 				decided_by_user_id,
 				created_at,
@@ -178,8 +194,10 @@ func (r *ShiftChangeRepository) ListForPublication(
 				type,
 				requester_user_id,
 				requester_assignment_id,
+				occurrence_date,
 				counterpart_user_id,
 				counterpart_assignment_id,
+				counterpart_occurrence_date,
 				state,
 				decided_by_user_id,
 				created_at,
@@ -304,25 +322,30 @@ type AssignmentSnapshot struct {
 
 // ApplySwapParams applies an approved swap. Callers pass the two
 // assignment IDs; the repo verifies each still exists with the expected
-// user, swaps the user_id, and flips the request to approved.
+// user, writes occurrence overrides, and flips the request to approved.
 type ApplySwapParams struct {
-	RequestID               int64
-	RequesterAssignmentID   int64
-	RequesterUserID         int64
-	CounterpartAssignmentID int64
-	CounterpartUserID       int64
-	DecidedByUserID         int64
-	Now                     time.Time
+	RequestID                 int64
+	PublicationID             int64
+	RequesterAssignmentID     int64
+	RequesterUserID           int64
+	OccurrenceDate            time.Time
+	CounterpartAssignmentID   int64
+	CounterpartUserID         int64
+	CounterpartOccurrenceDate time.Time
+	DecidedByUserID           int64
+	Now                       time.Time
 }
 
 // ApplyGiveParams applies an approved give (direct or pool claim). The
 // receiver is either the request's counterpart (direct) or the claimer
-// (pool). Either way, we transfer the requester's assignment to the
-// receiver.
+// (pool). Either way, the baseline assignment stays unchanged and the
+// concrete occurrence is assigned through assignment_overrides.
 type ApplyGiveParams struct {
 	RequestID             int64
+	PublicationID         int64
 	RequesterAssignmentID int64
 	RequesterUserID       int64
+	OccurrenceDate        time.Time
 	ReceiverUserID        int64
 	DecidedByUserID       int64
 	Now                   time.Time
@@ -337,8 +360,8 @@ type ApproveResult struct {
 }
 
 // ApplySwap atomically verifies the two assignments and the request state,
-// then swaps user_ids and marks the request approved. Returns one of the
-// domain sentinels on validation failure.
+// then writes assignment_overrides for both occurrences and marks the request
+// approved. Returns one of the domain sentinels on validation failure.
 func (r *ShiftChangeRepository) ApplySwap(
 	ctx context.Context,
 	params ApplySwapParams,
@@ -367,7 +390,8 @@ func (r *ShiftChangeRepository) ApplySwap(
 	if !counterpartSnap.Exists || counterpartSnap.UserID != params.CounterpartUserID {
 		return nil, ErrShiftChangeAssignmentMiss
 	}
-	if requesterSnap.PublicationID != counterpartSnap.PublicationID {
+	if requesterSnap.PublicationID != params.PublicationID ||
+		counterpartSnap.PublicationID != params.PublicationID {
 		return nil, ErrShiftChangeAssignmentMiss
 	}
 
@@ -378,16 +402,20 @@ func (r *ShiftChangeRepository) ApplySwap(
 		return nil, err
 	}
 
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE assignments SET user_id = $2 WHERE id = $1;`,
-		params.RequesterAssignmentID, params.CounterpartUserID,
-	); err != nil {
+	if err := insertAssignmentOverrideTx(ctx, tx, InsertAssignmentOverrideParams{
+		AssignmentID:   params.RequesterAssignmentID,
+		OccurrenceDate: params.OccurrenceDate,
+		UserID:         params.CounterpartUserID,
+		CreatedAt:      params.Now,
+	}); err != nil {
 		return nil, mapSchedulingRetryableError(err)
 	}
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE assignments SET user_id = $2 WHERE id = $1;`,
-		params.CounterpartAssignmentID, params.RequesterUserID,
-	); err != nil {
+	if err := insertAssignmentOverrideTx(ctx, tx, InsertAssignmentOverrideParams{
+		AssignmentID:   params.CounterpartAssignmentID,
+		OccurrenceDate: params.CounterpartOccurrenceDate,
+		UserID:         params.RequesterUserID,
+		CreatedAt:      params.Now,
+	}); err != nil {
 		return nil, mapSchedulingRetryableError(err)
 	}
 
@@ -414,7 +442,7 @@ func (r *ShiftChangeRepository) ApplySwap(
 }
 
 // ApplyGive atomically verifies the requester's assignment and the request
-// state, then transfers user_id from requester to receiver.
+// state, then writes one occurrence override for the receiver.
 func (r *ShiftChangeRepository) ApplyGive(
 	ctx context.Context,
 	params ApplyGiveParams,
@@ -435,15 +463,20 @@ func (r *ShiftChangeRepository) ApplyGive(
 	if !snap.Exists || snap.UserID != params.RequesterUserID {
 		return nil, ErrShiftChangeAssignmentMiss
 	}
+	if snap.PublicationID != params.PublicationID {
+		return nil, ErrShiftChangeAssignmentMiss
+	}
 
 	if err := LockAndCheckUserStatus(ctx, tx, snap.PublicationID, params.ReceiverUserID); err != nil {
 		return nil, err
 	}
 
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE assignments SET user_id = $2 WHERE id = $1;`,
-		params.RequesterAssignmentID, params.ReceiverUserID,
-	); err != nil {
+	if err := insertAssignmentOverrideTx(ctx, tx, InsertAssignmentOverrideParams{
+		AssignmentID:   params.RequesterAssignmentID,
+		OccurrenceDate: params.OccurrenceDate,
+		UserID:         params.ReceiverUserID,
+		CreatedAt:      params.Now,
+	}); err != nil {
 		return nil, mapSchedulingRetryableError(err)
 	}
 	if err := markApproved(ctx, tx, params.RequestID, params.DecidedByUserID, params.Now); err != nil {
@@ -622,6 +655,7 @@ func scanShiftChangeRequest(row scanner) (*model.ShiftChangeRequest, error) {
 		req                   model.ShiftChangeRequest
 		counterpartUser       sql.NullInt64
 		counterpartAssignment sql.NullInt64
+		counterpartOccurrence sql.NullTime
 		decidedBy             sql.NullInt64
 		decidedAt             sql.NullTime
 	)
@@ -631,8 +665,10 @@ func scanShiftChangeRequest(row scanner) (*model.ShiftChangeRequest, error) {
 		&req.Type,
 		&req.RequesterUserID,
 		&req.RequesterAssignmentID,
+		&req.OccurrenceDate,
 		&counterpartUser,
 		&counterpartAssignment,
+		&counterpartOccurrence,
 		&req.State,
 		&decidedBy,
 		&req.CreatedAt,
@@ -650,6 +686,11 @@ func scanShiftChangeRequest(row scanner) (*model.ShiftChangeRequest, error) {
 	if counterpartAssignment.Valid {
 		id := counterpartAssignment.Int64
 		req.CounterpartAssignmentID = &id
+	}
+	req.OccurrenceDate = model.NormalizeOccurrenceDate(req.OccurrenceDate)
+	if counterpartOccurrence.Valid {
+		date := model.NormalizeOccurrenceDate(counterpartOccurrence.Time)
+		req.CounterpartOccurrenceDate = &date
 	}
 	if decidedBy.Valid {
 		id := decidedBy.Int64

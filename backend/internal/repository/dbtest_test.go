@@ -399,13 +399,14 @@ func seedTemplateShift(t testing.TB, db *sql.DB, seed templateShiftSeed) *model.
 }
 
 type publicationSeed struct {
-	TemplateID        int64
-	Name              string
-	State             model.PublicationState
-	SubmissionStartAt time.Time
-	SubmissionEndAt   time.Time
-	PlannedActiveFrom time.Time
-	CreatedAt         time.Time
+	TemplateID         int64
+	Name               string
+	State              model.PublicationState
+	SubmissionStartAt  time.Time
+	SubmissionEndAt    time.Time
+	PlannedActiveFrom  time.Time
+	PlannedActiveUntil time.Time
+	CreatedAt          time.Time
 }
 
 func seedPublication(t testing.TB, db *sql.DB, seed publicationSeed) *model.Publication {
@@ -431,30 +432,36 @@ func seedPublication(t testing.TB, db *sql.DB, seed publicationSeed) *model.Publ
 	if seed.PlannedActiveFrom.IsZero() {
 		seed.PlannedActiveFrom = base.Add(3 * time.Hour)
 	}
+	if seed.PlannedActiveUntil.IsZero() {
+		seed.PlannedActiveUntil = seed.PlannedActiveFrom.Add(8 * 7 * 24 * time.Hour)
+	}
 
 	const query = `
 		INSERT INTO publications (
 			template_id,
 			name,
+			description,
 			state,
 			submission_start_at,
 			submission_end_at,
 			planned_active_from,
+			planned_active_until,
 			created_at,
 			updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+		VALUES ($1, $2, '', $3, $4, $5, $6, $7, $8, $8)
 		RETURNING
 			id,
 			template_id,
-			$8 AS template_name,
+			$9 AS template_name,
 			name,
+			description,
 			state,
 			submission_start_at,
 			submission_end_at,
 			planned_active_from,
+			planned_active_until,
 			activated_at,
-			ended_at,
 			created_at,
 			updated_at;
 	`
@@ -478,6 +485,7 @@ func seedPublication(t testing.TB, db *sql.DB, seed publicationSeed) *model.Publ
 		seed.SubmissionStartAt,
 		seed.SubmissionEndAt,
 		seed.PlannedActiveFrom,
+		seed.PlannedActiveUntil,
 		seed.CreatedAt,
 		templateName,
 	).Scan(
@@ -485,12 +493,13 @@ func seedPublication(t testing.TB, db *sql.DB, seed publicationSeed) *model.Publ
 		&publication.TemplateID,
 		&publication.TemplateName,
 		&publication.Name,
+		&publication.Description,
 		&publication.State,
 		&publication.SubmissionStartAt,
 		&publication.SubmissionEndAt,
 		&publication.PlannedActiveFrom,
+		&publication.PlannedActiveUntil,
 		&publication.ActivatedAt,
-		&publication.EndedAt,
 		&publication.CreatedAt,
 		&publication.UpdatedAt,
 	); err != nil {

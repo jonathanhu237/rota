@@ -462,10 +462,11 @@ func seedServicePublication(t testing.TB, db *sql.DB, templateID int64, now time
 				submission_start_at,
 				submission_end_at,
 				planned_active_from,
+				planned_active_until,
 				created_at,
 				updated_at
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
 			RETURNING id;
 		`,
 		templateID,
@@ -474,6 +475,7 @@ func seedServicePublication(t testing.TB, db *sql.DB, templateID int64, now time
 		now.Add(-2*time.Hour),
 		now.Add(-time.Hour),
 		now.Add(time.Hour),
+		now.Add(8*7*24*time.Hour),
 		now,
 	).Scan(&id); err != nil {
 		t.Fatalf("seed publication: %v", err)

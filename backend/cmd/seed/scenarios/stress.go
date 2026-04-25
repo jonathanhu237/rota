@@ -38,9 +38,6 @@ func RunStress(ctx context.Context, tx *sql.Tx, opts Options) error {
 		return err
 	}
 
-	endedAtOne := opts.Now.Add(-21 * 24 * time.Hour)
-	endedAtTwo := opts.Now.Add(-7 * 24 * time.Hour)
-	endedAtSubmissionFixture := opts.Now.Add(-24 * time.Hour)
 	if _, err := insertPublication(
 		ctx,
 		tx,
@@ -50,8 +47,8 @@ func RunStress(ctx context.Context, tx *sql.Tx, opts Options) error {
 		opts.Now.Add(-42*24*time.Hour),
 		opts.Now.Add(-35*24*time.Hour),
 		opts.Now.Add(-28*24*time.Hour),
-		&endedAtOne,
-		&endedAtOne,
+		opts.Now.Add(-21*24*time.Hour),
+		nil,
 		opts.Now.Add(-42*24*time.Hour),
 	); err != nil {
 		return err
@@ -65,8 +62,8 @@ func RunStress(ctx context.Context, tx *sql.Tx, opts Options) error {
 		opts.Now.Add(-28*24*time.Hour),
 		opts.Now.Add(-21*24*time.Hour),
 		opts.Now.Add(-14*24*time.Hour),
-		&endedAtTwo,
-		&endedAtTwo,
+		opts.Now.Add(-7*24*time.Hour),
+		nil,
 		opts.Now.Add(-28*24*time.Hour),
 	); err != nil {
 		return err
@@ -84,8 +81,8 @@ func RunStress(ctx context.Context, tx *sql.Tx, opts Options) error {
 		opts.Now.Add(-14*24*time.Hour),
 		opts.Now.Add(-7*24*time.Hour),
 		opts.Now.Add(7*24*time.Hour),
-		&endedAtSubmissionFixture,
-		&endedAtSubmissionFixture,
+		opts.Now.Add(6*7*24*time.Hour),
+		nil,
 		opts.Now.Add(-14*24*time.Hour),
 	)
 	if err != nil {
@@ -105,8 +102,8 @@ func RunStress(ctx context.Context, tx *sql.Tx, opts Options) error {
 		opts.Now.Add(-14*24*time.Hour),
 		opts.Now.Add(-7*24*time.Hour),
 		opts.Now.Add(-24*time.Hour),
+		opts.Now.Add(5*7*24*time.Hour),
 		&activeAt,
-		nil,
 		opts.Now.Add(-14*24*time.Hour),
 	)
 	if err != nil {
@@ -171,6 +168,7 @@ func insertStressShiftChanges(
 		requesterAssignmentID   int64
 		counterpartUserID       any
 		counterpartAssignmentID any
+		counterpartAssignment   *assignmentRecord
 	}{
 		{
 			changeType:              model.ShiftChangeTypeSwap,
@@ -178,6 +176,7 @@ func insertStressShiftChanges(
 			requesterAssignmentID:   swapLeft.ID,
 			counterpartUserID:       swapRight.UserID,
 			counterpartAssignmentID: swapRight.ID,
+			counterpartAssignment:   &swapRight,
 		},
 		{
 			changeType:              model.ShiftChangeTypeGiveDirect,
@@ -196,6 +195,19 @@ func insertStressShiftChanges(
 	}
 
 	for _, request := range requests {
+		occurrenceDate, err := nextAssignmentOccurrenceDate(ctx, tx, request.requesterAssignmentID, now)
+		if err != nil {
+			return err
+		}
+		var counterpartOccurrenceDate any
+		if request.counterpartAssignment != nil {
+			date, err := nextAssignmentOccurrenceDate(ctx, tx, request.counterpartAssignment.ID, now)
+			if err != nil {
+				return err
+			}
+			counterpartOccurrenceDate = date
+		}
+
 		if _, err := tx.ExecContext(
 			ctx,
 			`
@@ -204,25 +216,66 @@ func insertStressShiftChanges(
 					type,
 					requester_user_id,
 					requester_assignment_id,
+					occurrence_date,
 					counterpart_user_id,
 					counterpart_assignment_id,
+					counterpart_occurrence_date,
 					state,
 					created_at,
 					expires_at
 				)
-				VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8);
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10);
 			`,
 			publicationID,
 			request.changeType,
 			request.requesterUserID,
 			request.requesterAssignmentID,
+			occurrenceDate,
 			request.counterpartUserID,
 			request.counterpartAssignmentID,
+			counterpartOccurrenceDate,
 			now,
-			now.Add(48*time.Hour),
+			occurrenceDate.Add(9*time.Hour),
 		); err != nil {
 			return fmt.Errorf("insert %s shift-change request: %w", request.changeType, err)
 		}
 	}
 	return nil
+}
+
+func nextAssignmentOccurrenceDate(
+	ctx context.Context,
+	tx *sql.Tx,
+	assignmentID int64,
+	after time.Time,
+) (time.Time, error) {
+	var weekday int
+	if err := tx.QueryRowContext(
+		ctx,
+		`
+			SELECT ts.weekday
+			FROM assignments a
+			INNER JOIN template_slots ts ON ts.id = a.slot_id
+			WHERE a.id = $1;
+		`,
+		assignmentID,
+	).Scan(&weekday); err != nil {
+		return time.Time{}, fmt.Errorf("load assignment weekday %d: %w", assignmentID, err)
+	}
+
+	date := time.Date(after.Year(), after.Month(), after.Day(), 0, 0, 0, 0, time.UTC)
+	for slotWeekday(date.Weekday()) != weekday {
+		date = date.AddDate(0, 0, 1)
+	}
+	if !date.After(after) {
+		date = date.AddDate(0, 0, 7)
+	}
+	return date, nil
+}
+
+func slotWeekday(weekday time.Weekday) int {
+	if weekday == time.Sunday {
+		return 7
+	}
+	return int(weekday)
 }

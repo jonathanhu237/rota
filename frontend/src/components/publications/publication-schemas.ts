@@ -28,26 +28,36 @@ export function createPublicationSchema(
         .string()
         .trim()
         .min(1, t("publications.validation.plannedActiveFromRequired")),
+      planned_active_until: z
+        .string()
+        .trim()
+        .min(1, t("publications.validation.plannedActiveUntilRequired")),
     })
     .superRefine((value, ctx) => {
       const submissionStart = Date.parse(value.submission_start_at)
       const submissionEnd = Date.parse(value.submission_end_at)
       const plannedActiveFrom = Date.parse(value.planned_active_from)
+      const plannedActiveUntil = Date.parse(value.planned_active_until)
 
       if (
         Number.isNaN(submissionStart) ||
         Number.isNaN(submissionEnd) ||
-        Number.isNaN(plannedActiveFrom)
+        Number.isNaN(plannedActiveFrom) ||
+        Number.isNaN(plannedActiveUntil)
       ) {
         return
       }
 
       if (
-        !(submissionStart < submissionEnd && submissionEnd <= plannedActiveFrom)
+        !(
+          submissionStart < submissionEnd &&
+          submissionEnd <= plannedActiveFrom &&
+          plannedActiveFrom < plannedActiveUntil
+        )
       ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ["submission_end_at"],
+          path: ["planned_active_until"],
           message: t("publications.validation.invalidWindow"),
         })
       }

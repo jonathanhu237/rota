@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/service"
@@ -32,25 +33,29 @@ func NewShiftChangeHandler(shiftChangeService shiftChangeService) *ShiftChangeHa
 }
 
 type createShiftChangeRequestBody struct {
-	Type                    string `json:"type"`
-	RequesterAssignmentID   int64  `json:"requester_assignment_id"`
-	CounterpartUserID       *int64 `json:"counterpart_user_id,omitempty"`
-	CounterpartAssignmentID *int64 `json:"counterpart_assignment_id,omitempty"`
+	Type                      string  `json:"type"`
+	RequesterAssignmentID     int64   `json:"requester_assignment_id"`
+	OccurrenceDate            string  `json:"occurrence_date"`
+	CounterpartUserID         *int64  `json:"counterpart_user_id,omitempty"`
+	CounterpartAssignmentID   *int64  `json:"counterpart_assignment_id,omitempty"`
+	CounterpartOccurrenceDate *string `json:"counterpart_occurrence_date,omitempty"`
 }
 
 type shiftChangeRequestResponse struct {
-	ID                      int64   `json:"id"`
-	PublicationID           int64   `json:"publication_id"`
-	Type                    string  `json:"type"`
-	RequesterUserID         int64   `json:"requester_user_id"`
-	RequesterAssignmentID   int64   `json:"requester_assignment_id"`
-	CounterpartUserID       *int64  `json:"counterpart_user_id"`
-	CounterpartAssignmentID *int64  `json:"counterpart_assignment_id"`
-	State                   string  `json:"state"`
-	DecidedByUserID         *int64  `json:"decided_by_user_id"`
-	CreatedAt               string  `json:"created_at"`
-	DecidedAt               *string `json:"decided_at"`
-	ExpiresAt               string  `json:"expires_at"`
+	ID                        int64   `json:"id"`
+	PublicationID             int64   `json:"publication_id"`
+	Type                      string  `json:"type"`
+	RequesterUserID           int64   `json:"requester_user_id"`
+	RequesterAssignmentID     int64   `json:"requester_assignment_id"`
+	OccurrenceDate            string  `json:"occurrence_date"`
+	CounterpartUserID         *int64  `json:"counterpart_user_id"`
+	CounterpartAssignmentID   *int64  `json:"counterpart_assignment_id"`
+	CounterpartOccurrenceDate *string `json:"counterpart_occurrence_date"`
+	State                     string  `json:"state"`
+	DecidedByUserID           *int64  `json:"decided_by_user_id"`
+	CreatedAt                 string  `json:"created_at"`
+	DecidedAt                 *string `json:"decided_at"`
+	ExpiresAt                 string  `json:"expires_at"`
 }
 
 type shiftChangeRequestDetailResponse struct {
@@ -92,14 +97,30 @@ func (h *ShiftChangeHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
 		return
 	}
+	occurrenceDate, err := parseOccurrenceDate(body.OccurrenceDate)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid occurrence date")
+		return
+	}
+	var counterpartOccurrenceDate *time.Time
+	if body.CounterpartOccurrenceDate != nil {
+		parsed, err := parseOccurrenceDate(*body.CounterpartOccurrenceDate)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid counterpart occurrence date")
+			return
+		}
+		counterpartOccurrenceDate = &parsed
+	}
 
 	request, err := h.shiftChangeService.CreateShiftChangeRequest(r.Context(), service.CreateShiftChangeInput{
-		PublicationID:           publicationID,
-		RequesterUserID:         user.ID,
-		Type:                    model.ShiftChangeType(body.Type),
-		RequesterAssignmentID:   body.RequesterAssignmentID,
-		CounterpartUserID:       body.CounterpartUserID,
-		CounterpartAssignmentID: body.CounterpartAssignmentID,
+		PublicationID:             publicationID,
+		RequesterUserID:           user.ID,
+		Type:                      model.ShiftChangeType(body.Type),
+		RequesterAssignmentID:     body.RequesterAssignmentID,
+		OccurrenceDate:            occurrenceDate,
+		CounterpartUserID:         body.CounterpartUserID,
+		CounterpartAssignmentID:   body.CounterpartAssignmentID,
+		CounterpartOccurrenceDate: counterpartOccurrenceDate,
 	})
 	if err != nil {
 		h.writeError(w, err)
@@ -262,6 +283,8 @@ func (h *ShiftChangeHandler) writeError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, service.ErrInvalidInput):
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request")
+	case errors.Is(err, service.ErrInvalidOccurrenceDate):
+		writeError(w, http.StatusBadRequest, "INVALID_OCCURRENCE_DATE", "Invalid occurrence date")
 	case errors.Is(err, service.ErrShiftChangeInvalidType):
 		writeError(w, http.StatusBadRequest, "SHIFT_CHANGE_INVALID_TYPE", "Invalid shift change type or payload")
 	case errors.Is(err, service.ErrShiftChangeSelf):
@@ -298,6 +321,7 @@ func newShiftChangeRequestResponse(req *model.ShiftChangeRequest) shiftChangeReq
 		Type:                    string(req.Type),
 		RequesterUserID:         req.RequesterUserID,
 		RequesterAssignmentID:   req.RequesterAssignmentID,
+		OccurrenceDate:          req.OccurrenceDate.Format("2006-01-02"),
 		CounterpartUserID:       req.CounterpartUserID,
 		CounterpartAssignmentID: req.CounterpartAssignmentID,
 		State:                   string(req.State),
@@ -309,5 +333,20 @@ func newShiftChangeRequestResponse(req *model.ShiftChangeRequest) shiftChangeReq
 		decided := req.DecidedAt.Format("2006-01-02T15:04:05Z07:00")
 		resp.DecidedAt = &decided
 	}
+	if req.CounterpartOccurrenceDate != nil {
+		counterpartOccurrenceDate := req.CounterpartOccurrenceDate.Format("2006-01-02")
+		resp.CounterpartOccurrenceDate = &counterpartOccurrenceDate
+	}
 	return resp
+}
+
+func parseOccurrenceDate(raw string) (time.Time, error) {
+	if raw == "" {
+		return time.Time{}, errors.New("empty occurrence date")
+	}
+	parsed, err := time.Parse("2006-01-02", raw)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return parsed, nil
 }

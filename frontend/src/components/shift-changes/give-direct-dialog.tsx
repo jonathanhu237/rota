@@ -32,6 +32,7 @@ type GiveDirectDialogProps = {
   open: boolean
   publicationID: number
   myAssignmentID: number | null
+  occurrenceDate: string | null
   members: PublicationMember[]
   onOpenChange: (open: boolean) => void
 }
@@ -43,6 +44,7 @@ export function GiveDirectDialog({
   open,
   publicationID,
   myAssignmentID,
+  occurrenceDate,
   members,
   onOpenChange,
 }: GiveDirectDialogProps) {
@@ -83,12 +85,13 @@ export function GiveDirectDialog({
 
   const mutation = useMutation({
     mutationFn: async (values: GiveDirectFormValues) => {
-      if (!myAssignmentID) {
+      if (!myAssignmentID || !occurrenceDate) {
         throw new Error("missing assignment")
       }
       return createShiftChangeRequest(publicationID, {
         type: "give_direct",
         requester_assignment_id: myAssignmentID,
+        occurrence_date: occurrenceDate,
         counterpart_user_id: values.counterpart_user_id,
       })
     },
@@ -135,6 +138,11 @@ export function GiveDirectDialog({
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={submitHandler}>
+          {occurrenceDate && (
+            <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+              {t("requests.occurrenceLabel", { date: occurrenceDate })}
+            </div>
+          )}
           <div className="grid gap-2">
             <Label htmlFor="give-direct-user">
               {t("requests.giveDirectDialog.counterpartLabel")}
@@ -180,7 +188,7 @@ export function GiveDirectDialog({
             </Button>
             <Button
               type="submit"
-              disabled={mutation.isPending || !myAssignmentID}
+              disabled={mutation.isPending || !myAssignmentID || !occurrenceDate}
             >
               {mutation.isPending
                 ? t("requests.giveDirectDialog.submitting")

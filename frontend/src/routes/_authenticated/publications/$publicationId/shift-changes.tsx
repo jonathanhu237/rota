@@ -220,6 +220,9 @@ export function ShiftChangeRequestsTable({
               {t("publications.shiftChanges.table.counterpart")}
             </th>
             <th className="px-4 py-3 font-medium">
+              {t("publications.shiftChanges.table.occurrence")}
+            </th>
+            <th className="px-4 py-3 font-medium">
               {t("publications.shiftChanges.table.state")}
             </th>
             <th className="px-4 py-3 font-medium">
@@ -235,7 +238,7 @@ export function ShiftChangeRequestsTable({
             <tr>
               <td
                 className="px-4 py-6 text-center text-muted-foreground"
-                colSpan={7}
+                colSpan={8}
               >
                 {t("publications.shiftChanges.empty")}
               </td>
@@ -252,6 +255,12 @@ export function ShiftChangeRequestsTable({
               </td>
               <td className="px-4 py-3 text-muted-foreground">
                 {resolveName(request.counterpart_user_id)}
+              </td>
+              <td className="px-4 py-3 text-muted-foreground">
+                {request.occurrence_date}
+                {request.counterpart_occurrence_date
+                  ? ` / ${request.counterpart_occurrence_date}`
+                  : ""}
               </td>
               <td className="px-4 py-3">
                 <RequestStateBadge state={request.state} />

@@ -24,20 +24,21 @@ func (c fixedClock) Now() time.Time {
 }
 
 type publicationRepositoryStatefulMock struct {
-	nextPublicationID     int64
-	nextSubmissionID      int64
-	nextAssignmentID      int64
-	deletePublicationFunc func(ctx context.Context, params repository.DeletePublicationParams) error
-	publications          map[int64]*model.Publication
-	templates             map[int64]*model.Template
-	templateSlots         map[int64]*model.TemplateSlot
-	slotPositions         map[int64][]*model.TemplateSlotPosition
-	templateShifts        map[int64]*model.TemplateShift
-	users                 map[int64]*model.User
-	submissions           map[string]*model.AvailabilitySubmission
-	assignments           map[string]*model.Assignment
-	qualifiedByUser       map[int64]map[int64]struct{}
-	shiftChangeRequests   map[int64]*model.ShiftChangeRequest
+	nextPublicationID        int64
+	nextSubmissionID         int64
+	nextAssignmentID         int64
+	deletePublicationFunc    func(ctx context.Context, params repository.DeletePublicationParams) error
+	publications             map[int64]*model.Publication
+	templates                map[int64]*model.Template
+	templateSlots            map[int64]*model.TemplateSlot
+	slotPositions            map[int64][]*model.TemplateSlotPosition
+	templateShifts           map[int64]*model.TemplateShift
+	users                    map[int64]*model.User
+	submissions              map[string]*model.AvailabilitySubmission
+	assignments              map[string]*model.Assignment
+	qualifiedByUser          map[int64]map[int64]struct{}
+	shiftChangeRequests      map[int64]*model.ShiftChangeRequest
+	assignmentOverrideCounts map[int64]int64
 }
 
 func newPublicationRepositoryStatefulMock() *publicationRepositoryStatefulMock {
@@ -139,7 +140,8 @@ func newPublicationRepositoryStatefulMock() *publicationRepositoryStatefulMock {
 				102: {},
 			},
 		},
-		shiftChangeRequests: make(map[int64]*model.ShiftChangeRequest),
+		shiftChangeRequests:      make(map[int64]*model.ShiftChangeRequest),
+		assignmentOverrideCounts: make(map[int64]int64),
 	}
 }
 
@@ -256,7 +258,8 @@ func (m *publicationRepositoryStatefulMock) CreatePublication(
 	}
 
 	if !params.SubmissionStartAt.Before(params.SubmissionEndAt) ||
-		params.PlannedActiveFrom.Before(params.SubmissionEndAt) {
+		params.PlannedActiveFrom.Before(params.SubmissionEndAt) ||
+		!params.PlannedActiveFrom.Before(params.PlannedActiveUntil) {
 		return nil, repository.ErrInvalidPublicationWindow
 	}
 
@@ -268,21 +271,53 @@ func (m *publicationRepositoryStatefulMock) CreatePublication(
 
 	now := params.CreatedAt
 	publication := &model.Publication{
-		ID:                m.nextPublicationID,
-		TemplateID:        params.TemplateID,
-		TemplateName:      template.Name,
-		Name:              params.Name,
-		State:             params.State,
-		SubmissionStartAt: params.SubmissionStartAt,
-		SubmissionEndAt:   params.SubmissionEndAt,
-		PlannedActiveFrom: params.PlannedActiveFrom,
-		CreatedAt:         now,
-		UpdatedAt:         now,
+		ID:                 m.nextPublicationID,
+		TemplateID:         params.TemplateID,
+		TemplateName:       template.Name,
+		Name:               params.Name,
+		Description:        params.Description,
+		State:              params.State,
+		SubmissionStartAt:  params.SubmissionStartAt,
+		SubmissionEndAt:    params.SubmissionEndAt,
+		PlannedActiveFrom:  params.PlannedActiveFrom,
+		PlannedActiveUntil: params.PlannedActiveUntil,
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 
 	template.IsLocked = true
 	m.publications[publication.ID] = clonePublication(publication)
 	m.nextPublicationID++
+
+	return clonePublication(publication), nil
+}
+
+func (m *publicationRepositoryStatefulMock) UpdatePublicationFields(
+	ctx context.Context,
+	params repository.UpdatePublicationFieldsParams,
+) (*model.Publication, error) {
+	publication, ok := m.publications[params.ID]
+	if !ok {
+		return nil, repository.ErrPublicationNotFound
+	}
+
+	newUntil := publication.PlannedActiveUntil
+	if params.PlannedActiveUntil != nil {
+		newUntil = *params.PlannedActiveUntil
+	}
+	if !publication.PlannedActiveFrom.Before(newUntil) {
+		return nil, repository.ErrInvalidPublicationWindow
+	}
+	if params.Name != nil {
+		publication.Name = *params.Name
+	}
+	if params.Description != nil {
+		publication.Description = *params.Description
+	}
+	if params.PlannedActiveUntil != nil {
+		publication.PlannedActiveUntil = *params.PlannedActiveUntil
+	}
+	publication.UpdatedAt = params.UpdatedAt
 
 	return clonePublication(publication), nil
 }
@@ -487,11 +522,19 @@ func (m *publicationRepositoryStatefulMock) DeleteAssignment(
 	for key, assignment := range m.assignments {
 		if assignment.PublicationID == params.PublicationID && assignment.ID == params.AssignmentID {
 			delete(m.assignments, key)
+			delete(m.assignmentOverrideCounts, params.AssignmentID)
 			break
 		}
 	}
 
 	return nil
+}
+
+func (m *publicationRepositoryStatefulMock) CountAssignmentOverridesByAssignment(
+	ctx context.Context,
+	assignmentID int64,
+) (int64, error) {
+	return m.assignmentOverrideCounts[assignmentID], nil
 }
 
 func (m *publicationRepositoryStatefulMock) ReplaceAssignments(
@@ -591,8 +634,7 @@ func (m *publicationRepositoryStatefulMock) EndPublication(
 		return nil, sql.ErrNoRows
 	}
 
-	publication.State = model.PublicationStateEnded
-	publication.EndedAt = &params.Now
+	publication.PlannedActiveUntil = params.Now
 	publication.UpdatedAt = params.Now
 
 	return clonePublication(publication), nil
@@ -797,6 +839,14 @@ func (m *publicationRepositoryStatefulMock) ListPublicationAssignments(
 	return assignments, nil
 }
 
+func (m *publicationRepositoryStatefulMock) ListPublicationAssignmentsForWeek(
+	ctx context.Context,
+	publicationID int64,
+	weekStart time.Time,
+) ([]*model.AssignmentParticipant, error) {
+	return m.ListPublicationAssignments(ctx, publicationID)
+}
+
 func (m *publicationRepositoryStatefulMock) GetAssignmentBoardView(
 	ctx context.Context,
 	publicationID int64,
@@ -908,11 +958,12 @@ func TestPublicationServiceCreatePublication(t *testing.T) {
 		ctx := stub.ContextWith(context.Background())
 
 		publication, err := service.CreatePublication(ctx, CreatePublicationInput{
-			TemplateID:        1,
-			Name:              "May availability",
-			SubmissionStartAt: now.Add(2 * time.Hour),
-			SubmissionEndAt:   now.Add(26 * time.Hour),
-			PlannedActiveFrom: now.Add(48 * time.Hour),
+			TemplateID:         1,
+			Name:               "May availability",
+			SubmissionStartAt:  now.Add(2 * time.Hour),
+			SubmissionEndAt:    now.Add(26 * time.Hour),
+			PlannedActiveFrom:  now.Add(48 * time.Hour),
+			PlannedActiveUntil: now.Add(8 * 24 * time.Hour),
 		})
 		if err != nil {
 			t.Fatalf("CreatePublication returned error: %v", err)
@@ -955,25 +1006,27 @@ func TestPublicationServiceCreatePublication(t *testing.T) {
 		now := time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC)
 		repo.templates[1].IsLocked = true
 		repo.publications[1] = &model.Publication{
-			ID:                1,
-			TemplateID:        1,
-			TemplateName:      "Core Week",
-			Name:              "Past run",
-			State:             model.PublicationStateEnded,
-			SubmissionStartAt: now.Add(-72 * time.Hour),
-			SubmissionEndAt:   now.Add(-48 * time.Hour),
-			PlannedActiveFrom: now.Add(-24 * time.Hour),
-			CreatedAt:         now.Add(-96 * time.Hour),
-			UpdatedAt:         now.Add(-24 * time.Hour),
+			ID:                 1,
+			TemplateID:         1,
+			TemplateName:       "Core Week",
+			Name:               "Past run",
+			State:              model.PublicationStateEnded,
+			SubmissionStartAt:  now.Add(-72 * time.Hour),
+			SubmissionEndAt:    now.Add(-48 * time.Hour),
+			PlannedActiveFrom:  now.Add(-24 * time.Hour),
+			PlannedActiveUntil: now.Add(-12 * time.Hour),
+			CreatedAt:          now.Add(-96 * time.Hour),
+			UpdatedAt:          now.Add(-24 * time.Hour),
 		}
 		service := NewPublicationService(repo, fixedClock{now: now})
 
 		_, err := service.CreatePublication(context.Background(), CreatePublicationInput{
-			TemplateID:        1,
-			Name:              "Next run",
-			SubmissionStartAt: now.Add(2 * time.Hour),
-			SubmissionEndAt:   now.Add(26 * time.Hour),
-			PlannedActiveFrom: now.Add(48 * time.Hour),
+			TemplateID:         1,
+			Name:               "Next run",
+			SubmissionStartAt:  now.Add(2 * time.Hour),
+			SubmissionEndAt:    now.Add(26 * time.Hour),
+			PlannedActiveFrom:  now.Add(48 * time.Hour),
+			PlannedActiveUntil: now.Add(8 * 24 * time.Hour),
 		})
 		if err != nil {
 			t.Fatalf("CreatePublication returned error: %v", err)
@@ -989,25 +1042,27 @@ func TestPublicationServiceCreatePublication(t *testing.T) {
 		repo := newPublicationRepositoryStatefulMock()
 		now := time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC)
 		repo.publications[1] = &model.Publication{
-			ID:                1,
-			TemplateID:        1,
-			TemplateName:      "Core Week",
-			Name:              "Existing",
-			State:             model.PublicationStateDraft,
-			SubmissionStartAt: now.Add(-72 * time.Hour),
-			SubmissionEndAt:   now.Add(-48 * time.Hour),
-			PlannedActiveFrom: now.Add(-24 * time.Hour),
-			CreatedAt:         now.Add(-96 * time.Hour),
-			UpdatedAt:         now.Add(-96 * time.Hour),
+			ID:                 1,
+			TemplateID:         1,
+			TemplateName:       "Core Week",
+			Name:               "Existing",
+			State:              model.PublicationStateDraft,
+			SubmissionStartAt:  now.Add(-72 * time.Hour),
+			SubmissionEndAt:    now.Add(-48 * time.Hour),
+			PlannedActiveFrom:  now.Add(-24 * time.Hour),
+			PlannedActiveUntil: now.Add(7 * 24 * time.Hour),
+			CreatedAt:          now.Add(-96 * time.Hour),
+			UpdatedAt:          now.Add(-96 * time.Hour),
 		}
 		service := NewPublicationService(repo, fixedClock{now: now})
 
 		_, err := service.CreatePublication(context.Background(), CreatePublicationInput{
-			TemplateID:        1,
-			Name:              "Blocked",
-			SubmissionStartAt: now.Add(2 * time.Hour),
-			SubmissionEndAt:   now.Add(26 * time.Hour),
-			PlannedActiveFrom: now.Add(48 * time.Hour),
+			TemplateID:         1,
+			Name:               "Blocked",
+			SubmissionStartAt:  now.Add(2 * time.Hour),
+			SubmissionEndAt:    now.Add(26 * time.Hour),
+			PlannedActiveFrom:  now.Add(48 * time.Hour),
+			PlannedActiveUntil: now.Add(8 * 24 * time.Hour),
 		})
 		if !errors.Is(err, ErrPublicationAlreadyExists) {
 			t.Fatalf("expected ErrPublicationAlreadyExists, got %v", err)
@@ -1026,11 +1081,12 @@ func TestPublicationServiceCreatePublication(t *testing.T) {
 		ctx := stub.ContextWith(context.Background())
 
 		_, err := service.CreatePublication(ctx, CreatePublicationInput{
-			TemplateID:        1,
-			Name:              "Invalid",
-			SubmissionStartAt: now.Add(3 * time.Hour),
-			SubmissionEndAt:   now.Add(2 * time.Hour),
-			PlannedActiveFrom: now.Add(4 * time.Hour),
+			TemplateID:         1,
+			Name:               "Invalid",
+			SubmissionStartAt:  now.Add(3 * time.Hour),
+			SubmissionEndAt:    now.Add(2 * time.Hour),
+			PlannedActiveFrom:  now.Add(4 * time.Hour),
+			PlannedActiveUntil: now.Add(8 * 24 * time.Hour),
 		})
 		if !errors.Is(err, ErrInvalidPublicationWindow) {
 			t.Fatalf("expected ErrInvalidPublicationWindow, got %v", err)
@@ -1049,11 +1105,12 @@ func TestPublicationServiceCreatePublication(t *testing.T) {
 		service := NewPublicationService(repo, fixedClock{now: now})
 
 		_, err := service.CreatePublication(context.Background(), CreatePublicationInput{
-			TemplateID:        999,
-			Name:              "Invalid",
-			SubmissionStartAt: now.Add(2 * time.Hour),
-			SubmissionEndAt:   now.Add(3 * time.Hour),
-			PlannedActiveFrom: now.Add(4 * time.Hour),
+			TemplateID:         999,
+			Name:               "Invalid",
+			SubmissionStartAt:  now.Add(2 * time.Hour),
+			SubmissionEndAt:    now.Add(3 * time.Hour),
+			PlannedActiveFrom:  now.Add(4 * time.Hour),
+			PlannedActiveUntil: now.Add(8 * 24 * time.Hour),
 		})
 		if !errors.Is(err, ErrTemplateNotFound) {
 			t.Fatalf("expected ErrTemplateNotFound, got %v", err)
@@ -1076,11 +1133,12 @@ func TestPublicationServiceCreatePublication(t *testing.T) {
 					IsLocked: false,
 				},
 				input: CreatePublicationInput{
-					TemplateID:        1,
-					Name:              "Blocked",
-					SubmissionStartAt: time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC),
-					SubmissionEndAt:   time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC),
-					PlannedActiveFrom: time.Date(2026, 4, 22, 12, 0, 0, 0, time.UTC),
+					TemplateID:         1,
+					Name:               "Blocked",
+					SubmissionStartAt:  time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC),
+					SubmissionEndAt:    time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC),
+					PlannedActiveFrom:  time.Date(2026, 4, 22, 12, 0, 0, 0, time.UTC),
+					PlannedActiveUntil: time.Date(2026, 4, 29, 12, 0, 0, 0, time.UTC),
 				},
 			},
 			{
@@ -1091,11 +1149,12 @@ func TestPublicationServiceCreatePublication(t *testing.T) {
 					IsLocked: false,
 				},
 				input: CreatePublicationInput{
-					TemplateID:        1,
-					Name:              "Invalid",
-					SubmissionStartAt: time.Date(2026, 4, 20, 14, 0, 0, 0, time.UTC),
-					SubmissionEndAt:   time.Date(2026, 4, 20, 13, 0, 0, 0, time.UTC),
-					PlannedActiveFrom: time.Date(2026, 4, 20, 15, 0, 0, 0, time.UTC),
+					TemplateID:         1,
+					Name:               "Invalid",
+					SubmissionStartAt:  time.Date(2026, 4, 20, 14, 0, 0, 0, time.UTC),
+					SubmissionEndAt:    time.Date(2026, 4, 20, 13, 0, 0, 0, time.UTC),
+					PlannedActiveFrom:  time.Date(2026, 4, 20, 15, 0, 0, 0, time.UTC),
+					PlannedActiveUntil: time.Date(2026, 4, 27, 15, 0, 0, 0, time.UTC),
 				},
 			},
 			{
@@ -1106,11 +1165,12 @@ func TestPublicationServiceCreatePublication(t *testing.T) {
 					IsLocked: true,
 				},
 				input: CreatePublicationInput{
-					TemplateID:        999,
-					Name:              "Missing",
-					SubmissionStartAt: time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC),
-					SubmissionEndAt:   time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC),
-					PlannedActiveFrom: time.Date(2026, 4, 22, 12, 0, 0, 0, time.UTC),
+					TemplateID:         999,
+					Name:               "Missing",
+					SubmissionStartAt:  time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC),
+					SubmissionEndAt:    time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC),
+					PlannedActiveFrom:  time.Date(2026, 4, 22, 12, 0, 0, 0, time.UTC),
+					PlannedActiveUntil: time.Date(2026, 4, 29, 12, 0, 0, 0, time.UTC),
 				},
 			},
 		}
@@ -1864,10 +1924,11 @@ func TestResolvePublicationState(t *testing.T) {
 
 	now := time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC)
 	base := &model.Publication{
-		State:             model.PublicationStateDraft,
-		SubmissionStartAt: now.Add(2 * time.Hour),
-		SubmissionEndAt:   now.Add(4 * time.Hour),
-		PlannedActiveFrom: now.Add(6 * time.Hour),
+		State:              model.PublicationStateDraft,
+		SubmissionStartAt:  now.Add(2 * time.Hour),
+		SubmissionEndAt:    now.Add(4 * time.Hour),
+		PlannedActiveFrom:  now.Add(6 * time.Hour),
+		PlannedActiveUntil: now.Add(14 * 24 * time.Hour),
 	}
 
 	tests := []struct {

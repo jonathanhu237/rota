@@ -14,14 +14,15 @@ import (
 )
 
 var (
-	ErrShiftChangeNotFound     = model.ErrShiftChangeNotFound
-	ErrShiftChangeInvalidType  = model.ErrShiftChangeInvalidType
-	ErrShiftChangeNotOwner     = model.ErrShiftChangeNotOwner
-	ErrShiftChangeNotQualified = model.ErrShiftChangeNotQualified
-	ErrShiftChangeNotPending   = model.ErrShiftChangeNotPending
-	ErrShiftChangeExpired      = model.ErrShiftChangeExpired
-	ErrShiftChangeInvalidated  = model.ErrShiftChangeInvalidated
-	ErrShiftChangeSelf         = model.ErrShiftChangeSelf
+	ErrShiftChangeNotFound       = model.ErrShiftChangeNotFound
+	ErrShiftChangeInvalidType    = model.ErrShiftChangeInvalidType
+	ErrShiftChangeNotOwner       = model.ErrShiftChangeNotOwner
+	ErrShiftChangeNotQualified   = model.ErrShiftChangeNotQualified
+	ErrShiftChangeNotPending     = model.ErrShiftChangeNotPending
+	ErrShiftChangeExpired        = model.ErrShiftChangeExpired
+	ErrShiftChangeInvalidated    = model.ErrShiftChangeInvalidated
+	ErrShiftChangeSelf           = model.ErrShiftChangeSelf
+	ErrShiftChangeAssignmentMiss = model.ErrShiftChangeAssignmentMiss
 )
 
 // shiftChangeRepository is the subset of repository operations the service
@@ -90,12 +91,14 @@ func NewShiftChangeService(
 // CreateShiftChangeInput is the admin-authoritative input shape for the
 // create request.
 type CreateShiftChangeInput struct {
-	PublicationID           int64
-	RequesterUserID         int64
-	Type                    model.ShiftChangeType
-	RequesterAssignmentID   int64
-	CounterpartUserID       *int64
-	CounterpartAssignmentID *int64
+	PublicationID             int64
+	RequesterUserID           int64
+	Type                      model.ShiftChangeType
+	RequesterAssignmentID     int64
+	OccurrenceDate            time.Time
+	CounterpartUserID         *int64
+	CounterpartAssignmentID   *int64
+	CounterpartOccurrenceDate *time.Time
 }
 
 // CreateShiftChangeRequest validates preconditions and persists a new row.
@@ -103,7 +106,10 @@ func (s *ShiftChangeService) CreateShiftChangeRequest(
 	ctx context.Context,
 	input CreateShiftChangeInput,
 ) (*model.ShiftChangeRequest, error) {
-	if input.PublicationID <= 0 || input.RequesterUserID <= 0 || input.RequesterAssignmentID <= 0 {
+	if input.PublicationID <= 0 ||
+		input.RequesterUserID <= 0 ||
+		input.RequesterAssignmentID <= 0 ||
+		input.OccurrenceDate.IsZero() {
 		return nil, ErrInvalidInput
 	}
 	if !isValidShiftChangeType(input.Type) {
@@ -142,13 +148,23 @@ func (s *ShiftChangeService) CreateShiftChangeRequest(
 	if requesterShift == nil {
 		return nil, ErrTemplateSlotPositionNotFound
 	}
+	if err := model.IsValidOccurrence(publication, publicationShiftSlot(requesterShift), input.OccurrenceDate, now); err != nil {
+		return nil, ErrInvalidOccurrenceDate
+	}
+	expiresAt, err := model.OccurrenceStart(publicationShiftSlot(requesterShift), input.OccurrenceDate)
+	if err != nil {
+		return nil, err
+	}
 
 	var counterpartAssignment *model.Assignment
 	var counterpartShift *model.PublicationShift
 
 	switch input.Type {
 	case model.ShiftChangeTypeSwap:
-		if input.CounterpartUserID == nil || input.CounterpartAssignmentID == nil {
+		if input.CounterpartUserID == nil ||
+			input.CounterpartAssignmentID == nil ||
+			input.CounterpartOccurrenceDate == nil ||
+			input.CounterpartOccurrenceDate.IsZero() {
 			return nil, ErrShiftChangeInvalidType
 		}
 		if *input.CounterpartUserID == input.RequesterUserID {
@@ -170,6 +186,9 @@ func (s *ShiftChangeService) CreateShiftChangeRequest(
 		counterpartShift = findPublicationShiftForAssignment(shiftIndex, counterpartAssignment)
 		if counterpartShift == nil {
 			return nil, ErrTemplateSlotPositionNotFound
+		}
+		if err := model.IsValidOccurrence(publication, publicationShiftSlot(counterpartShift), *input.CounterpartOccurrenceDate, now); err != nil {
+			return nil, ErrInvalidOccurrenceDate
 		}
 		if err := s.mutuallyQualified(ctx, input.RequesterUserID, *input.CounterpartUserID, requesterAssignment.PositionID, counterpartAssignment.PositionID); err != nil {
 			return nil, err
@@ -200,14 +219,16 @@ func (s *ShiftChangeService) CreateShiftChangeRequest(
 	}
 
 	created, err := s.shiftChangeRepo.Create(ctx, repository.CreateShiftChangeRequestParams{
-		PublicationID:           input.PublicationID,
-		Type:                    input.Type,
-		RequesterUserID:         input.RequesterUserID,
-		RequesterAssignmentID:   input.RequesterAssignmentID,
-		CounterpartUserID:       input.CounterpartUserID,
-		CounterpartAssignmentID: input.CounterpartAssignmentID,
-		ExpiresAt:               publication.PlannedActiveFrom,
-		CreatedAt:               now,
+		PublicationID:             input.PublicationID,
+		Type:                      input.Type,
+		RequesterUserID:           input.RequesterUserID,
+		RequesterAssignmentID:     input.RequesterAssignmentID,
+		OccurrenceDate:            input.OccurrenceDate,
+		CounterpartUserID:         input.CounterpartUserID,
+		CounterpartAssignmentID:   input.CounterpartAssignmentID,
+		CounterpartOccurrenceDate: input.CounterpartOccurrenceDate,
+		ExpiresAt:                 expiresAt,
+		CreatedAt:                 now,
 	})
 	if err != nil {
 		return nil, err
@@ -459,7 +480,7 @@ func (s *ShiftChangeService) ApproveShiftChangeRequest(
 	var receiverUserID int64
 	switch req.Type {
 	case model.ShiftChangeTypeSwap:
-		if req.CounterpartAssignmentID == nil {
+		if req.CounterpartAssignmentID == nil || req.CounterpartOccurrenceDate == nil {
 			return ErrShiftChangeInvalidated
 		}
 		counterpartAssignment, err := s.publicationRepo.GetAssignment(ctx, *req.CounterpartAssignmentID)
@@ -503,13 +524,16 @@ func (s *ShiftChangeService) ApproveShiftChangeRequest(
 	switch req.Type {
 	case model.ShiftChangeTypeSwap:
 		_, err := s.shiftChangeRepo.ApplySwap(ctx, repository.ApplySwapParams{
-			RequestID:               req.ID,
-			RequesterAssignmentID:   req.RequesterAssignmentID,
-			RequesterUserID:         req.RequesterUserID,
-			CounterpartAssignmentID: *req.CounterpartAssignmentID,
-			CounterpartUserID:       receiverUserID,
-			DecidedByUserID:         viewerUserID,
-			Now:                     now,
+			RequestID:                 req.ID,
+			PublicationID:             req.PublicationID,
+			RequesterAssignmentID:     req.RequesterAssignmentID,
+			RequesterUserID:           req.RequesterUserID,
+			OccurrenceDate:            req.OccurrenceDate,
+			CounterpartAssignmentID:   *req.CounterpartAssignmentID,
+			CounterpartUserID:         receiverUserID,
+			CounterpartOccurrenceDate: *req.CounterpartOccurrenceDate,
+			DecidedByUserID:           viewerUserID,
+			Now:                       now,
 		})
 		if err != nil {
 			return s.mapApplyError(ctx, req, err, now)
@@ -518,8 +542,10 @@ func (s *ShiftChangeService) ApproveShiftChangeRequest(
 	default:
 		_, err := s.shiftChangeRepo.ApplyGive(ctx, repository.ApplyGiveParams{
 			RequestID:             req.ID,
+			PublicationID:         req.PublicationID,
 			RequesterAssignmentID: req.RequesterAssignmentID,
 			RequesterUserID:       req.RequesterUserID,
+			OccurrenceDate:        req.OccurrenceDate,
 			ReceiverUserID:        receiverUserID,
 			DecidedByUserID:       viewerUserID,
 			Now:                   now,
@@ -811,12 +837,16 @@ func shiftChangeCreateMetadata(req *model.ShiftChangeRequest) map[string]any {
 		"publication_id":          req.PublicationID,
 		"requester_user_id":       req.RequesterUserID,
 		"requester_assignment_id": req.RequesterAssignmentID,
+		"occurrence_date":         req.OccurrenceDate.Format("2006-01-02"),
 	}
 	if req.CounterpartUserID != nil {
 		metadata["counterpart_user_id"] = *req.CounterpartUserID
 	}
 	if req.CounterpartAssignmentID != nil {
 		metadata["counterpart_assignment_id"] = *req.CounterpartAssignmentID
+	}
+	if req.CounterpartOccurrenceDate != nil {
+		metadata["counterpart_occurrence_date"] = req.CounterpartOccurrenceDate.Format("2006-01-02")
 	}
 	return metadata
 }

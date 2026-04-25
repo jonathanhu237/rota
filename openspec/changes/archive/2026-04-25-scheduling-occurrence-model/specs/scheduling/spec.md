@@ -86,9 +86,9 @@ A `planned_active_until` change SHALL be rejected with HTTP 400 and error code `
 
 ### Requirement: Publication data model and window invariant
 
-`publications` rows SHALL store `id`, `template_id`, `name`, `state`, `submission_start_at`, `submission_end_at`, `planned_active_from`, `planned_active_until`, `activated_at` (nullable), `created_at`, `updated_at`. A database CHECK SHALL enforce `state ∈ { DRAFT, COLLECTING, ASSIGNING, PUBLISHED, ACTIVE, ENDED }`. A database CHECK SHALL enforce `submission_start_at < submission_end_at <= planned_active_from < planned_active_until`. `template_id` SHALL use `ON DELETE RESTRICT`.
+`publications` rows SHALL store `id`, `template_id`, `name`, `description` (TEXT, default empty string), `state`, `submission_start_at`, `submission_end_at`, `planned_active_from`, `planned_active_until`, `activated_at` (nullable), `created_at`, `updated_at`. A database CHECK SHALL enforce `state ∈ { DRAFT, COLLECTING, ASSIGNING, PUBLISHED, ACTIVE, ENDED }`. A database CHECK SHALL enforce `submission_start_at < submission_end_at <= planned_active_from < planned_active_until`. `template_id` SHALL use `ON DELETE RESTRICT`.
 
-The `ended_at` column SHALL NOT exist; the moment a publication ends is derived from `planned_active_until` (effective ENDED happens when `NOW() > planned_active_until`). Audit records remain the source of truth for "when did the admin act".
+The `ended_at` column SHALL NOT exist; the moment a publication ends is derived from `planned_active_until` (effective ENDED happens when `NOW() >= planned_active_until`). Audit records remain the source of truth for "when did the admin act".
 
 #### Scenario: Invalid window rejected by CHECK
 
@@ -129,7 +129,7 @@ To bridge the gap between effective state (clock-driven) and stored state (write
 
 ### Requirement: Publication state transitions
 
-The state machine SHALL be `DRAFT → COLLECTING → ASSIGNING → PUBLISHED → ACTIVE → ENDED`. Transitions from `DRAFT → COLLECTING` and `COLLECTING → ASSIGNING` SHALL be time-driven (effective-state resolution). Transitions from `ASSIGNING → PUBLISHED` and `PUBLISHED → ACTIVE` SHALL be manual admin actions via `POST /publications/{id}/publish` and `POST /publications/{id}/activate` respectively. The transition `ACTIVE → ENDED` SHALL be time-driven by `NOW() > planned_active_until`; admin SHALL be able to short-circuit it via `PATCH /publications/{id} { planned_active_until: ... }` with a current or past timestamp, and `POST /publications/{id}/end` SHALL remain available as a convenience alias that sets `planned_active_until = NOW()` atomically.
+The state machine SHALL be `DRAFT → COLLECTING → ASSIGNING → PUBLISHED → ACTIVE → ENDED`. Transitions from `DRAFT → COLLECTING` and `COLLECTING → ASSIGNING` SHALL be time-driven (effective-state resolution). Transitions from `ASSIGNING → PUBLISHED` and `PUBLISHED → ACTIVE` SHALL be manual admin actions via `POST /publications/{id}/publish` and `POST /publications/{id}/activate` respectively. The transition `ACTIVE → ENDED` SHALL be time-driven by `NOW() >= planned_active_until`; admin SHALL be able to short-circuit it via `PATCH /publications/{id} { planned_active_until: ... }` with a current or past timestamp, and `POST /publications/{id}/end` SHALL remain available as a convenience alias that sets `planned_active_until = NOW()` atomically.
 
 The manual transitions (publish, activate) SHALL be implemented as single-row conditional `UPDATE`s; `sql.ErrNoRows` SHALL be folded into a domain "not in expected state" error so concurrent clicks never double-transition.
 
@@ -171,7 +171,7 @@ The manual transitions (publish, activate) SHALL be implemented as single-row co
 Effective state SHALL be computed on every publication read according to the following ordered cascade:
 
 1. If `pub.state = 'ENDED'`, the effective state is `ENDED`.
-2. Else if `pub.state = 'ACTIVE'` and `NOW() > pub.planned_active_until`, the effective state is `ENDED`.
+2. Else if `pub.state = 'ACTIVE'` and `NOW() >= pub.planned_active_until`, the effective state is `ENDED`.
 3. Else if `pub.state ∈ { 'PUBLISHED', 'ACTIVE' }`, the effective state equals the stored state.
 4. Else if `NOW() >= pub.submission_end_at`, the effective state is `ASSIGNING`.
 5. Else if `NOW() >= pub.submission_start_at`, the effective state is `COLLECTING`.
@@ -191,9 +191,9 @@ No background job SHALL advance the stored state. Stored state SHALL be advanced
 - **WHEN** any reader resolves effective state
 - **THEN** the effective state is `ASSIGNING`
 
-#### Scenario: ACTIVE is observed as ENDED after planned_active_until
+#### Scenario: ACTIVE is observed as ENDED at or after planned_active_until
 
-- **GIVEN** `NOW() > planned_active_until` and a stored state of `ACTIVE`
+- **GIVEN** `NOW() >= planned_active_until` and a stored state of `ACTIVE`
 - **WHEN** any reader resolves effective state
 - **THEN** the effective state is `ENDED` even though the stored state remains `ACTIVE` until the next publication-create sweep
 

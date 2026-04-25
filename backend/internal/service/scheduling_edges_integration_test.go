@@ -34,6 +34,7 @@ func TestApplyGiveDisabledReceiver(t *testing.T) {
 		Type:                  model.ShiftChangeTypeGiveDirect,
 		RequesterUserID:       requester,
 		RequesterAssignmentID: assignment.ID,
+		OccurrenceDate:        time.Date(2026, 4, 27, 0, 0, 0, 0, time.UTC),
 		CounterpartUserID:     &receiver,
 		ExpiresAt:             now.Add(time.Hour),
 		CreatedAt:             now,
@@ -69,6 +70,7 @@ func TestApplyGiveDisabledReceiverWhileStatusLocked(t *testing.T) {
 		Type:                  model.ShiftChangeTypeGiveDirect,
 		RequesterUserID:       requester,
 		RequesterAssignmentID: giveAssignment.ID,
+		OccurrenceDate:        time.Date(2026, 4, 27, 0, 0, 0, 0, time.UTC),
 		CounterpartUserID:     &receiver,
 		ExpiresAt:             now.Add(time.Hour),
 		CreatedAt:             now,
@@ -87,8 +89,10 @@ func TestApplyGiveDisabledReceiverWhileStatusLocked(t *testing.T) {
 	go func() {
 		_, err := shiftRepo.ApplyGive(ctx, repository.ApplyGiveParams{
 			RequestID:             request.ID,
+			PublicationID:         pubID,
 			RequesterAssignmentID: giveAssignment.ID,
 			RequesterUserID:       requester,
+			OccurrenceDate:        request.OccurrenceDate,
 			ReceiverUserID:        receiver,
 			DecidedByUserID:       receiver,
 			Now:                   now,
@@ -130,14 +134,16 @@ func TestApplySwapDisabledCounterpart(t *testing.T) {
 	shiftRepo := repository.NewShiftChangeRepository(db)
 	shiftSvc := NewShiftChangeService(shiftRepo, pubRepo, nil, "", fixedClock{now: now}, nil)
 	request := seedServiceShiftChange(t, shiftRepo, repository.CreateShiftChangeRequestParams{
-		PublicationID:           pubID,
-		Type:                    model.ShiftChangeTypeSwap,
-		RequesterUserID:         requester,
-		RequesterAssignmentID:   requesterAssignment.ID,
-		CounterpartUserID:       &counterpart,
-		CounterpartAssignmentID: &counterpartAssignment.ID,
-		ExpiresAt:               now.Add(time.Hour),
-		CreatedAt:               now,
+		PublicationID:             pubID,
+		Type:                      model.ShiftChangeTypeSwap,
+		RequesterUserID:           requester,
+		RequesterAssignmentID:     requesterAssignment.ID,
+		OccurrenceDate:            time.Date(2026, 4, 27, 0, 0, 0, 0, time.UTC),
+		CounterpartUserID:         &counterpart,
+		CounterpartAssignmentID:   &counterpartAssignment.ID,
+		CounterpartOccurrenceDate: timePtr(time.Date(2026, 4, 28, 0, 0, 0, 0, time.UTC)),
+		ExpiresAt:                 now.Add(time.Hour),
+		CreatedAt:                 now,
 	})
 	disableServiceUser(t, db, counterpart)
 

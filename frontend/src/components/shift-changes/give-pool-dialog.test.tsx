@@ -25,6 +25,7 @@ describe("GivePoolDialog", () => {
         open
         publicationID={1}
         myAssignmentID={null}
+        occurrenceDate="2026-04-20"
         onOpenChange={vi.fn()}
       />,
     )
@@ -41,6 +42,7 @@ describe("GivePoolDialog", () => {
         open
         publicationID={1}
         myAssignmentID={42}
+        occurrenceDate="2026-04-20"
         onOpenChange={vi.fn()}
       />,
     )
@@ -59,6 +61,7 @@ describe("GivePoolDialog", () => {
         open
         publicationID={1}
         myAssignmentID={42}
+        occurrenceDate="2026-04-20"
         onOpenChange={onOpenChange}
       />,
     )

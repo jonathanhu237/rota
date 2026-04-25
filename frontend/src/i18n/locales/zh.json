@@ -446,6 +446,7 @@
     "submissionStartAt": "开始收集时间",
     "submissionEndAt": "结束收集时间",
     "plannedActiveFrom": "计划生效时间",
+    "plannedActiveUntil": "计划结束时间",
     "empty": "暂无发布。",
     "pageSummary": "显示第 {{start}}-{{end}} 条，共 {{total}} 条发布",
     "table": {
@@ -453,7 +454,7 @@
       "template": "模板",
       "state": "状态",
       "submissionWindow": "提交窗口",
-      "plannedActiveFrom": "计划生效时间",
+      "activeWindow": "生效窗口",
       "createdAt": "创建时间",
       "actions": "操作"
     },
@@ -488,10 +489,13 @@
       "submissionStartAt": "开始收集时间",
       "submissionEndAt": "结束收集时间",
       "plannedActiveFrom": "计划生效时间",
+      "plannedActiveUntil": "计划结束时间",
       "activatedAt": "生效时间",
-      "endedAt": "结束时间",
       "createdAt": "创建时间",
       "updatedAt": "更新时间",
+      "editPlannedActiveUntil": "编辑计划结束时间",
+      "save": "保存",
+      "saving": "保存中...",
       "stateDescription": {
         "draft": "将在 {{time}} 开放提交。",
         "collecting": "可提交时间截止到 {{time}}。",
@@ -552,6 +556,7 @@
         "type": "类型",
         "requester": "申请人",
         "counterpart": "对方",
+        "occurrence": "日期",
         "state": "状态",
         "createdAt": "创建时间",
         "decidedAt": "处理时间"
@@ -577,17 +582,20 @@
       "submissionStartRequired": "请选择开始收集时间",
       "submissionEndRequired": "请选择结束收集时间",
       "plannedActiveFromRequired": "请选择计划生效时间",
-      "invalidWindow": "开始收集时间必须早于结束收集时间，且结束收集时间必须早于或等于计划生效时间"
+      "plannedActiveUntilRequired": "请选择计划结束时间",
+      "invalidWindow": "开始收集、结束收集、计划生效和计划结束时间必须按时间顺序排列"
     },
     "success": {
       "created": "发布创建成功。",
       "deleted": "发布删除成功。",
       "published": "发布已成功公示。",
       "activated": "发布已成功生效。",
-      "ended": "发布已成功结束。"
+      "ended": "发布已成功结束。",
+      "updated": "发布已更新。"
     },
     "errors": {
       "FORBIDDEN": "无权限访问",
+      "INVALID_OCCURRENCE_DATE": "请选择生效窗口内的周一。",
       "INVALID_PUBLICATION_WINDOW": "发布时间窗口顺序不正确",
       "INVALID_REQUEST": "请求无效",
       "INTERNAL_ERROR": "服务器内部错误",
@@ -647,6 +655,8 @@
     "descriptionWithPublication": "正在显示 {{name}} 的当前每周排班。",
     "loadError": "当前无法加载排班表。",
     "empty": "当前没有已生效的发布。",
+    "previousWeek": "上一周",
+    "nextWeek": "下一周",
     "today": "今天",
     "emptyWeekday": "这一天没有排班班次。",
     "emptyAssignments": "这个班次还没有分配员工。",
@@ -689,6 +699,7 @@
     "descriptionWithPublication": "{{name}} 的调班申请。",
     "empty": "当前没有任何调班申请。",
     "unknownUser": "用户 #{{id}}",
+    "occurrenceLabel": "日期：{{date}}",
     "sections": {
       "waiting": "等待我处理",
       "sent": "我发起的",
@@ -773,6 +784,7 @@
     },
     "errors": {
       "FORBIDDEN": "无权限访问",
+      "INVALID_OCCURRENCE_DATE": "请选择该班次有效且尚未开始的日期。",
       "INVALID_REQUEST": "请求无效",
       "INTERNAL_ERROR": "发生了错误，请稍后重试。",
       "PUBLICATION_NOT_FOUND": "发布不存在",
