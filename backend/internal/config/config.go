@@ -9,6 +9,7 @@ import (
 
 // Config holds all configuration for the application
 type Config struct {
+	AppEnv                 string        `env:"APP_ENV" envDefault:"development"`
 	ServerPort             int           `env:"SERVER_PORT,required"`
 	PostgresHost           string        `env:"POSTGRES_HOST,required"`
 	PostgresPort           int           `env:"POSTGRES_PORT,required"`

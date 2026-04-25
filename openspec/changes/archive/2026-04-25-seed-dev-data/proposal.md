@@ -12,7 +12,7 @@ A `make seed` command that produces a known-good database state in seconds remov
 - Three scenarios selectable by `--scenario` flag:
   - `basic`: minimum data to navigate the admin UI without empty-state errors (5 active users, 3 positions, 1 empty template).
   - `full`: enough state to immediately exercise auto-assign and shift-change flows (basic + populated template + ASSIGNING-state publication + availability submissions; admin runs auto-assign to fill assignments).
-  - `stress`: large-volume data for UI density and rough performance feel (50 users, 8 positions, populated template, multiple publications including ENDED + ACTIVE + ASSIGNING).
+  - `stress`: large-volume data for UI density and rough performance feel (50 users, 8 positions, populated template, one ACTIVE publication, and ENDED historical/fixture publications).
 - Implementation goes through **direct SQL** (not the service layer): the Go binary computes bcrypt password hashes itself, runs raw `INSERT` statements wrapped in a transaction per scenario, and skips audit-log emission on purpose — seed data should not pollute the audit trail.
 - Idempotency by **wipe-and-reseed**: each `make seed` call begins by `TRUNCATE`-ing the data tables (everything except `goose_db_version`) inside a transaction, then inserting fresh rows. The bootstrap admin row is recreated to match `BOOTSTRAP_ADMIN_*` env vars.
 - Production guard: the binary refuses to run when `cfg.AppEnv == "production"` (panics on startup with a clear message). No flag overrides this — production seeding is not a use case.

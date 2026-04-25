@@ -5,8 +5,9 @@ export
 GOOSE_DRIVER = postgres
 GOOSE_DBSTRING = postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
 GOOSE_MIGRATION_DIR = ./migrations
+SCENARIO ?= basic
 
-.PHONY: run-backend run-frontend migrate-up migrate-down migrate-status test-backend test-integration prod-up prod-down prod-logs prod-pull
+.PHONY: run-backend run-frontend migrate-up migrate-down migrate-status seed test-backend test-integration prod-up prod-down prod-logs prod-pull
 
 run-backend:
 	@cd backend && go run ./cmd/server
@@ -22,6 +23,9 @@ migrate-down:
 
 migrate-status:
 	@GOOSE_DRIVER=$(GOOSE_DRIVER) GOOSE_DBSTRING=$(GOOSE_DBSTRING) GOOSE_MIGRATION_DIR=$(GOOSE_MIGRATION_DIR) goose status
+
+seed:
+	@cd backend && go run ./cmd/seed --scenario=$(SCENARIO)
 
 test-backend:
 	@cd backend && go test ./...
