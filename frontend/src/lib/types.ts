@@ -48,6 +48,7 @@ export type QualifiedShiftComposition = {
 
 export type SlotRef = {
   slot_id: number
+  weekday: number
 }
 
 export type TemplateSlotPosition = {
@@ -62,7 +63,7 @@ export type TemplateSlotPosition = {
 export type TemplateSlot = {
   id: number
   template_id: number
-  weekday: number
+  weekdays: number[]
   start_time: string
   end_time: string
   created_at: string

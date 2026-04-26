@@ -25,6 +25,7 @@ type CreateAssignmentParams struct {
 	PublicationID int64
 	UserID        int64
 	SlotID        int64
+	Weekday       int
 	PositionID    int64
 	CreatedAt     time.Time
 }
@@ -38,6 +39,7 @@ type DeleteAssignmentParams struct {
 type ReplaceAssignmentParams struct {
 	UserID     int64
 	SlotID     int64
+	Weekday    int
 	PositionID int64
 }
 
@@ -50,6 +52,11 @@ type ReplaceAssignmentsParams struct {
 type AssignmentBoardSlotView struct {
 	Slot      *model.TemplateSlot
 	Positions map[int64]*AssignmentBoardPositionView
+}
+
+type AssignmentBoardSlotKey struct {
+	SlotID  int64
+	Weekday int
 }
 
 type AssignmentBoardPositionView struct {
@@ -145,7 +152,14 @@ func createAssignmentWithScheduleCheck(
 		return nil, err
 	}
 
-	if exists, err := assignmentExistsForUserSlot(ctx, tx, params.PublicationID, params.UserID, slotID); err != nil {
+	if exists, err := assignmentExistsForUserSlotWeekday(
+		ctx,
+		tx,
+		params.PublicationID,
+		params.UserID,
+		slotID,
+		params.Weekday,
+	); err != nil {
 		return nil, err
 	} else if exists {
 		return nil, ErrAssignmentUserAlreadyInSlot
@@ -160,15 +174,17 @@ func createAssignmentWithScheduleCheck(
 			publication_id,
 			user_id,
 			slot_id,
+			weekday,
 			position_id,
 			created_at
 		)
-		VALUES ($1, $2, $3, $4, $5)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING
 			id,
 			publication_id,
 			user_id,
 			slot_id,
+			weekday,
 			position_id,
 			created_at;
 	`
@@ -179,6 +195,7 @@ func createAssignmentWithScheduleCheck(
 		params.PublicationID,
 		params.UserID,
 		slotID,
+		params.Weekday,
 		positionID,
 		params.CreatedAt,
 	))
@@ -249,10 +266,11 @@ func (r *PublicationRepository) ReplaceAssignments(
 			publication_id,
 			user_id,
 			slot_id,
+			weekday,
 			position_id,
 			created_at
 		)
-		VALUES ($1, $2, $3, $4, $5);
+		VALUES ($1, $2, $3, $4, $5, $6);
 	`
 
 	for _, assignment := range params.Assignments {
@@ -272,6 +290,7 @@ func (r *PublicationRepository) ReplaceAssignments(
 			params.PublicationID,
 			assignment.UserID,
 			slotID,
+			assignment.Weekday,
 			positionID,
 			params.CreatedAt,
 		); err != nil {
@@ -451,7 +470,7 @@ func (r *PublicationRepository) ListPublicationShifts(
 			tsp.id,
 			ts.id,
 			ts.template_id,
-			ts.weekday,
+			tsw.weekday,
 			TO_CHAR(ts.start_time, 'HH24:MI'),
 			TO_CHAR(ts.end_time, 'HH24:MI'),
 			tsp.position_id,
@@ -461,10 +480,11 @@ func (r *PublicationRepository) ListPublicationShifts(
 			ts.updated_at
 		FROM publications p
 		INNER JOIN template_slots ts ON ts.template_id = p.template_id
+		INNER JOIN template_slot_weekdays tsw ON tsw.slot_id = ts.id
 		INNER JOIN template_slot_positions tsp ON tsp.slot_id = ts.id
 		INNER JOIN positions pos ON pos.id = tsp.position_id
 		WHERE p.id = $1
-		ORDER BY ts.weekday ASC, ts.start_time ASC, ts.id ASC, tsp.position_id ASC;
+		ORDER BY tsw.weekday ASC, ts.start_time ASC, ts.id ASC, tsp.position_id ASC;
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, publicationID)
@@ -507,6 +527,7 @@ func (r *PublicationRepository) ListAssignmentCandidates(
 	const query = `
 		SELECT
 			asub.slot_id,
+			asub.weekday,
 			tsp.position_id,
 			u.id,
 			u.name,
@@ -523,7 +544,7 @@ func (r *PublicationRepository) ListAssignmentCandidates(
 			AND up.position_id = tsp.position_id
 		WHERE asub.publication_id = $1
 			AND u.status = 'active'
-		ORDER BY asub.slot_id ASC, tsp.position_id ASC, u.id ASC;
+		ORDER BY asub.weekday ASC, asub.slot_id ASC, tsp.position_id ASC, u.id ASC;
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, publicationID)
@@ -537,6 +558,7 @@ func (r *PublicationRepository) ListAssignmentCandidates(
 		candidate := &model.AssignmentCandidate{}
 		if err := rows.Scan(
 			&candidate.SlotID,
+			&candidate.Weekday,
 			&candidate.PositionID,
 			&candidate.UserID,
 			&candidate.Name,
@@ -615,21 +637,23 @@ func getUserStatus(ctx context.Context, db dbtx, userID int64) (model.UserStatus
 	return status, nil
 }
 
-func assignmentExistsForUserSlot(
+func assignmentExistsForUserSlotWeekday(
 	ctx context.Context,
 	db dbtx,
 	publicationID, userID, slotID int64,
+	weekday int,
 ) (bool, error) {
 	const query = `
 		SELECT 1
 		FROM assignments
 		WHERE publication_id = $1
 			AND user_id = $2
-			AND slot_id = $3;
+			AND slot_id = $3
+			AND weekday = $4;
 	`
 
 	var one int
-	err := db.QueryRowContext(ctx, query, publicationID, userID, slotID).Scan(&one)
+	err := db.QueryRowContext(ctx, query, publicationID, userID, slotID, weekday).Scan(&one)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -642,12 +666,12 @@ func assignmentExistsForUserSlot(
 func (r *PublicationRepository) GetAssignmentBoardView(
 	ctx context.Context,
 	publicationID int64,
-) (map[int64]*AssignmentBoardSlotView, error) {
+) (map[AssignmentBoardSlotKey]*AssignmentBoardSlotView, error) {
 	const query = `
 		SELECT
 			ts.id,
 			ts.template_id,
-			ts.weekday,
+			tsw.weekday,
 			TO_CHAR(ts.start_time, 'HH24:MI'),
 			TO_CHAR(ts.end_time, 'HH24:MI'),
 			tsp.position_id,
@@ -658,6 +682,7 @@ func (r *PublicationRepository) GetAssignmentBoardView(
 			COALESCE(assignments.users, '[]'::jsonb)
 		FROM publications pub
 		INNER JOIN template_slots ts ON ts.template_id = pub.template_id
+		INNER JOIN template_slot_weekdays tsw ON tsw.slot_id = ts.id
 		INNER JOIN template_slot_positions tsp ON tsp.slot_id = ts.id
 		INNER JOIN positions p ON p.id = tsp.position_id
 		LEFT JOIN LATERAL (
@@ -676,6 +701,7 @@ func (r *PublicationRepository) GetAssignmentBoardView(
 				AND up.position_id = tsp.position_id
 			WHERE asub.publication_id = pub.id
 				AND asub.slot_id = ts.id
+				AND asub.weekday = tsw.weekday
 				AND u.status = 'active'
 		) candidates ON true
 		LEFT JOIN LATERAL (
@@ -696,6 +722,7 @@ func (r *PublicationRepository) GetAssignmentBoardView(
 					FROM availability_submissions asub
 					WHERE asub.publication_id = pub.id
 						AND asub.slot_id = ts.id
+						AND asub.weekday = tsw.weekday
 						AND asub.user_id = u.id
 				)
 				AND NOT EXISTS (
@@ -703,6 +730,7 @@ func (r *PublicationRepository) GetAssignmentBoardView(
 					FROM assignments a
 					WHERE a.publication_id = pub.id
 						AND a.slot_id = ts.id
+						AND a.weekday = tsw.weekday
 						AND a.position_id = tsp.position_id
 						AND a.user_id = u.id
 				)
@@ -722,10 +750,11 @@ func (r *PublicationRepository) GetAssignmentBoardView(
 			INNER JOIN users u ON u.id = a.user_id
 			WHERE a.publication_id = pub.id
 				AND a.slot_id = ts.id
+				AND a.weekday = tsw.weekday
 				AND a.position_id = tsp.position_id
 		) assignments ON true
 		WHERE pub.id = $1
-		ORDER BY ts.weekday ASC, ts.start_time ASC, ts.id ASC, tsp.position_id ASC;
+		ORDER BY tsw.weekday ASC, ts.start_time ASC, ts.id ASC, tsp.position_id ASC;
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, publicationID)
@@ -734,7 +763,7 @@ func (r *PublicationRepository) GetAssignmentBoardView(
 	}
 	defer rows.Close()
 
-	board := make(map[int64]*AssignmentBoardSlotView)
+	board := make(map[AssignmentBoardSlotKey]*AssignmentBoardSlotView)
 	for rows.Next() {
 		var (
 			slotID            int64
@@ -765,30 +794,31 @@ func (r *PublicationRepository) GetAssignmentBoardView(
 			return nil, err
 		}
 
-		slotView := board[slotID]
+		key := AssignmentBoardSlotKey{SlotID: slotID, Weekday: weekday}
+		slotView := board[key]
 		if slotView == nil {
 			slotView = &AssignmentBoardSlotView{
 				Slot: &model.TemplateSlot{
 					ID:         slotID,
 					TemplateID: templateID,
-					Weekday:    weekday,
+					Weekdays:   []int{weekday},
 					StartTime:  startTime,
 					EndTime:    endTime,
 				},
 				Positions: make(map[int64]*AssignmentBoardPositionView),
 			}
-			board[slotID] = slotView
+			board[key] = slotView
 		}
 
-		candidates, err := decodeAssignmentBoardCandidates(candidatesJSON, slotID, positionID)
+		candidates, err := decodeAssignmentBoardCandidates(candidatesJSON, slotID, weekday, positionID)
 		if err != nil {
 			return nil, fmt.Errorf("decode candidates for slot %d position %d: %w", slotID, positionID, err)
 		}
-		nonCandidates, err := decodeAssignmentBoardCandidates(nonCandidatesJSON, slotID, positionID)
+		nonCandidates, err := decodeAssignmentBoardCandidates(nonCandidatesJSON, slotID, weekday, positionID)
 		if err != nil {
 			return nil, fmt.Errorf("decode non-candidates for slot %d position %d: %w", slotID, positionID, err)
 		}
-		assignments, err := decodeAssignmentBoardAssignments(assignmentsJSON, slotID, positionID)
+		assignments, err := decodeAssignmentBoardAssignments(assignmentsJSON, slotID, weekday, positionID)
 		if err != nil {
 			return nil, fmt.Errorf("decode assignments for slot %d position %d: %w", slotID, positionID, err)
 		}
@@ -881,6 +911,7 @@ func (r *PublicationRepository) GetAssignment(
 			a.publication_id,
 			a.user_id,
 			a.slot_id,
+			a.weekday,
 			a.position_id,
 			a.created_at
 		FROM assignments a
@@ -893,6 +924,7 @@ func (r *PublicationRepository) GetAssignment(
 		&assignment.PublicationID,
 		&assignment.UserID,
 		&assignment.SlotID,
+		&assignment.Weekday,
 		&assignment.PositionID,
 		&assignment.CreatedAt,
 	)
@@ -913,6 +945,7 @@ func (r *PublicationRepository) ListPublicationAssignments(
 		SELECT
 			a.id,
 			a.slot_id,
+			a.weekday,
 			a.position_id,
 			u.id,
 			u.name,
@@ -921,7 +954,7 @@ func (r *PublicationRepository) ListPublicationAssignments(
 		FROM assignments a
 		INNER JOIN users u ON u.id = a.user_id
 		WHERE a.publication_id = $1
-		ORDER BY a.slot_id ASC, a.position_id ASC, u.id ASC;
+		ORDER BY a.weekday ASC, a.slot_id ASC, a.position_id ASC, u.id ASC;
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, publicationID)
@@ -936,6 +969,7 @@ func (r *PublicationRepository) ListPublicationAssignments(
 		if err := rows.Scan(
 			&assignment.AssignmentID,
 			&assignment.SlotID,
+			&assignment.Weekday,
 			&assignment.PositionID,
 			&assignment.UserID,
 			&assignment.Name,
@@ -969,7 +1003,9 @@ type assignmentBoardAssignmentJSON struct {
 
 func decodeAssignmentBoardCandidates(
 	raw []byte,
-	slotID, positionID int64,
+	slotID int64,
+	weekday int,
+	positionID int64,
 ) ([]*model.AssignmentCandidate, error) {
 	var decoded []assignmentBoardCandidateJSON
 	if err := json.Unmarshal(raw, &decoded); err != nil {
@@ -980,6 +1016,7 @@ func decodeAssignmentBoardCandidates(
 	for _, candidate := range decoded {
 		candidates = append(candidates, &model.AssignmentCandidate{
 			SlotID:     slotID,
+			Weekday:    weekday,
 			PositionID: positionID,
 			UserID:     candidate.UserID,
 			Name:       candidate.Name,
@@ -992,7 +1029,9 @@ func decodeAssignmentBoardCandidates(
 
 func decodeAssignmentBoardAssignments(
 	raw []byte,
-	slotID, positionID int64,
+	slotID int64,
+	weekday int,
+	positionID int64,
 ) ([]*model.AssignmentParticipant, error) {
 	var decoded []assignmentBoardAssignmentJSON
 	if err := json.Unmarshal(raw, &decoded); err != nil {
@@ -1008,6 +1047,7 @@ func decodeAssignmentBoardAssignments(
 		assignments = append(assignments, &model.AssignmentParticipant{
 			AssignmentID: assignment.AssignmentID,
 			SlotID:       slotID,
+			Weekday:      weekday,
 			PositionID:   positionID,
 			UserID:       assignment.UserID,
 			Name:         assignment.Name,
@@ -1026,6 +1066,7 @@ func scanAssignment(row scanner) (*model.Assignment, error) {
 		&assignment.PublicationID,
 		&assignment.UserID,
 		&assignment.SlotID,
+		&assignment.Weekday,
 		&assignment.PositionID,
 		&assignment.CreatedAt,
 	)
@@ -1040,6 +1081,7 @@ func getAssignmentByKey(
 	ctx context.Context,
 	db dbtx,
 	publicationID, userID, slotID int64,
+	weekday int,
 ) (*model.Assignment, error) {
 	const query = `
 		SELECT
@@ -1047,13 +1089,14 @@ func getAssignmentByKey(
 			a.publication_id,
 			a.user_id,
 			a.slot_id,
+			a.weekday,
 			a.position_id,
 			a.created_at
 		FROM assignments a
-		WHERE a.publication_id = $1 AND a.user_id = $2 AND a.slot_id = $3;
+		WHERE a.publication_id = $1 AND a.user_id = $2 AND a.slot_id = $3 AND a.weekday = $4;
 	`
 
-	return scanAssignment(db.QueryRowContext(ctx, query, publicationID, userID, slotID))
+	return scanAssignment(db.QueryRowContext(ctx, query, publicationID, userID, slotID, weekday))
 }
 
 func resolveAssignmentRef(
@@ -1102,7 +1145,9 @@ func mapAssignmentWriteError(err error) error {
 		return err
 	}
 
-	if pqErr.Code == "23505" && pqErr.Constraint == "assignments_publication_user_slot_key" {
+	if pqErr.Code == "23505" &&
+		(pqErr.Constraint == "assignments_publication_user_slot_key" ||
+			pqErr.Constraint == "assignments_publication_user_slot_weekday_key") {
 		return ErrAssignmentUserAlreadyInSlot
 	}
 

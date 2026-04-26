@@ -54,11 +54,13 @@ type AvailabilitySubmission struct {
 	PublicationID int64
 	UserID        int64
 	SlotID        int64
+	Weekday       int
 	CreatedAt     time.Time
 }
 
 type SlotRef struct {
-	SlotID int64
+	SlotID  int64
+	Weekday int
 }
 
 func ResolvePublicationState(publication *Publication, now time.Time) PublicationState {
@@ -128,7 +130,7 @@ func IsValidOccurrence(
 	}
 
 	date := NormalizeOccurrenceDate(occurrenceDate)
-	if weekdayToSlotValue(date.Weekday()) != slot.Weekday {
+	if !slotIncludesWeekday(slot, weekdayToSlotValue(date.Weekday())) {
 		return errors.Join(ErrInvalidOccurrenceDate, ErrOccurrenceWeekday)
 	}
 
@@ -146,9 +148,55 @@ func IsValidOccurrence(
 	return nil
 }
 
-func weekdayToSlotValue(weekday time.Weekday) int {
+func IsValidOccurrenceForAssignment(
+	publication *Publication,
+	slot *TemplateSlot,
+	assignment *Assignment,
+	occurrenceDate time.Time,
+	now time.Time,
+) error {
+	if assignment == nil {
+		return ErrInvalidOccurrenceDate
+	}
+	if publication == nil || slot == nil || occurrenceDate.IsZero() {
+		return ErrInvalidOccurrenceDate
+	}
+
+	date := NormalizeOccurrenceDate(occurrenceDate)
+	if weekdayToSlotValue(date.Weekday()) != assignment.Weekday {
+		return errors.Join(ErrInvalidOccurrenceDate, ErrOccurrenceWeekday)
+	}
+
+	start, err := OccurrenceStart(slot, date)
+	if err != nil {
+		return errors.Join(ErrInvalidOccurrenceDate, err)
+	}
+	if start.Before(publication.PlannedActiveFrom) || !start.Before(publication.PlannedActiveUntil) {
+		return errors.Join(ErrInvalidOccurrenceDate, ErrOccurrenceOutsideWindow)
+	}
+	if !start.After(now) {
+		return errors.Join(ErrInvalidOccurrenceDate, ErrOccurrenceInPast)
+	}
+
+	return nil
+}
+
+func SlotWeekdayValue(weekday time.Weekday) int {
 	if weekday == time.Sunday {
 		return 7
 	}
 	return int(weekday)
+}
+
+func weekdayToSlotValue(weekday time.Weekday) int {
+	return SlotWeekdayValue(weekday)
+}
+
+func slotIncludesWeekday(slot *TemplateSlot, weekday int) bool {
+	for _, candidate := range slot.Weekdays {
+		if candidate == weekday {
+			return true
+		}
+	}
+	return false
 }

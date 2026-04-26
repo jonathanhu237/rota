@@ -4,7 +4,9 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -21,7 +23,7 @@ func TestTemplateSlotOverlapConstraint(t *testing.T) {
 
 	firstSlot, err := repo.CreateSlot(ctx, CreateTemplateSlotParams{
 		TemplateID: template.ID,
-		Weekday:    1,
+		Weekdays:   []int{1},
 		StartTime:  "09:00",
 		EndTime:    "11:00",
 	})
@@ -34,12 +36,53 @@ func TestTemplateSlotOverlapConstraint(t *testing.T) {
 
 	_, err = repo.CreateSlot(ctx, CreateTemplateSlotParams{
 		TemplateID: template.ID,
-		Weekday:    1,
+		Weekdays:   []int{1},
 		StartTime:  "10:00",
 		EndTime:    "12:00",
 	})
 	if !errors.Is(err, ErrTemplateSlotOverlap) {
 		t.Fatalf("expected ErrTemplateSlotOverlap, got %v", err)
+	}
+}
+
+func TestTemplateSlotsWithSameTimeAndDisjointWeekdaysCoexist(t *testing.T) {
+	ctx := context.Background()
+	db := openIntegrationDB(t)
+	repo := NewTemplateRepository(db)
+	template := seedTemplate(t, db, templateSeed{})
+
+	weekdaySlot, err := repo.CreateSlot(ctx, CreateTemplateSlotParams{
+		TemplateID: template.ID,
+		Weekdays:   []int{1, 2, 3, 4, 5},
+		StartTime:  "09:00",
+		EndTime:    "10:00",
+	})
+	if err != nil {
+		t.Fatalf("create weekday slot: %v", err)
+	}
+	weekendSlot, err := repo.CreateSlot(ctx, CreateTemplateSlotParams{
+		TemplateID: template.ID,
+		Weekdays:   []int{6, 7},
+		StartTime:  "09:00",
+		EndTime:    "10:00",
+	})
+	if err != nil {
+		t.Fatalf("create weekend slot: %v", err)
+	}
+	if weekdaySlot.ID == weekendSlot.ID {
+		t.Fatalf("expected distinct same-time slots, got %d", weekdaySlot.ID)
+	}
+
+	slots, err := repo.ListSlotsByTemplate(ctx, template.ID)
+	if err != nil {
+		t.Fatalf("list slots: %v", err)
+	}
+	if len(slots) != 2 {
+		t.Fatalf("expected 2 same-time slots, got %d", len(slots))
+	}
+	if !reflect.DeepEqual(slots[0].Weekdays, []int{1, 2, 3, 4, 5}) ||
+		!reflect.DeepEqual(slots[1].Weekdays, []int{6, 7}) {
+		t.Fatalf("unexpected weekday sets: %+v", slots)
 	}
 }
 
@@ -51,7 +94,7 @@ func TestTemplateSlotUpdateOverlapConstraint(t *testing.T) {
 
 	firstSlot, err := repo.CreateSlot(ctx, CreateTemplateSlotParams{
 		TemplateID: template.ID,
-		Weekday:    1,
+		Weekdays:   []int{1},
 		StartTime:  "09:00",
 		EndTime:    "11:00",
 	})
@@ -60,7 +103,7 @@ func TestTemplateSlotUpdateOverlapConstraint(t *testing.T) {
 	}
 	secondSlot, err := repo.CreateSlot(ctx, CreateTemplateSlotParams{
 		TemplateID: template.ID,
-		Weekday:    1,
+		Weekdays:   []int{1},
 		StartTime:  "12:00",
 		EndTime:    "14:00",
 	})
@@ -71,7 +114,7 @@ func TestTemplateSlotUpdateOverlapConstraint(t *testing.T) {
 	_, err = repo.UpdateSlot(ctx, UpdateTemplateSlotParams{
 		TemplateID: template.ID,
 		SlotID:     secondSlot.ID,
-		Weekday:    1,
+		Weekdays:   []int{1},
 		StartTime:  "10:30",
 		EndTime:    "12:30",
 	})
@@ -104,18 +147,20 @@ func TestAssignmentPositionTriggerRejectsPositionOutsideSlot(t *testing.T) {
 	_, err := db.ExecContext(
 		context.Background(),
 		`
-			INSERT INTO assignments (
-				publication_id,
-				user_id,
-				slot_id,
-				position_id,
-				created_at
-			)
-			VALUES ($1, $2, $3, $4, $5);
-		`,
+				INSERT INTO assignments (
+					publication_id,
+					user_id,
+					slot_id,
+					weekday,
+					position_id,
+					created_at
+				)
+				VALUES ($1, $2, $3, $4, $5, $6);
+			`,
 		publication.ID,
 		user.ID,
 		slotID,
+		1,
 		otherPosition.ID,
 		testTime(),
 	)
@@ -139,7 +184,7 @@ func TestTemplateSlotRepositoryCRUD(t *testing.T) {
 
 	slot, err := repo.CreateSlot(ctx, CreateTemplateSlotParams{
 		TemplateID: template.ID,
-		Weekday:    2,
+		Weekdays:   []int{2},
 		StartTime:  "9:05",
 		EndTime:    "17:45",
 	})
@@ -186,7 +231,7 @@ func TestTemplateSlotRepositoryCRUD(t *testing.T) {
 	updatedSlot, err := repo.UpdateSlot(ctx, UpdateTemplateSlotParams{
 		TemplateID: template.ID,
 		SlotID:     slot.ID,
-		Weekday:    4,
+		Weekdays:   []int{4},
 		StartTime:  "10:07",
 		EndTime:    "18:30",
 	})
@@ -252,6 +297,80 @@ func TestTemplateSlotRepositoryCRUD(t *testing.T) {
 	}
 }
 
+func TestTemplateSlotWeekdayRemovalCascadesSubmissionsAndAssignments(t *testing.T) {
+	ctx := context.Background()
+	db := openIntegrationDB(t)
+	repo := NewTemplateRepository(db)
+
+	template := seedTemplate(t, db, templateSeed{})
+	position := seedPosition(t, db, positionSeed{Name: "Front Desk"})
+	user := seedUser(t, db, userSeed{})
+	slot, err := repo.CreateSlot(ctx, CreateTemplateSlotParams{
+		TemplateID: template.ID,
+		Weekdays:   []int{1, 2, 3},
+		StartTime:  "09:00",
+		EndTime:    "11:00",
+	})
+	if err != nil {
+		t.Fatalf("create slot: %v", err)
+	}
+	if _, err := repo.CreateSlotPosition(ctx, CreateTemplateSlotPositionParams{
+		TemplateID:        template.ID,
+		SlotID:            slot.ID,
+		PositionID:        position.ID,
+		RequiredHeadcount: 1,
+	}); err != nil {
+		t.Fatalf("create slot position: %v", err)
+	}
+	publication := seedPublication(t, db, publicationSeed{
+		TemplateID:        template.ID,
+		State:             model.PublicationStateAssigning,
+		SubmissionStartAt: testTime().Add(-4 * time.Hour),
+		SubmissionEndAt:   testTime().Add(-2 * time.Hour),
+		PlannedActiveFrom: testTime().Add(1 * time.Hour),
+		CreatedAt:         testTime().Add(-5 * time.Hour),
+	})
+
+	if _, err := db.ExecContext(
+		ctx,
+		`INSERT INTO availability_submissions (publication_id, user_id, slot_id, weekday, created_at)
+		 VALUES ($1, $2, $3, $4, $5);`,
+		publication.ID,
+		user.ID,
+		slot.ID,
+		3,
+		testTime(),
+	); err != nil {
+		t.Fatalf("seed submission: %v", err)
+	}
+	if _, err := db.ExecContext(
+		ctx,
+		`INSERT INTO assignments (publication_id, user_id, slot_id, weekday, position_id, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6);`,
+		publication.ID,
+		user.ID,
+		slot.ID,
+		3,
+		position.ID,
+		testTime(),
+	); err != nil {
+		t.Fatalf("seed assignment: %v", err)
+	}
+
+	if _, err := repo.UpdateSlot(ctx, UpdateTemplateSlotParams{
+		TemplateID: template.ID,
+		SlotID:     slot.ID,
+		Weekdays:   []int{1, 2},
+		StartTime:  slot.StartTime,
+		EndTime:    slot.EndTime,
+	}); err != nil {
+		t.Fatalf("remove weekday from slot: %v", err)
+	}
+
+	assertTableCount(t, db, `SELECT COUNT(*) FROM availability_submissions WHERE slot_id = $1 AND weekday = 3`, slot.ID, 0)
+	assertTableCount(t, db, `SELECT COUNT(*) FROM assignments WHERE slot_id = $1 AND weekday = 3`, slot.ID, 0)
+}
+
 func TestTemplateSlotPositionUniqueConstraint(t *testing.T) {
 	ctx := context.Background()
 	db := openIntegrationDB(t)
@@ -262,7 +381,7 @@ func TestTemplateSlotPositionUniqueConstraint(t *testing.T) {
 
 	slot, err := repo.CreateSlot(ctx, CreateTemplateSlotParams{
 		TemplateID: template.ID,
-		Weekday:    1,
+		Weekdays:   []int{1},
 		StartTime:  "09:00",
 		EndTime:    "11:00",
 	})
@@ -320,18 +439,20 @@ func TestAssignmentSlotUniqueConstraint(t *testing.T) {
 	if _, err := db.ExecContext(
 		context.Background(),
 		`
-			INSERT INTO assignments (
-				publication_id,
-				user_id,
-				slot_id,
-				position_id,
-				created_at
-			)
-			VALUES ($1, $2, $3, $4, $5);
-		`,
+				INSERT INTO assignments (
+					publication_id,
+					user_id,
+					slot_id,
+					weekday,
+					position_id,
+					created_at
+				)
+				VALUES ($1, $2, $3, $4, $5, $6);
+			`,
 		publication.ID,
 		user.ID,
 		slotID,
+		1,
 		firstPosition.ID,
 		testTime(),
 	); err != nil {
@@ -341,18 +462,20 @@ func TestAssignmentSlotUniqueConstraint(t *testing.T) {
 	_, err := db.ExecContext(
 		context.Background(),
 		`
-			INSERT INTO assignments (
-				publication_id,
-				user_id,
-				slot_id,
-				position_id,
-				created_at
-			)
-			VALUES ($1, $2, $3, $4, $5);
-		`,
+				INSERT INTO assignments (
+					publication_id,
+					user_id,
+					slot_id,
+					weekday,
+					position_id,
+					created_at
+				)
+				VALUES ($1, $2, $3, $4, $5, $6);
+			`,
 		publication.ID,
 		user.ID,
 		slotID,
+		1,
 		secondPosition.ID,
 		testTime(),
 	)
@@ -382,8 +505,8 @@ func assertTemplateSlotEqual(
 	if got.TemplateID != wantTemplateID {
 		t.Fatalf("expected template ID %d, got %d", wantTemplateID, got.TemplateID)
 	}
-	if got.Weekday != wantWeekday {
-		t.Fatalf("expected weekday %d, got %d", wantWeekday, got.Weekday)
+	if len(got.Weekdays) != 1 || got.Weekdays[0] != wantWeekday {
+		t.Fatalf("expected weekdays [%d], got %v", wantWeekday, got.Weekdays)
 	}
 	if got.StartTime != wantStart {
 		t.Fatalf("expected start time %q, got %q", wantStart, got.StartTime)
@@ -434,22 +557,28 @@ func seedTemplateSlot(
 		`
 			INSERT INTO template_slots (
 				template_id,
-				weekday,
 				start_time,
 				end_time,
 				created_at,
 				updated_at
 			)
-			VALUES ($1, $2, $3, $4, $5, $5)
+			VALUES ($1, $2, $3, $4, $4)
 			RETURNING id;
 		`,
 		templateID,
-		weekday,
 		startTime,
 		endTime,
 		testTime(),
 	).Scan(&id); err != nil {
 		t.Fatalf("seed template slot: %v", err)
+	}
+	if _, err := db.ExecContext(
+		context.Background(),
+		`INSERT INTO template_slot_weekdays (slot_id, weekday) VALUES ($1, $2);`,
+		id,
+		weekday,
+	); err != nil {
+		t.Fatalf("seed template slot weekday: %v", err)
 	}
 
 	return id
@@ -487,4 +616,22 @@ func seedTemplateSlotPosition(
 	}
 
 	return id
+}
+
+func assertTableCount(
+	t testing.TB,
+	db *sql.DB,
+	query string,
+	arg any,
+	want int,
+) {
+	t.Helper()
+
+	var got int
+	if err := db.QueryRowContext(context.Background(), query, arg).Scan(&got); err != nil {
+		t.Fatalf("query count: %v", err)
+	}
+	if got != want {
+		t.Fatalf("expected count %d, got %d", want, got)
+	}
 }

@@ -77,12 +77,14 @@ type AssignmentBoardProps = {
   onAssign: (
     userID: number,
     slotID: number,
+    weekday: number,
     positionID: number,
   ) => void | Promise<void>
   onUnassign: (assignmentID: number) => void | Promise<void>
   onDraftAssign?: (
     userID: number,
     slotID: number,
+    weekday: number,
     positionID: number,
   ) => Promise<void>
   onDraftUnassign?: (assignmentID: number) => Promise<void>
@@ -171,10 +173,11 @@ export function AssignmentBoard({
         ? source.assignment.user_id
         : source.candidate.user_id
     setDropPreview({
-      cellKey: getBoardCellKey(target.slotID, target.positionID),
+      cellKey: getBoardCellKey(target.slotID, target.weekday, target.positionID),
       isUnqualified: !isUserQualifiedForCell(
         slots,
         target.slotID,
+        target.weekday,
         target.positionID,
         userID,
       ),
@@ -376,6 +379,7 @@ export function AssignmentBoard({
                             {slotEntry.positions.map((positionEntry) => {
                               const cellKey = getBoardCellKey(
                                 slotEntry.slot.id,
+                                slotEntry.slot.weekday,
                                 positionEntry.position.id,
                               )
                               const projectedAssignments =
@@ -384,6 +388,7 @@ export function AssignmentBoard({
                                 slots,
                                 projectedAssignments,
                                 slotEntry.slot.id,
+                                slotEntry.slot.weekday,
                                 positionEntry.position.id,
                               )
                               const understaffed =
@@ -417,13 +422,14 @@ export function AssignmentBoard({
 
                               return (
                                 <DroppablePositionCell
-                                  key={`${slotEntry.slot.id}-${positionEntry.position.id}`}
+                                  key={`${slotEntry.slot.id}-${slotEntry.slot.weekday}-${positionEntry.position.id}`}
                                   disabled={isDraftDisabled}
                                   dropPreview={dropPreview}
                                   isChanged={changed}
                                   isUnderstaffed={understaffed}
                                   position={positionEntry}
                                   slotID={slotEntry.slot.id}
+                                  weekday={slotEntry.slot.weekday}
                                 >
                                   <div className="flex flex-wrap items-start justify-between gap-3">
                                     <div className="grid gap-1">
@@ -482,7 +488,7 @@ export function AssignmentBoard({
                                             {visibleCandidates.map(
                                               (candidate) => (
                                                 <DraggableCandidateButton
-                                                  key={`${slotEntry.slot.id}-${positionEntry.position.id}-${candidate.user_id}`}
+                                                  key={`${slotEntry.slot.id}-${slotEntry.slot.weekday}-${positionEntry.position.id}-${candidate.user_id}`}
                                                   candidate={candidate}
                                                   disabled={isDraftDisabled}
                                                   label={formatUserLabel(
@@ -492,6 +498,7 @@ export function AssignmentBoard({
                                                       renderDraftState,
                                                       candidate,
                                                       slotEntry.slot.id,
+                                                      slotEntry.slot.weekday,
                                                       positionEntry.position.id,
                                                     ),
                                                   )}
@@ -499,6 +506,9 @@ export function AssignmentBoard({
                                                     positionEntry.position.id
                                                   }
                                                   slotID={slotEntry.slot.id}
+                                                  weekday={
+                                                    slotEntry.slot.weekday
+                                                  }
                                                   onAssign={onAssign}
                                                 />
                                               ),
@@ -511,7 +521,7 @@ export function AssignmentBoard({
                                             {visibleQualified.map(
                                               (candidate) => (
                                                 <DraggableCandidateButton
-                                                  key={`qualified-${slotEntry.slot.id}-${positionEntry.position.id}-${candidate.user_id}`}
+                                                  key={`qualified-${slotEntry.slot.id}-${slotEntry.slot.weekday}-${positionEntry.position.id}-${candidate.user_id}`}
                                                   candidate={candidate}
                                                   disabled={isDraftDisabled}
                                                   label={formatUserLabel(
@@ -521,6 +531,7 @@ export function AssignmentBoard({
                                                       renderDraftState,
                                                       candidate,
                                                       slotEntry.slot.id,
+                                                      slotEntry.slot.weekday,
                                                       positionEntry.position.id,
                                                     ),
                                                   )}
@@ -528,6 +539,9 @@ export function AssignmentBoard({
                                                     positionEntry.position.id
                                                   }
                                                   slotID={slotEntry.slot.id}
+                                                  weekday={
+                                                    slotEntry.slot.weekday
+                                                  }
                                                   variant="qualified"
                                                   onAssign={onAssign}
                                                 />
@@ -552,7 +566,7 @@ export function AssignmentBoard({
                                         {positionEntry.assignments.map(
                                           (assignment) => (
                                             <DraggableAssignmentButton
-                                              key={`${slotEntry.slot.id}-${positionEntry.position.id}-${assignment.assignment_id}-${assignment.user_id}`}
+                                              key={`${slotEntry.slot.id}-${slotEntry.slot.weekday}-${positionEntry.position.id}-${assignment.assignment_id}-${assignment.user_id}`}
                                               assignment={assignment}
                                               disabled={isDraftDisabled}
                                               isReadOnly={isReadOnly}
@@ -568,6 +582,7 @@ export function AssignmentBoard({
                                                 positionEntry.position.id
                                               }
                                               slotID={slotEntry.slot.id}
+                                              weekday={slotEntry.slot.weekday}
                                               onRemoveDraftAssignment={(
                                                 opID,
                                               ) =>
@@ -656,6 +671,7 @@ function DroppablePositionCell({
   isUnderstaffed,
   position,
   slotID,
+  weekday,
 }: {
   children: ReactNode
   disabled: boolean
@@ -664,13 +680,15 @@ function DroppablePositionCell({
   isUnderstaffed: boolean
   position: AssignmentBoardPosition
   slotID: number
+  weekday: number
 }) {
-  const cellKey = getBoardCellKey(slotID, position.position.id)
+  const cellKey = getBoardCellKey(slotID, weekday, position.position.id)
   const { setNodeRef } = useDroppable({
     id: `cell:${cellKey}`,
     data: {
       kind: "cell",
       slotID,
+      weekday,
       positionID: position.position.id,
     } satisfies AssignmentBoardDropTarget,
     disabled,
@@ -705,6 +723,7 @@ function DraggableCandidateButton({
   label,
   positionID,
   slotID,
+  weekday,
   variant = "candidate",
   onAssign,
 }: {
@@ -713,19 +732,22 @@ function DraggableCandidateButton({
   label: string
   positionID: number
   slotID: number
+  weekday: number
   variant?: "candidate" | "qualified"
   onAssign: (
     userID: number,
     slotID: number,
+    weekday: number,
     positionID: number,
   ) => void | Promise<void>
 }) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
-    id: `candidate:${slotID}:${positionID}:${candidate.user_id}`,
+    id: `candidate:${slotID}:${weekday}:${positionID}:${candidate.user_id}`,
     data: {
       kind: "candidate",
       candidate,
       slotID,
+      weekday,
       positionID,
     } satisfies AssignmentBoardDragSource,
     disabled,
@@ -745,7 +767,9 @@ function DraggableCandidateButton({
             "h-auto items-start border-dashed px-3 py-2 text-left",
         )}
         disabled={disabled}
-        onClick={() => void onAssign(candidate.user_id, slotID, positionID)}
+        onClick={() =>
+          void onAssign(candidate.user_id, slotID, weekday, positionID)
+        }
         title={candidate.email}
       >
         <span>{label}</span>
@@ -771,6 +795,7 @@ function DraggableAssignmentButton({
   label,
   positionID,
   slotID,
+  weekday,
   onRemoveDraftAssignment,
   onUnassign,
 }: {
@@ -780,17 +805,19 @@ function DraggableAssignmentButton({
   label: string
   positionID: number
   slotID: number
+  weekday: number
   onRemoveDraftAssignment: (opID: string) => void
   onUnassign: (assignmentID: number) => void | Promise<void>
 }) {
-  const dropID = `assignment-target:${slotID}:${positionID}:${assignment.assignment_id}:${assignment.user_id}`
-  const dragID = `assignment:${slotID}:${positionID}:${assignment.assignment_id}:${assignment.user_id}`
+  const dropID = `assignment-target:${slotID}:${weekday}:${positionID}:${assignment.assignment_id}:${assignment.user_id}`
+  const dragID = `assignment:${slotID}:${weekday}:${positionID}:${assignment.assignment_id}:${assignment.user_id}`
   const { setNodeRef: setDroppableRef } = useDroppable({
     id: dropID,
     data: {
       kind: "assignment",
       assignment,
       slotID,
+      weekday,
       positionID,
     } satisfies AssignmentBoardDropTarget,
     disabled,
@@ -802,6 +829,7 @@ function DraggableAssignmentButton({
         kind: "assignment",
         assignment,
         slotID,
+        weekday,
         positionID,
       } satisfies AssignmentBoardDragSource,
       disabled,
@@ -878,6 +906,7 @@ function getCandidatePreviewHours(
   draftState: DraftState,
   candidate: AssignmentBoardCandidate,
   slotID: number,
+  weekday: number,
   positionID: number,
 ) {
   const previewDraftState = enqueueAdd(
@@ -885,10 +914,12 @@ function getCandidatePreviewHours(
     candidateToDraftUser(candidate),
     {
       slotID,
+      weekday,
       positionID,
       isUnqualified: !isUserQualifiedForCell(
         slots,
         slotID,
+        weekday,
         positionID,
         candidate.user_id,
       ),
@@ -905,7 +936,10 @@ function getDraftConfirmWarnings(
   return draftState.ops
     .filter((op) => op.kind === "assign" && op.isUnqualified)
     .map((op) => {
-      const slotEntry = slots.find((entry) => entry.slot.id === op.slotID)
+      const slotEntry = slots.find(
+        (entry) =>
+          entry.slot.id === op.slotID && entry.slot.weekday === op.weekday,
+      )
       const positionEntry = slotEntry?.positions.find(
         (entry) => entry.position.id === op.positionID,
       )
@@ -957,9 +991,12 @@ function candidateToDraftUser(candidate: AssignmentBoardCandidate): DraftUserInp
 function findBoardPosition(
   slots: AssignmentBoardSlot[],
   slotID: number,
+  weekday: number,
   positionID: number,
 ) {
-  const slotEntry = slots.find((entry) => entry.slot.id === slotID)
+  const slotEntry = slots.find(
+    (entry) => entry.slot.id === slotID && entry.slot.weekday === weekday,
+  )
   const positionEntry = slotEntry?.positions.find(
     (entry) => entry.position.id === positionID,
   )
@@ -977,10 +1014,16 @@ function findBoardPosition(
 function isUserQualifiedForCell(
   slots: AssignmentBoardSlot[],
   slotID: number,
+  weekday: number,
   positionID: number,
   userID: number,
 ) {
-  const positionEntry = findBoardPosition(slots, slotID, positionID)?.position
+  const positionEntry = findBoardPosition(
+    slots,
+    slotID,
+    weekday,
+    positionID,
+  )?.position
   if (!positionEntry) {
     return false
   }
@@ -998,13 +1041,14 @@ async function replayDraftOp(
     onAssign: (
       userID: number,
       slotID: number,
+      weekday: number,
       positionID: number,
     ) => void | Promise<void>
     onUnassign: (assignmentID: number) => void | Promise<void>
   },
 ) {
   if (op.kind === "assign") {
-    await handlers.onAssign(op.userID, op.slotID, op.positionID)
+    await handlers.onAssign(op.userID, op.slotID, op.weekday, op.positionID)
     return
   }
 

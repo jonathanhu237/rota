@@ -198,7 +198,7 @@ func (s *ShiftChangeService) prepareCreateShiftChangeRequest(
 	if requesterShift == nil {
 		return nil, ErrTemplateSlotPositionNotFound
 	}
-	if err := model.IsValidOccurrence(publication, publicationShiftSlot(requesterShift), input.OccurrenceDate, now); err != nil {
+	if err := model.IsValidOccurrenceForAssignment(publication, publicationShiftSlot(requesterShift), requesterAssignment, input.OccurrenceDate, now); err != nil {
 		return nil, ErrInvalidOccurrenceDate
 	}
 	expiresAt, err := model.OccurrenceStart(publicationShiftSlot(requesterShift), input.OccurrenceDate)
@@ -237,7 +237,7 @@ func (s *ShiftChangeService) prepareCreateShiftChangeRequest(
 		if counterpartShift == nil {
 			return nil, ErrTemplateSlotPositionNotFound
 		}
-		if err := model.IsValidOccurrence(publication, publicationShiftSlot(counterpartShift), *input.CounterpartOccurrenceDate, now); err != nil {
+		if err := model.IsValidOccurrenceForAssignment(publication, publicationShiftSlot(counterpartShift), counterpartAssignment, *input.CounterpartOccurrenceDate, now); err != nil {
 			return nil, ErrInvalidOccurrenceDate
 		}
 		if err := s.mutuallyQualified(ctx, input.RequesterUserID, *input.CounterpartUserID, requesterAssignment.PositionID, counterpartAssignment.PositionID); err != nil {

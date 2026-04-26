@@ -192,22 +192,23 @@ describe("availability submissions", () => {
     putMock.mockReset()
   })
 
-  it("creates a submission using the slot payload", async () => {
+  it("creates a submission using the slot and weekday payload", async () => {
     postMock.mockResolvedValue({ data: undefined })
 
-    await createAvailabilitySubmission(7, 21)
+    await createAvailabilitySubmission(7, 21, 2)
 
     expect(postMock).toHaveBeenCalledWith("/publications/7/submissions", {
       slot_id: 21,
+      weekday: 2,
     })
   })
 
-  it("deletes a submission using the slot path param", async () => {
+  it("deletes a submission using the slot and weekday path params", async () => {
     deleteMock.mockResolvedValue({ data: undefined })
 
-    await deleteAvailabilitySubmission(7, 21)
+    await deleteAvailabilitySubmission(7, 21, 2)
 
-    expect(deleteMock).toHaveBeenCalledWith("/publications/7/submissions/21")
+    expect(deleteMock).toHaveBeenCalledWith("/publications/7/submissions/21/2")
   })
 })
 
@@ -246,18 +247,20 @@ describe("assignment mutations", () => {
     putMock.mockReset()
   })
 
-  it("creates an assignment with the user, slot, and position ids", async () => {
+  it("creates an assignment with the user, slot, weekday, and position ids", async () => {
     postMock.mockResolvedValue({ data: undefined })
 
     await createAssignment(7, {
       user_id: 8,
       slot_id: 11,
+      weekday: 3,
       position_id: 101,
     })
 
     expect(postMock).toHaveBeenCalledWith("/publications/7/assignments", {
       user_id: 8,
       slot_id: 11,
+      weekday: 3,
       position_id: 101,
     })
   })

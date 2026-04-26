@@ -167,7 +167,7 @@ func TestTemplateRepositoryIntegration(t *testing.T) {
 
 		_, err = repo.CreateSlot(ctx, CreateTemplateSlotParams{
 			TemplateID: locked.ID,
-			Weekday:    4,
+			Weekdays:   []int{4},
 			StartTime:  "11:00",
 			EndTime:    "12:00",
 		})
@@ -178,7 +178,7 @@ func TestTemplateRepositoryIntegration(t *testing.T) {
 		_, err = repo.UpdateSlot(ctx, UpdateTemplateSlotParams{
 			TemplateID: locked.ID,
 			SlotID:     slotID,
-			Weekday:    5,
+			Weekdays:   []int{5},
 			StartTime:  "11:00",
 			EndTime:    "12:00",
 		})

@@ -337,7 +337,7 @@ func TestTemplateHandler(t *testing.T) {
 		})
 		recorder := httptest.NewRecorder()
 		req := requestWithPathValues(jsonRequest(t, http.MethodPost, "/templates/1/slots", map[string]any{
-			"weekday": 1, "start_time": "09:00", "end_time": "12:00",
+			"weekdays": []int{1}, "start_time": "09:00", "end_time": "12:00",
 		}), map[string]string{"id": "1"})
 
 		handler.CreateSlot(recorder, req)
@@ -361,7 +361,7 @@ func TestTemplateHandler(t *testing.T) {
 		})
 		recorder := httptest.NewRecorder()
 		req := requestWithPathValues(jsonRequest(t, http.MethodPost, "/templates/1/slots", map[string]any{
-			"weekday": 1, "start_time": "09:00", "end_time": "12:00",
+			"weekdays": []int{1}, "start_time": "09:00", "end_time": "12:00",
 		}), map[string]string{"id": "1"})
 
 		handler.CreateSlot(recorder, req)
@@ -379,7 +379,7 @@ func TestTemplateHandler(t *testing.T) {
 		})
 		recorder := httptest.NewRecorder()
 		req := requestWithPathValues(jsonRequest(t, http.MethodPatch, "/templates/1/slots/2", map[string]any{
-			"weekday": 1, "start_time": "09:00", "end_time": "12:00",
+			"weekdays": []int{1}, "start_time": "09:00", "end_time": "12:00",
 		}), map[string]string{"id": "1", "slot_id": "2"})
 
 		handler.UpdateSlot(recorder, req)
@@ -463,7 +463,7 @@ func sampleTemplateSlot() *model.TemplateSlot {
 	return &model.TemplateSlot{
 		ID:         2,
 		TemplateID: 1,
-		Weekday:    1,
+		Weekdays:   []int{1},
 		StartTime:  "09:00",
 		EndTime:    "12:00",
 		CreatedAt:  now,

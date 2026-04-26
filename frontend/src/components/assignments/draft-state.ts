@@ -7,6 +7,7 @@ export type DraftAssignOp = {
   id: string
   kind: "assign"
   slotID: number
+  weekday: number
   positionID: number
   userID: number
   userName: string
@@ -22,6 +23,7 @@ export type DraftUnassignOp = {
   userID: number
   userName: string
   slotID: number
+  weekday: number
   positionID: number
   error?: string
 }
@@ -41,12 +43,14 @@ export type DraftUserInput = {
 export type DraftAssignmentInput = DraftUserInput & {
   assignmentID: number
   slotID: number
+  weekday: number
   positionID: number
   sourceOpID?: string
 }
 
 export type DraftCellInput = {
   slotID: number
+  weekday: number
   positionID: number
   isUnqualified?: boolean
 }
@@ -78,8 +82,12 @@ export function discardDrafts(): DraftState {
   return emptyDraftState
 }
 
-export function getBoardCellKey(slotID: number, positionID: number) {
-  return `${slotID}:${positionID}`
+export function getBoardCellKey(
+  slotID: number,
+  weekday: number,
+  positionID: number,
+) {
+  return `${slotID}:${weekday}:${positionID}`
 }
 
 export function enqueueAssign(
@@ -91,6 +99,7 @@ export function enqueueAssign(
       id: nextDraftOpID(state, "assign"),
       kind: "assign",
       slotID: input.slotID,
+      weekday: input.weekday,
       positionID: input.positionID,
       userID: input.userID,
       userName: input.name,
@@ -116,6 +125,7 @@ export function enqueueUnassign(
       userID: input.userID,
       userName: input.name,
       slotID: input.slotID,
+      weekday: input.weekday,
       positionID: input.positionID,
     },
   ])
@@ -126,7 +136,11 @@ export function enqueueMove(
   from: DraftAssignmentInput,
   to: DraftCellInput,
 ): DraftState {
-  if (from.slotID === to.slotID && from.positionID === to.positionID) {
+  if (
+    from.slotID === to.slotID &&
+    from.weekday === to.weekday &&
+    from.positionID === to.positionID
+  ) {
     return state
   }
 
@@ -137,6 +151,7 @@ export function enqueueMove(
       name: from.name,
       email: from.email,
       slotID: to.slotID,
+      weekday: to.weekday,
       positionID: to.positionID,
       isUnqualified: to.isUnqualified,
     })
@@ -158,6 +173,7 @@ export function enqueueSwap(
   if (
     dragged.assignmentID === target.assignmentID &&
     dragged.slotID === target.slotID &&
+    dragged.weekday === target.weekday &&
     dragged.positionID === target.positionID
   ) {
     return state
@@ -214,6 +230,7 @@ export function enqueueAdd(
   return enqueueAssign(state, {
     ...incoming,
     slotID: to.slotID,
+    weekday: to.weekday,
     positionID: to.positionID,
     isUnqualified: to.isUnqualified,
   })
@@ -268,7 +285,11 @@ export function applyDraftToBoard(
   for (const slotEntry of serverSnapshot) {
     for (const positionEntry of slotEntry.positions) {
       projected.set(
-        getBoardCellKey(slotEntry.slot.id, positionEntry.position.id),
+        getBoardCellKey(
+          slotEntry.slot.id,
+          slotEntry.slot.weekday,
+          positionEntry.position.id,
+        ),
         positionEntry.assignments.map((assignment) => ({ ...assignment })),
       )
     }
@@ -279,7 +300,7 @@ export function applyDraftToBoard(
       break
     }
 
-    const cellKey = getBoardCellKey(op.slotID, op.positionID)
+    const cellKey = getBoardCellKey(op.slotID, op.weekday, op.positionID)
     const assignments = projected.get(cellKey) ?? []
 
     if (op.kind === "unassign") {
@@ -342,7 +363,11 @@ export function applyDraftToSlots(
       ...positionEntry,
       assignments:
         projected.get(
-          getBoardCellKey(slotEntry.slot.id, positionEntry.position.id),
+          getBoardCellKey(
+            slotEntry.slot.id,
+            slotEntry.slot.weekday,
+            positionEntry.position.id,
+          ),
         ) ?? [],
     })),
   }))
@@ -365,7 +390,11 @@ export function computeUserHours(
     for (const positionEntry of slotEntry.positions) {
       const assignments =
         projected.get(
-          getBoardCellKey(slotEntry.slot.id, positionEntry.position.id),
+          getBoardCellKey(
+            slotEntry.slot.id,
+            slotEntry.slot.weekday,
+            positionEntry.position.id,
+          ),
         ) ?? []
 
       if (assignments.some((assignment) => assignment.user_id === userID)) {
@@ -389,11 +418,15 @@ export function isCellChangedFromServer(
   snapshot: AssignmentBoardSlot[],
   projectedAssignments: ProjectedAssignment[],
   slotID: number,
+  weekday: number,
   positionID: number,
 ) {
   const serverAssignments =
     snapshot
-      .find((slotEntry) => slotEntry.slot.id === slotID)
+      .find(
+        (slotEntry) =>
+          slotEntry.slot.id === slotID && slotEntry.slot.weekday === weekday,
+      )
       ?.positions.find((entry) => entry.position.id === positionID)
       ?.assignments ?? []
 
@@ -419,6 +452,7 @@ function makeAssignOp(
     id: nextDraftOpID(state, "assign", offset),
     kind: "assign",
     slotID: cell.slotID,
+    weekday: cell.weekday,
     positionID: cell.positionID,
     userID: user.userID,
     userName: user.name,
@@ -439,6 +473,7 @@ function makeUnassignOp(
     userID: assignment.userID,
     userName: assignment.name,
     slotID: assignment.slotID,
+    weekday: assignment.weekday,
     positionID: assignment.positionID,
   }
 }

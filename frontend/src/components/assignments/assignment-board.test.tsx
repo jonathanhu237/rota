@@ -125,8 +125,8 @@ describe("AssignmentBoard", () => {
 
     await user.click(danaButton as HTMLElement)
 
-    expect(onAssign).toHaveBeenCalledWith(10, 1, 101)
-    expect(onAssign).toHaveBeenCalledWith(12, 1, 101)
+    expect(onAssign).toHaveBeenCalledWith(10, 1, 1, 101)
+    expect(onAssign).toHaveBeenCalledWith(12, 1, 1, 101)
     expect(onUnassign).toHaveBeenCalledWith(20)
   })
 
@@ -164,11 +164,13 @@ describe("AssignmentBoard", () => {
           email: "bob@example.com",
         },
         slotID: 1,
+        weekday: 1,
         positionID: 101,
       },
       target: {
         kind: "cell",
         slotID: 2,
+        weekday: 1,
         positionID: 101,
       },
     })
@@ -189,6 +191,7 @@ describe("AssignmentBoard", () => {
           email: "bob@example.com",
         },
         slotID: 1,
+        weekday: 1,
         positionID: 101,
       },
       target: {
@@ -200,6 +203,7 @@ describe("AssignmentBoard", () => {
           email: "cara@example.com",
         },
         slotID: 1,
+        weekday: 1,
         positionID: 102,
       },
     })
@@ -224,6 +228,7 @@ describe("AssignmentBoard", () => {
           email: "alice@example.com",
         },
         slotID: 1,
+        weekday: 1,
         positionID: 101,
       },
       target: {
@@ -235,6 +240,7 @@ describe("AssignmentBoard", () => {
           email: "bob@example.com",
         },
         slotID: 1,
+        weekday: 1,
         positionID: 101,
       },
     })
@@ -255,11 +261,13 @@ describe("AssignmentBoard", () => {
           email: "alice@example.com",
         },
         slotID: 1,
+        weekday: 1,
         positionID: 101,
       },
       target: {
         kind: "cell",
         slotID: 2,
+        weekday: 1,
         positionID: 101,
       },
     })
@@ -294,7 +302,7 @@ describe("AssignmentBoard", () => {
 
     expect(onDraftUnassign).toHaveBeenCalledWith(20)
     expect(onDraftAssign).toHaveBeenCalledTimes(1)
-    expect(onDraftAssign).toHaveBeenCalledWith(10, 2, 101)
+    expect(onDraftAssign).toHaveBeenCalledWith(10, 2, 1, 101)
     expect(onDraftRefresh).toHaveBeenCalled()
   })
 
@@ -313,6 +321,7 @@ describe("AssignmentBoard", () => {
               id: "assign-1",
               kind: "assign",
               slotID: 2,
+              weekday: 1,
               positionID: 101,
               userID: 10,
               userName: "Alice",
@@ -338,7 +347,7 @@ describe("AssignmentBoard", () => {
       name: "assignments.drafts.submit",
     })
 
-    expect(onDraftAssign).toHaveBeenCalledWith(10, 2, 101)
+    expect(onDraftAssign).toHaveBeenCalledWith(10, 2, 1, 101)
     expect(onDraftRefresh).toHaveBeenCalled()
     expect(submitButton).toBeDisabled()
   })
@@ -354,12 +363,14 @@ function makeSubmitDraftState(): DraftState {
         userID: 11,
         userName: "Bob",
         slotID: 1,
+        weekday: 1,
         positionID: 101,
       },
       {
         id: "assign-2",
         kind: "assign",
         slotID: 2,
+        weekday: 1,
         positionID: 101,
         userID: 10,
         userName: "Alice",
@@ -370,6 +381,7 @@ function makeSubmitDraftState(): DraftState {
         id: "assign-3",
         kind: "assign",
         slotID: 2,
+        weekday: 1,
         positionID: 101,
         userID: 12,
         userName: "Dana",

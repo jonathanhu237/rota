@@ -1,33 +1,15 @@
 import type { TemplateSlot } from "@/lib/types"
 
-export function groupTemplateSlotsByWeekday(slots: TemplateSlot[]) {
-  const grouped: Record<number, TemplateSlot[]> = {
-    1: [],
-    2: [],
-    3: [],
-    4: [],
-    5: [],
-    6: [],
-    7: [],
-  }
-
-  for (const slot of slots) {
-    if (!(slot.weekday in grouped)) {
-      continue
+export function sortTemplateSlots(slots: TemplateSlot[]) {
+  return [...slots].sort((left, right) => {
+    if (left.start_time !== right.start_time) {
+      return left.start_time.localeCompare(right.start_time)
     }
 
-    grouped[slot.weekday].push(slot)
-  }
+    if (left.end_time !== right.end_time) {
+      return left.end_time.localeCompare(right.end_time)
+    }
 
-  for (const weekday of Object.keys(grouped)) {
-    grouped[Number(weekday)].sort((left, right) => {
-      if (left.start_time !== right.start_time) {
-        return left.start_time.localeCompare(right.start_time)
-      }
-
-      return left.id - right.id
-    })
-  }
-
-  return grouped
+    return left.id - right.id
+  })
 }

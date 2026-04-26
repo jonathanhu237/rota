@@ -309,7 +309,7 @@
     "deleteSlotDialog": {
       "title": "Delete slot",
       "description": "Delete {{summary}}? This action cannot be undone.",
-      "summary": "{{weekday}} · {{startTime}}-{{endTime}}",
+      "summary": "{{weekdays}} · {{startTime}}-{{endTime}}",
       "confirm": "Delete Slot",
       "submitting": "Deleting..."
     },
@@ -329,6 +329,7 @@
     },
     "slotsTitle": "Weekly Slots",
     "slotsDescription": "Manage the template's time slots and the position mix inside each slot.",
+    "noSlots": "No slots have been added to this template yet.",
     "noSlotsForWeekday": "No slots scheduled for this weekday yet.",
     "noPositionsForSlot": "No positions have been added to this slot yet.",
     "shiftsTitle": "Weekly Shifts",
@@ -339,7 +340,7 @@
     "unknownPosition": "Unknown position",
     "lockedBanner": "This template is locked and cannot be edited or deleted. Clone it to make changes.",
     "slot": {
-      "weekday": "Weekday",
+      "weekday": "Weekdays",
       "startTime": "Start Time",
       "endTime": "End Time",
       "summary": "{{startTime}}-{{endTime}}",
@@ -352,9 +353,9 @@
     },
     "slotDialog": {
       "createTitle": "Add slot",
-      "createDescription": "Add a weekly time slot to this template.",
+      "createDescription": "Add a time slot and choose the weekdays it applies to.",
       "editTitle": "Edit slot",
-      "editDescription": "Update the selected weekly slot.",
+      "editDescription": "Update the selected time slot and weekday set.",
       "submitCreate": "Create Slot",
       "submitEdit": "Save Slot",
       "submittingCreate": "Creating...",

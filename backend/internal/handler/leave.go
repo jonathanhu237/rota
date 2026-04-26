@@ -286,7 +286,7 @@ func newLeavePreviewOccurrenceResponse(row *service.OccurrencePreview) leavePrev
 		OccurrenceDate: row.OccurrenceDate.Format("2006-01-02"),
 		Slot: leavePreviewSlotResponse{
 			ID:        row.Slot.ID,
-			Weekday:   row.Slot.Weekday,
+			Weekday:   publicationSlotWeekday(row.Slot),
 			StartTime: row.Slot.StartTime,
 			EndTime:   row.Slot.EndTime,
 		},

@@ -65,7 +65,7 @@ type publicationRepository interface {
 	ReplaceAssignments(ctx context.Context, params repository.ReplaceAssignmentsParams) error
 	ActivatePublication(ctx context.Context, params repository.ActivatePublicationParams) (*repository.ActivatePublicationResult, error)
 	PublishPublication(ctx context.Context, params repository.PublishPublicationParams) (*model.Publication, error)
-	GetAssignmentBoardView(ctx context.Context, publicationID int64) (map[int64]*repository.AssignmentBoardSlotView, error)
+	GetAssignmentBoardView(ctx context.Context, publicationID int64) (map[repository.AssignmentBoardSlotKey]*repository.AssignmentBoardSlotView, error)
 	ListPublicationShifts(ctx context.Context, publicationID int64) ([]*model.PublicationShift, error)
 	ListAssignmentCandidates(ctx context.Context, publicationID int64) ([]*model.AssignmentCandidate, error)
 	ListQualifiedUsersForPositions(ctx context.Context, positionIDs []int64) (map[int64][]*model.AssignmentCandidate, error)
@@ -129,18 +129,21 @@ type CreateAvailabilitySubmissionInput struct {
 	PublicationID int64
 	UserID        int64
 	SlotID        int64
+	Weekday       int
 }
 
 type DeleteAvailabilitySubmissionInput struct {
 	PublicationID int64
 	UserID        int64
 	SlotID        int64
+	Weekday       int
 }
 
 type CreateAssignmentInput struct {
 	PublicationID int64
 	UserID        int64
 	SlotID        int64
+	Weekday       int
 	PositionID    int64
 }
 
@@ -444,7 +447,7 @@ func (s *PublicationService) CreateAvailabilitySubmission(
 	ctx context.Context,
 	input CreateAvailabilitySubmissionInput,
 ) (*model.AvailabilitySubmission, error) {
-	if input.PublicationID <= 0 || input.UserID <= 0 || input.SlotID <= 0 {
+	if input.PublicationID <= 0 || input.UserID <= 0 || input.SlotID <= 0 || input.Weekday < 1 || input.Weekday > 7 {
 		return nil, ErrInvalidInput
 	}
 
@@ -459,8 +462,12 @@ func (s *PublicationService) CreateAvailabilitySubmission(
 		return nil, ErrPublicationNotCollecting
 	}
 
-	if _, err := s.publicationRepo.GetSlot(ctx, publication.TemplateID, input.SlotID); err != nil {
+	slot, err := s.publicationRepo.GetSlot(ctx, publication.TemplateID, input.SlotID)
+	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
+	}
+	if !slotHasWeekday(slot, input.Weekday) {
+		return nil, ErrInvalidInput
 	}
 
 	slotPositions, err := s.publicationRepo.ListSlotPositions(ctx, input.SlotID)
@@ -479,6 +486,7 @@ func (s *PublicationService) CreateAvailabilitySubmission(
 		PublicationID:    input.PublicationID,
 		UserID:           input.UserID,
 		SlotID:           input.SlotID,
+		Weekday:          input.Weekday,
 		PublicationState: stalePublicationState(publication.State, effectiveState),
 		Now:              now,
 	})
@@ -494,6 +502,7 @@ func (s *PublicationService) CreateAvailabilitySubmission(
 		Metadata: map[string]any{
 			"publication_id": submission.PublicationID,
 			"slot_id":        submission.SlotID,
+			"weekday":        submission.Weekday,
 		},
 	})
 
@@ -504,7 +513,7 @@ func (s *PublicationService) DeleteAvailabilitySubmission(
 	ctx context.Context,
 	input DeleteAvailabilitySubmissionInput,
 ) error {
-	if input.PublicationID <= 0 || input.UserID <= 0 || input.SlotID <= 0 {
+	if input.PublicationID <= 0 || input.UserID <= 0 || input.SlotID <= 0 || input.Weekday < 1 || input.Weekday > 7 {
 		return ErrInvalidInput
 	}
 
@@ -523,6 +532,7 @@ func (s *PublicationService) DeleteAvailabilitySubmission(
 		PublicationID:    input.PublicationID,
 		UserID:           input.UserID,
 		SlotID:           input.SlotID,
+		Weekday:          input.Weekday,
 		PublicationState: stalePublicationState(publication.State, effectiveState),
 		Now:              now,
 	}); err != nil {
@@ -535,6 +545,7 @@ func (s *PublicationService) DeleteAvailabilitySubmission(
 		Metadata: map[string]any{
 			"publication_id": input.PublicationID,
 			"slot_id":        input.SlotID,
+			"weekday":        input.Weekday,
 		},
 	})
 
@@ -598,6 +609,18 @@ func (s *PublicationService) userQualifiedForAnySlotPosition(
 	}
 
 	return false, nil
+}
+
+func slotHasWeekday(slot *model.TemplateSlot, weekday int) bool {
+	if slot == nil {
+		return false
+	}
+	for _, candidate := range slot.Weekdays {
+		if candidate == weekday {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizePublicationName(name string) (string, error) {

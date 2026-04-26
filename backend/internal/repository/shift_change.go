@@ -427,6 +427,7 @@ type AssignmentSnapshot struct {
 	PublicationID int64
 	UserID        int64
 	SlotID        int64
+	Weekday       int
 	PositionID    int64
 	Exists        bool
 }
@@ -754,6 +755,7 @@ func lockAssignment(ctx context.Context, tx *sql.Tx, id int64) (AssignmentSnapsh
 			a.publication_id,
 			a.user_id,
 			a.slot_id,
+			a.weekday,
 			a.position_id
 		FROM assignments a
 		WHERE a.id = $1
@@ -764,6 +766,7 @@ func lockAssignment(ctx context.Context, tx *sql.Tx, id int64) (AssignmentSnapsh
 		&snap.PublicationID,
 		&snap.UserID,
 		&snap.SlotID,
+		&snap.Weekday,
 		&snap.PositionID,
 	); {
 	case errors.Is(err, sql.ErrNoRows):
@@ -777,7 +780,7 @@ func lockAssignment(ctx context.Context, tx *sql.Tx, id int64) (AssignmentSnapsh
 
 func loadAssignment(ctx context.Context, tx *sql.Tx, id int64) (*model.Assignment, error) {
 	const query = `
-		SELECT id, publication_id, user_id, slot_id, position_id, created_at
+		SELECT id, publication_id, user_id, slot_id, weekday, position_id, created_at
 		FROM assignments
 		WHERE id = $1;
 	`
@@ -787,6 +790,7 @@ func loadAssignment(ctx context.Context, tx *sql.Tx, id int64) (*model.Assignmen
 		&assignment.PublicationID,
 		&assignment.UserID,
 		&assignment.SlotID,
+		&assignment.Weekday,
 		&assignment.PositionID,
 		&assignment.CreatedAt,
 	); err != nil {

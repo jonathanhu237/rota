@@ -81,7 +81,7 @@ type UpdateTemplateInput struct {
 
 type CreateTemplateSlotInput struct {
 	TemplateID int64
-	Weekday    int
+	Weekdays   []int
 	StartTime  string
 	EndTime    string
 }
@@ -89,7 +89,7 @@ type CreateTemplateSlotInput struct {
 type UpdateTemplateSlotInput struct {
 	TemplateID int64
 	SlotID     int64
-	Weekday    int
+	Weekdays   []int
 	StartTime  string
 	EndTime    string
 }
@@ -303,14 +303,14 @@ func (s *TemplateService) CreateTemplateSlot(ctx context.Context, input CreateTe
 		return nil, ErrInvalidInput
 	}
 
-	normalizedSlotInput, err := normalizeSlotInput(input.Weekday, input.StartTime, input.EndTime)
+	normalizedSlotInput, err := normalizeSlotInput(input.Weekdays, input.StartTime, input.EndTime)
 	if err != nil {
 		return nil, err
 	}
 
 	slot, err := s.templateRepo.CreateSlot(ctx, repository.CreateTemplateSlotParams{
 		TemplateID: input.TemplateID,
-		Weekday:    normalizedSlotInput.Weekday,
+		Weekdays:   normalizedSlotInput.Weekdays,
 		StartTime:  normalizedSlotInput.StartTime,
 		EndTime:    normalizedSlotInput.EndTime,
 	})
@@ -326,7 +326,7 @@ func (s *TemplateService) UpdateTemplateSlot(ctx context.Context, input UpdateTe
 		return nil, ErrInvalidInput
 	}
 
-	normalizedSlotInput, err := normalizeSlotInput(input.Weekday, input.StartTime, input.EndTime)
+	normalizedSlotInput, err := normalizeSlotInput(input.Weekdays, input.StartTime, input.EndTime)
 	if err != nil {
 		return nil, err
 	}
@@ -334,7 +334,7 @@ func (s *TemplateService) UpdateTemplateSlot(ctx context.Context, input UpdateTe
 	slot, err := s.templateRepo.UpdateSlot(ctx, repository.UpdateTemplateSlotParams{
 		TemplateID: input.TemplateID,
 		SlotID:     input.SlotID,
-		Weekday:    normalizedSlotInput.Weekday,
+		Weekdays:   normalizedSlotInput.Weekdays,
 		StartTime:  normalizedSlotInput.StartTime,
 		EndTime:    normalizedSlotInput.EndTime,
 	})
@@ -523,13 +523,14 @@ func normalizeTemplateInput(name, description string) (string, string, error) {
 }
 
 type normalizedTemplateSlotInput struct {
-	Weekday   int
+	Weekdays  []int
 	StartTime string
 	EndTime   string
 }
 
-func normalizeSlotInput(weekday int, startTime, endTime string) (*normalizedTemplateSlotInput, error) {
-	if weekday < 1 || weekday > 7 {
+func normalizeSlotInput(weekdays []int, startTime, endTime string) (*normalizedTemplateSlotInput, error) {
+	normalizedWeekdays, err := normalizeWeekdays(weekdays)
+	if err != nil {
 		return nil, ErrInvalidWeekday
 	}
 
@@ -546,10 +547,31 @@ func normalizeSlotInput(weekday int, startTime, endTime string) (*normalizedTemp
 	}
 
 	return &normalizedTemplateSlotInput{
-		Weekday:   weekday,
+		Weekdays:  normalizedWeekdays,
 		StartTime: parsedStartTime.Format(timeLayoutHourMinute),
 		EndTime:   parsedEndTime.Format(timeLayoutHourMinute),
 	}, nil
+}
+
+func normalizeWeekdays(weekdays []int) ([]int, error) {
+	if len(weekdays) == 0 {
+		return nil, ErrInvalidWeekday
+	}
+
+	seen := make(map[int]struct{}, len(weekdays))
+	for _, weekday := range weekdays {
+		if weekday < 1 || weekday > 7 {
+			return nil, ErrInvalidWeekday
+		}
+		seen[weekday] = struct{}{}
+	}
+
+	normalized := make([]int, 0, len(seen))
+	for weekday := range seen {
+		normalized = append(normalized, weekday)
+	}
+	sort.Ints(normalized)
+	return normalized, nil
 }
 
 func normalizeRequiredHeadcount(requiredHeadcount int) (int, error) {
@@ -566,11 +588,11 @@ func sortTemplateSlots(slots []*model.TemplateSlot) {
 	}
 
 	sort.Slice(slots, func(i, j int) bool {
-		if slots[i].Weekday != slots[j].Weekday {
-			return slots[i].Weekday < slots[j].Weekday
-		}
 		if slots[i].StartTime != slots[j].StartTime {
 			return slots[i].StartTime < slots[j].StartTime
+		}
+		if slots[i].EndTime != slots[j].EndTime {
+			return slots[i].EndTime < slots[j].EndTime
 		}
 
 		return slots[i].ID < slots[j].ID

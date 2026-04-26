@@ -58,14 +58,14 @@ func newPublicationRepositoryStatefulMock() *publicationRepositoryStatefulMock {
 			21: {
 				ID:         21,
 				TemplateID: 1,
-				Weekday:    1,
+				Weekdays:   []int{1},
 				StartTime:  "09:00",
 				EndTime:    "12:00",
 			},
 			22: {
 				ID:         22,
 				TemplateID: 1,
-				Weekday:    3,
+				Weekdays:   []int{3},
 				StartTime:  "13:00",
 				EndTime:    "17:00",
 			},
@@ -198,6 +198,7 @@ func (m *publicationRepositoryStatefulMock) GetSlot(
 	}
 
 	cloned := *slot
+	cloned.Weekdays = append([]int(nil), slot.Weekdays...)
 	return &cloned, nil
 }
 
@@ -341,12 +342,16 @@ func (m *publicationRepositoryStatefulMock) ListSubmissionSlots(
 			continue
 		}
 		slots = append(slots, model.SlotRef{
-			SlotID: submission.SlotID,
+			SlotID:  submission.SlotID,
+			Weekday: submission.Weekday,
 		})
 	}
 
 	sort.Slice(slots, func(i, j int) bool {
-		return slots[i].SlotID < slots[j].SlotID
+		if slots[i].SlotID != slots[j].SlotID {
+			return slots[i].SlotID < slots[j].SlotID
+		}
+		return slots[i].Weekday < slots[j].Weekday
 	})
 
 	return slots, nil
@@ -367,11 +372,11 @@ func (m *publicationRepositoryStatefulMock) UpsertSubmission(
 	}
 
 	slot, ok := m.templateSlots[params.SlotID]
-	if !ok || slot.TemplateID != publication.TemplateID {
+	if !ok || slot.TemplateID != publication.TemplateID || !mockSlotHasWeekday(slot, params.Weekday) {
 		return nil, repository.ErrTemplateSlotNotFound
 	}
 
-	key := submissionKey(params.PublicationID, params.UserID, params.SlotID)
+	key := submissionKey(params.PublicationID, params.UserID, params.SlotID, params.Weekday)
 	if existing, ok := m.submissions[key]; ok {
 		return cloneSubmission(existing), nil
 	}
@@ -381,6 +386,7 @@ func (m *publicationRepositoryStatefulMock) UpsertSubmission(
 		PublicationID: params.PublicationID,
 		UserID:        params.UserID,
 		SlotID:        params.SlotID,
+		Weekday:       params.Weekday,
 		CreatedAt:     params.Now,
 	}
 
@@ -404,7 +410,7 @@ func (m *publicationRepositoryStatefulMock) DeleteSubmission(
 		publication.UpdatedAt = params.Now
 	}
 
-	delete(m.submissions, submissionKey(params.PublicationID, params.UserID, params.SlotID))
+	delete(m.submissions, submissionKey(params.PublicationID, params.UserID, params.SlotID, params.Weekday))
 	return nil
 }
 
@@ -449,21 +455,23 @@ func (m *publicationRepositoryStatefulMock) ListQualifiedPublicationSlotPosition
 			continue
 		}
 
-		shift := &model.QualifiedShift{
-			SlotID:      slotID,
-			Weekday:     slot.Weekday,
-			StartTime:   slot.StartTime,
-			EndTime:     slot.EndTime,
-			Composition: make([]model.QualifiedShiftComposition, 0, len(m.slotPositions[slotID])),
+		for _, weekday := range slot.Weekdays {
+			shift := &model.QualifiedShift{
+				SlotID:      slotID,
+				Weekday:     weekday,
+				StartTime:   slot.StartTime,
+				EndTime:     slot.EndTime,
+				Composition: make([]model.QualifiedShiftComposition, 0, len(m.slotPositions[slotID])),
+			}
+			for _, slotPosition := range m.slotPositions[slotID] {
+				shift.Composition = append(shift.Composition, model.QualifiedShiftComposition{
+					PositionID:        slotPosition.PositionID,
+					PositionName:      mockPositionName(slotPosition.PositionID),
+					RequiredHeadcount: slotPosition.RequiredHeadcount,
+				})
+			}
+			shifts = append(shifts, shift)
 		}
-		for _, slotPosition := range m.slotPositions[slotID] {
-			shift.Composition = append(shift.Composition, model.QualifiedShiftComposition{
-				PositionID:        slotPosition.PositionID,
-				PositionName:      mockPositionName(slotPosition.PositionID),
-				RequiredHeadcount: slotPosition.RequiredHeadcount,
-			})
-		}
-		shifts = append(shifts, shift)
 	}
 
 	sort.Slice(shifts, func(i, j int) bool {
@@ -490,12 +498,12 @@ func (m *publicationRepositoryStatefulMock) CreateAssignment(
 		return nil, repository.ErrPublicationNotFound
 	}
 
-	slotID, positionID, _, err := m.resolveAssignmentRef(params.SlotID, params.PositionID)
+	slotID, positionID, _, err := m.resolveAssignmentRef(params.SlotID, params.Weekday, params.PositionID)
 	if err != nil {
 		return nil, err
 	}
 
-	key := assignmentKey(params.PublicationID, params.UserID, slotID)
+	key := assignmentKey(params.PublicationID, params.UserID, slotID, params.Weekday)
 	if _, ok := m.assignments[key]; ok {
 		return nil, repository.ErrAssignmentUserAlreadyInSlot
 	}
@@ -505,6 +513,7 @@ func (m *publicationRepositoryStatefulMock) CreateAssignment(
 		PublicationID: params.PublicationID,
 		UserID:        params.UserID,
 		SlotID:        slotID,
+		Weekday:       params.Weekday,
 		PositionID:    positionID,
 		CreatedAt:     params.CreatedAt,
 	}
@@ -569,16 +578,17 @@ func (m *publicationRepositoryStatefulMock) ReplaceAssignments(
 	}
 
 	for _, input := range params.Assignments {
-		slotID, positionID, _, err := m.resolveAssignmentRef(input.SlotID, input.PositionID)
+		slotID, positionID, _, err := m.resolveAssignmentRef(input.SlotID, input.Weekday, input.PositionID)
 		if err != nil {
 			return err
 		}
-		key := assignmentKey(params.PublicationID, input.UserID, slotID)
+		key := assignmentKey(params.PublicationID, input.UserID, slotID, input.Weekday)
 		m.assignments[key] = &model.Assignment{
 			ID:            m.nextAssignmentID,
 			PublicationID: params.PublicationID,
 			UserID:        input.UserID,
 			SlotID:        slotID,
+			Weekday:       input.Weekday,
 			PositionID:    positionID,
 			CreatedAt:     params.CreatedAt,
 		}
@@ -672,20 +682,22 @@ func (m *publicationRepositoryStatefulMock) ListPublicationShifts(
 			continue
 		}
 
-		for _, slotPosition := range m.slotPositions[slotID] {
-			shifts = append(shifts, &model.PublicationShift{
-				ID:                slotPosition.ID,
-				SlotID:            slotID,
-				TemplateID:        slot.TemplateID,
-				Weekday:           slot.Weekday,
-				StartTime:         slot.StartTime,
-				EndTime:           slot.EndTime,
-				PositionID:        slotPosition.PositionID,
-				PositionName:      mockPositionName(slotPosition.PositionID),
-				RequiredHeadcount: slotPosition.RequiredHeadcount,
-				CreatedAt:         slot.CreatedAt,
-				UpdatedAt:         slot.UpdatedAt,
-			})
+		for _, weekday := range slot.Weekdays {
+			for _, slotPosition := range m.slotPositions[slotID] {
+				shifts = append(shifts, &model.PublicationShift{
+					ID:                slotPosition.ID,
+					SlotID:            slotID,
+					TemplateID:        slot.TemplateID,
+					Weekday:           weekday,
+					StartTime:         slot.StartTime,
+					EndTime:           slot.EndTime,
+					PositionID:        slotPosition.PositionID,
+					PositionName:      mockPositionName(slotPosition.PositionID),
+					RequiredHeadcount: slotPosition.RequiredHeadcount,
+					CreatedAt:         slot.CreatedAt,
+					UpdatedAt:         slot.UpdatedAt,
+				})
+			}
 		}
 	}
 
@@ -728,6 +740,7 @@ func (m *publicationRepositoryStatefulMock) ListAssignmentCandidates(
 			}
 			candidates = append(candidates, &model.AssignmentCandidate{
 				SlotID:     submission.SlotID,
+				Weekday:    submission.Weekday,
 				PositionID: slotPosition.PositionID,
 				UserID:     user.ID,
 				Name:       user.Name,
@@ -739,6 +752,9 @@ func (m *publicationRepositoryStatefulMock) ListAssignmentCandidates(
 	sort.Slice(candidates, func(i, j int) bool {
 		if candidates[i].SlotID != candidates[j].SlotID {
 			return candidates[i].SlotID < candidates[j].SlotID
+		}
+		if candidates[i].Weekday != candidates[j].Weekday {
+			return candidates[i].Weekday < candidates[j].Weekday
 		}
 		if candidates[i].PositionID != candidates[j].PositionID {
 			return candidates[i].PositionID < candidates[j].PositionID
@@ -808,6 +824,7 @@ func (m *publicationRepositoryStatefulMock) ListPublicationAssignments(
 		assignments = append(assignments, &model.AssignmentParticipant{
 			AssignmentID: assignment.ID,
 			SlotID:       slotID,
+			Weekday:      assignment.Weekday,
 			PositionID:   positionID,
 			UserID:       user.ID,
 			Name:         user.Name,
@@ -819,6 +836,9 @@ func (m *publicationRepositoryStatefulMock) ListPublicationAssignments(
 	sort.Slice(assignments, func(i, j int) bool {
 		if assignments[i].SlotID != assignments[j].SlotID {
 			return assignments[i].SlotID < assignments[j].SlotID
+		}
+		if assignments[i].Weekday != assignments[j].Weekday {
+			return assignments[i].Weekday < assignments[j].Weekday
 		}
 		if assignments[i].PositionID != assignments[j].PositionID {
 			return assignments[i].PositionID < assignments[j].PositionID
@@ -840,7 +860,7 @@ func (m *publicationRepositoryStatefulMock) ListPublicationAssignmentsForWeek(
 func (m *publicationRepositoryStatefulMock) GetAssignmentBoardView(
 	ctx context.Context,
 	publicationID int64,
-) (map[int64]*repository.AssignmentBoardSlotView, error) {
+) (map[repository.AssignmentBoardSlotKey]*repository.AssignmentBoardSlotView, error) {
 	shifts, err := m.ListPublicationShifts(ctx, publicationID)
 	if err != nil {
 		return nil, err
@@ -867,27 +887,28 @@ func (m *publicationRepositoryStatefulMock) GetAssignmentBoardView(
 
 	candidatesBySlotPosition := make(map[slotPositionKey][]*model.AssignmentCandidate)
 	for _, candidate := range candidates {
-		key := slotPositionKey{SlotID: candidate.SlotID, PositionID: candidate.PositionID}
+		key := slotPositionKey{SlotID: candidate.SlotID, Weekday: candidate.Weekday, PositionID: candidate.PositionID}
 		candidatesBySlotPosition[key] = append(candidatesBySlotPosition[key], candidate)
 	}
 	assignmentsBySlotPosition := make(map[slotPositionKey][]*model.AssignmentParticipant)
 	for _, assignment := range assignments {
-		key := slotPositionKey{SlotID: assignment.SlotID, PositionID: assignment.PositionID}
+		key := slotPositionKey{SlotID: assignment.SlotID, Weekday: assignment.Weekday, PositionID: assignment.PositionID}
 		assignmentsBySlotPosition[key] = append(assignmentsBySlotPosition[key], assignment)
 	}
 
-	board := make(map[int64]*repository.AssignmentBoardSlotView)
+	board := make(map[repository.AssignmentBoardSlotKey]*repository.AssignmentBoardSlotView)
 	for _, shift := range shifts {
-		slotView := board[shift.SlotID]
+		slotKey := repository.AssignmentBoardSlotKey{SlotID: shift.SlotID, Weekday: shift.Weekday}
+		slotView := board[slotKey]
 		if slotView == nil {
 			slotView = &repository.AssignmentBoardSlotView{
 				Slot:      publicationShiftSlot(shift),
 				Positions: make(map[int64]*repository.AssignmentBoardPositionView),
 			}
-			board[shift.SlotID] = slotView
+			board[slotKey] = slotView
 		}
 
-		key := slotPositionKey{SlotID: shift.SlotID, PositionID: shift.PositionID}
+		key := slotPositionKey{SlotID: shift.SlotID, Weekday: shift.Weekday, PositionID: shift.PositionID}
 		candidatesForSlot := candidatesBySlotPosition[key]
 		assignmentsForSlot := assignmentsBySlotPosition[key]
 		slotView.Positions[shift.PositionID] = &repository.AssignmentBoardPositionView{
@@ -921,6 +942,7 @@ func (m *publicationRepositoryStatefulMock) listAssignmentBoardCandidates(public
 			}
 			candidates = append(candidates, &model.AssignmentCandidate{
 				SlotID:     submission.SlotID,
+				Weekday:    submission.Weekday,
 				PositionID: slotPosition.PositionID,
 				UserID:     user.ID,
 				Name:       user.Name,
@@ -932,6 +954,9 @@ func (m *publicationRepositoryStatefulMock) listAssignmentBoardCandidates(public
 	sort.Slice(candidates, func(i, j int) bool {
 		if candidates[i].SlotID != candidates[j].SlotID {
 			return candidates[i].SlotID < candidates[j].SlotID
+		}
+		if candidates[i].Weekday != candidates[j].Weekday {
+			return candidates[i].Weekday < candidates[j].Weekday
 		}
 		if candidates[i].PositionID != candidates[j].PositionID {
 			return candidates[i].PositionID < candidates[j].PositionID
@@ -1333,6 +1358,7 @@ func TestPublicationServiceDeletePublication(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 			CreatedAt:     now.Add(-2 * time.Hour),
 		}
 		service := NewPublicationService(repo, fixedClock{now: now})
@@ -1463,12 +1489,14 @@ func TestPublicationServiceListAvailabilitySubmissionSlots(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 		}
 		repo.submissions[submissionKey(1, 7, 22)] = &model.AvailabilitySubmission{
 			ID:            2,
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        22,
+			Weekday:       3,
 		}
 		service := NewPublicationService(repo, fixedClock{})
 
@@ -1479,8 +1507,8 @@ func TestPublicationServiceListAvailabilitySubmissionSlots(t *testing.T) {
 		if len(slots) != 2 {
 			t.Fatalf("expected 2 slots, got %v", slots)
 		}
-		if slots[0] != (model.SlotRef{SlotID: 21}) ||
-			slots[1] != (model.SlotRef{SlotID: 22}) {
+		if slots[0] != (model.SlotRef{SlotID: 21, Weekday: 1}) ||
+			slots[1] != (model.SlotRef{SlotID: 22, Weekday: 3}) {
 			t.Fatalf("unexpected slots: %v", slots)
 		}
 	})
@@ -1532,6 +1560,7 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 		})
 		if err != nil {
 			t.Fatalf("CreateAvailabilitySubmission returned error: %v", err)
@@ -1575,6 +1604,7 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 		})
 		if err != nil {
 			t.Fatalf("CreateAvailabilitySubmission returned error: %v", err)
@@ -1596,6 +1626,7 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 		})
 		if err != nil {
 			t.Fatalf("first CreateAvailabilitySubmission returned error: %v", err)
@@ -1604,6 +1635,7 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 		})
 		if err != nil {
 			t.Fatalf("second CreateAvailabilitySubmission returned error: %v", err)
@@ -1639,6 +1671,7 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 		})
 		if !errors.Is(err, ErrPublicationNotCollecting) {
 			t.Fatalf("expected ErrPublicationNotCollecting, got %v", err)
@@ -1668,6 +1701,7 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 		})
 		if !errors.Is(err, ErrPublicationNotCollecting) {
 			t.Fatalf("expected ErrPublicationNotCollecting, got %v", err)
@@ -1686,9 +1720,29 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        99,
+			Weekday:       1,
 		})
 		if !errors.Is(err, ErrTemplateSlotNotFound) {
 			t.Fatalf("expected ErrTemplateSlotNotFound, got %v", err)
+		}
+	})
+
+	t.Run("rejects weekday not covered by slot", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC)
+		repo := newPublicationRepositoryStatefulMock()
+		repo.publications[1] = collectingPublication(now)
+		service := NewPublicationService(repo, fixedClock{now: now})
+
+		_, err := service.CreateAvailabilitySubmission(context.Background(), CreateAvailabilitySubmissionInput{
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21,
+			Weekday:       2,
+		})
+		if !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("expected ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -1707,6 +1761,7 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        22,
+			Weekday:       3,
 		})
 		if !errors.Is(err, ErrNotQualified) {
 			t.Fatalf("expected ErrNotQualified, got %v", err)
@@ -1729,6 +1784,7 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 		})
 		if !errors.Is(err, ErrPublicationNotFound) {
 			t.Fatalf("expected ErrPublicationNotFound, got %v", err)
@@ -1748,6 +1804,7 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 			CreatedAt:     now.Add(-15 * time.Minute),
 		}
 		service := NewPublicationService(repo, fixedClock{now: now})
@@ -1759,6 +1816,7 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 		})
 		if err != nil {
 			t.Fatalf("DeleteAvailabilitySubmission returned error: %v", err)
@@ -1800,6 +1858,7 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 		})
 		if err != nil {
 			t.Fatalf("DeleteAvailabilitySubmission returned error: %v", err)
@@ -1817,6 +1876,7 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 			CreatedAt:     now.Add(-15 * time.Minute),
 		}
 		delete(repo.qualifiedByUser, 7)
@@ -1826,6 +1886,7 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 		})
 		if err != nil {
 			t.Fatalf("DeleteAvailabilitySubmission returned error: %v", err)
@@ -1861,6 +1922,7 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 		})
 		if !errors.Is(err, ErrPublicationNotCollecting) {
 			t.Fatalf("expected ErrPublicationNotCollecting, got %v", err)
@@ -2002,9 +2064,9 @@ func collectingPublication(now time.Time) *model.Publication {
 	}
 }
 
-func (m *publicationRepositoryStatefulMock) resolveAssignmentRef(slotID, positionID int64) (int64, int64, int64, error) {
+func (m *publicationRepositoryStatefulMock) resolveAssignmentRef(slotID int64, weekday int, positionID int64) (int64, int64, int64, error) {
 	entryID := m.findSlotPositionEntryID(slotID, positionID)
-	if slotID <= 0 || positionID <= 0 || entryID == 0 {
+	if slotID <= 0 || weekday <= 0 || positionID <= 0 || entryID == 0 || !mockSlotHasWeekday(m.templateSlots[slotID], weekday) {
 		return 0, 0, 0, repository.ErrTemplateSlotPositionNotFound
 	}
 
@@ -2023,6 +2085,18 @@ func (m *publicationRepositoryStatefulMock) resolveStoredAssignmentRef(
 	}
 
 	return assignment.SlotID, assignment.PositionID, 0
+}
+
+func mockSlotHasWeekday(slot *model.TemplateSlot, weekday int) bool {
+	if slot == nil {
+		return false
+	}
+	for _, candidate := range slot.Weekdays {
+		if candidate == weekday {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *publicationRepositoryStatefulMock) resolveAssignmentSlot(assignment *model.Assignment) *model.TemplateSlot {
@@ -2054,16 +2128,26 @@ func mockPositionName(positionID int64) string {
 	}
 }
 
-func submissionKey(publicationID, userID, slotID int64) string {
+func submissionKey(publicationID, userID, slotID int64, weekday ...int) string {
+	weekdayValue := 1
+	if len(weekday) > 0 {
+		weekdayValue = weekday[0]
+	}
 	return strconv.FormatInt(publicationID, 10) +
 		":" + strconv.FormatInt(userID, 10) +
-		":" + strconv.FormatInt(slotID, 10)
+		":" + strconv.FormatInt(slotID, 10) +
+		":" + strconv.Itoa(weekdayValue)
 }
 
-func assignmentKey(publicationID, userID, slotID int64) string {
+func assignmentKey(publicationID, userID, slotID int64, weekday ...int) string {
+	weekdayValue := 1
+	if len(weekday) > 0 {
+		weekdayValue = weekday[0]
+	}
 	return strconv.FormatInt(publicationID, 10) +
 		":" + strconv.FormatInt(userID, 10) +
-		":" + strconv.FormatInt(slotID, 10)
+		":" + strconv.FormatInt(slotID, 10) +
+		":" + strconv.Itoa(weekdayValue)
 }
 
 func clonePublication(publication *model.Publication) *model.Publication {

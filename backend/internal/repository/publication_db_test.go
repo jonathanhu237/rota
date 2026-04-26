@@ -290,6 +290,7 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 			PublicationID:    publication.ID,
 			UserID:           user.ID,
 			SlotID:           shift.SlotID,
+			Weekday:          shift.Weekday,
 			PublicationState: &newState,
 			Now:              testTime(),
 		})
@@ -301,6 +302,7 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 			PublicationID: publication.ID,
 			UserID:        user.ID,
 			SlotID:        shift.SlotID,
+			Weekday:       shift.Weekday,
 			Now:           testTime().Add(5 * time.Minute),
 		})
 		if err != nil {
@@ -388,6 +390,46 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		}
 	})
 
+	t.Run("ListQualifiedPublicationSlotPositions returns one row per slot weekday", func(t *testing.T) {
+		db := openIntegrationDB(t)
+		repo := NewPublicationRepository(db)
+		template := seedTemplate(t, db, templateSeed{})
+		position := seedPosition(t, db, positionSeed{Name: "Front Desk"})
+		slotID := seedTemplateSlot(t, db, template.ID, 1, "09:00", "10:00")
+		for _, weekday := range []int{2, 3} {
+			if _, err := db.ExecContext(ctx, `INSERT INTO template_slot_weekdays (slot_id, weekday) VALUES ($1, $2);`, slotID, weekday); err != nil {
+				t.Fatalf("seed template slot weekday %d: %v", weekday, err)
+			}
+		}
+		seedTemplateSlotPosition(t, db, slotID, position.ID, 1)
+		publication := seedPublication(t, db, publicationSeed{
+			TemplateID:        template.ID,
+			State:             model.PublicationStateCollecting,
+			SubmissionStartAt: testTime().Add(-1 * time.Hour),
+			SubmissionEndAt:   testTime().Add(1 * time.Hour),
+			PlannedActiveFrom: testTime().Add(24 * time.Hour),
+			CreatedAt:         testTime().Add(-2 * time.Hour),
+		})
+		user := seedUser(t, db, userSeed{})
+		seedUserPosition(t, db, user.ID, position.ID)
+
+		qualified, err := repo.ListQualifiedPublicationSlotPositions(ctx, publication.ID, user.ID)
+		if err != nil {
+			t.Fatalf("list qualified slot positions: %v", err)
+		}
+		if len(qualified) != 3 {
+			t.Fatalf("expected 3 qualified slot-weekday rows, got %+v", qualified)
+		}
+		for index, shift := range qualified {
+			if shift.SlotID != slotID || shift.Weekday != index+1 {
+				t.Fatalf("unexpected shift at index %d: %+v", index, shift)
+			}
+			if len(shift.Composition) != 1 || shift.Composition[0].PositionID != position.ID {
+				t.Fatalf("expected one composition entry for weekday %d, got %+v", shift.Weekday, shift.Composition)
+			}
+		}
+	})
+
 	t.Run("GetAssignmentBoardView groups slot positions and filters non-candidate qualified users", func(t *testing.T) {
 		db := openIntegrationDB(t)
 		repo := NewPublicationRepository(db)
@@ -436,7 +478,7 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 			t.Fatalf("expected 2 slots in board view, got %+v", board)
 		}
 
-		firstSlot := board[firstSlotID]
+		firstSlot := board[AssignmentBoardSlotKey{SlotID: firstSlotID, Weekday: 1}]
 		if firstSlot == nil || firstSlot.Slot == nil {
 			t.Fatalf("expected first slot view, got %+v", board)
 		}
@@ -459,7 +501,7 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 			t.Fatalf("unexpected non-candidate qualified users: %+v", firstPositionView.NonCandidateQualified)
 		}
 
-		secondSlot := board[secondSlotID]
+		secondSlot := board[AssignmentBoardSlotKey{SlotID: secondSlotID, Weekday: 2}]
 		if secondSlot == nil || secondSlot.Slot == nil {
 			t.Fatalf("expected second slot view, got %+v", board)
 		}

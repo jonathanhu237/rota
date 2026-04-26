@@ -33,7 +33,7 @@ type UpdateTemplateParams struct {
 
 type CreateTemplateSlotParams struct {
 	TemplateID int64
-	Weekday    int
+	Weekdays   []int
 	StartTime  string
 	EndTime    string
 }
@@ -41,7 +41,7 @@ type CreateTemplateSlotParams struct {
 type UpdateTemplateSlotParams struct {
 	TemplateID int64
 	SlotID     int64
-	Weekday    int
+	Weekdays   []int
 	StartTime  string
 	EndTime    string
 }
@@ -238,15 +238,13 @@ func (r *TemplateRepository) Clone(ctx context.Context, id int64, name string) (
 		const insertSlotQuery = `
 			INSERT INTO template_slots (
 				template_id,
-				weekday,
 				start_time,
 				end_time
 			)
-			VALUES ($1, $2, $3, $4)
+			VALUES ($1, $2, $3)
 			RETURNING
 				id,
 				template_id,
-				weekday,
 				TO_CHAR(start_time, 'HH24:MI'),
 				TO_CHAR(end_time, 'HH24:MI'),
 				created_at,
@@ -258,13 +256,11 @@ func (r *TemplateRepository) Clone(ctx context.Context, id int64, name string) (
 			ctx,
 			insertSlotQuery,
 			template.ID,
-			sourceSlot.Weekday,
 			sourceSlot.StartTime,
 			sourceSlot.EndTime,
 		).Scan(
 			&clonedSlot.ID,
 			&clonedSlot.TemplateID,
-			&clonedSlot.Weekday,
 			&clonedSlot.StartTime,
 			&clonedSlot.EndTime,
 			&clonedSlot.CreatedAt,
@@ -273,6 +269,10 @@ func (r *TemplateRepository) Clone(ctx context.Context, id int64, name string) (
 		if err != nil {
 			return nil, err
 		}
+		if err := replaceSlotWeekdays(ctx, tx, clonedSlot.ID, sourceSlot.Weekdays); err != nil {
+			return nil, err
+		}
+		clonedSlot.Weekdays = append([]int(nil), sourceSlot.Weekdays...)
 
 		sourcePositions, err := listTemplateSlotPositions(ctx, tx, sourceSlot.ID)
 		if err != nil {
@@ -334,24 +334,27 @@ func (r *TemplateRepository) CreateSlot(
 	ctx context.Context,
 	params CreateTemplateSlotParams,
 ) (*model.TemplateSlot, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
 	const query = `
 		INSERT INTO template_slots (
 			template_id,
-			weekday,
 			start_time,
 			end_time
 		)
 		SELECT
 			t.id,
 			$2,
-			$3,
-			$4
+			$3
 		FROM templates t
 		WHERE t.id = $1 AND t.is_locked = FALSE
 		RETURNING
 			id,
 			template_id,
-			weekday,
 			TO_CHAR(start_time, 'HH24:MI'),
 			TO_CHAR(end_time, 'HH24:MI'),
 			created_at,
@@ -359,17 +362,15 @@ func (r *TemplateRepository) CreateSlot(
 	`
 
 	slot := &model.TemplateSlot{}
-	err := r.db.QueryRowContext(
+	err = tx.QueryRowContext(
 		ctx,
 		query,
 		params.TemplateID,
-		params.Weekday,
 		params.StartTime,
 		params.EndTime,
 	).Scan(
 		&slot.ID,
 		&slot.TemplateID,
-		&slot.Weekday,
 		&slot.StartTime,
 		&slot.EndTime,
 		&slot.CreatedAt,
@@ -381,6 +382,14 @@ func (r *TemplateRepository) CreateSlot(
 	if err != nil {
 		return nil, mapTemplateSlotWriteError(err)
 	}
+	if err := replaceSlotWeekdays(ctx, tx, slot.ID, params.Weekdays); err != nil {
+		return nil, mapTemplateSlotWriteError(err)
+	}
+	slot.Weekdays = append([]int(nil), params.Weekdays...)
+
+	if err := tx.Commit(); err != nil {
+		return nil, mapTemplateSlotWriteError(err)
+	}
 
 	return slot, nil
 }
@@ -389,12 +398,17 @@ func (r *TemplateRepository) UpdateSlot(
 	ctx context.Context,
 	params UpdateTemplateSlotParams,
 ) (*model.TemplateSlot, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
 	const query = `
 		UPDATE template_slots
 		SET
-			weekday = $3,
-			start_time = $4,
-			end_time = $5,
+			start_time = $3,
+			end_time = $4,
 			updated_at = NOW()
 		FROM templates
 		WHERE
@@ -405,7 +419,6 @@ func (r *TemplateRepository) UpdateSlot(
 		RETURNING
 			template_slots.id,
 			template_slots.template_id,
-			template_slots.weekday,
 			TO_CHAR(template_slots.start_time, 'HH24:MI'),
 			TO_CHAR(template_slots.end_time, 'HH24:MI'),
 			template_slots.created_at,
@@ -413,18 +426,16 @@ func (r *TemplateRepository) UpdateSlot(
 	`
 
 	slot := &model.TemplateSlot{}
-	err := r.db.QueryRowContext(
+	err = tx.QueryRowContext(
 		ctx,
 		query,
 		params.TemplateID,
 		params.SlotID,
-		params.Weekday,
 		params.StartTime,
 		params.EndTime,
 	).Scan(
 		&slot.ID,
 		&slot.TemplateID,
-		&slot.Weekday,
 		&slot.StartTime,
 		&slot.EndTime,
 		&slot.CreatedAt,
@@ -434,6 +445,17 @@ func (r *TemplateRepository) UpdateSlot(
 		return nil, r.resolveTemplateSlotWriteState(ctx, params.TemplateID, params.SlotID)
 	}
 	if err != nil {
+		return nil, mapTemplateSlotWriteError(err)
+	}
+	if err := replaceSlotWeekdays(ctx, tx, slot.ID, params.Weekdays); err != nil {
+		return nil, mapTemplateSlotWriteError(err)
+	}
+	if err := touchSlotWeekdays(ctx, tx, slot.ID); err != nil {
+		return nil, mapTemplateSlotWriteError(err)
+	}
+	slot.Weekdays = append([]int(nil), params.Weekdays...)
+
+	if err := tx.Commit(); err != nil {
 		return nil, mapTemplateSlotWriteError(err)
 	}
 
@@ -484,6 +506,40 @@ func (r *TemplateRepository) ListSlotsByTemplate(
 type queryer interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func replaceSlotWeekdays(ctx context.Context, db queryer, slotID int64, weekdays []int) error {
+	const deleteQuery = `
+		DELETE FROM template_slot_weekdays
+		WHERE slot_id = $1 AND NOT (weekday = ANY($2));
+	`
+	if _, err := db.ExecContext(ctx, deleteQuery, slotID, pq.Array(weekdays)); err != nil {
+		return err
+	}
+
+	const insertQuery = `
+		INSERT INTO template_slot_weekdays (slot_id, weekday)
+		VALUES ($1, $2)
+		ON CONFLICT (slot_id, weekday) DO NOTHING;
+	`
+	for _, weekday := range weekdays {
+		if _, err := db.ExecContext(ctx, insertQuery, slotID, weekday); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func touchSlotWeekdays(ctx context.Context, db queryer, slotID int64) error {
+	const query = `
+		UPDATE template_slot_weekdays
+		SET weekday = weekday
+		WHERE slot_id = $1;
+	`
+	_, err := db.ExecContext(ctx, query, slotID)
+	return err
 }
 
 func getTemplateByID(ctx context.Context, db queryer, id int64) (*model.Template, error) {

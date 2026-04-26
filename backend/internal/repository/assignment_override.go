@@ -82,19 +82,19 @@ func (r *PublicationRepository) ListPublicationAssignmentsForWeek(
 		SELECT
 			a.id,
 			a.slot_id,
+			a.weekday,
 			a.position_id,
 			u.id,
 			u.name,
 			u.email,
 			a.created_at
 		FROM assignments a
-		INNER JOIN template_slots ts ON ts.id = a.slot_id
 		LEFT JOIN assignment_overrides ao
 			ON ao.assignment_id = a.id
-			AND ao.occurrence_date = ($2::date + ((ts.weekday - 1) * INTERVAL '1 day'))::date
+			AND ao.occurrence_date = ($2::date + ((a.weekday - 1) * INTERVAL '1 day'))::date
 		INNER JOIN users u ON u.id = COALESCE(ao.user_id, a.user_id)
 		WHERE a.publication_id = $1
-		ORDER BY a.slot_id ASC, a.position_id ASC, u.id ASC;
+		ORDER BY a.weekday ASC, a.slot_id ASC, a.position_id ASC, u.id ASC;
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, publicationID, model.NormalizeOccurrenceDate(weekStart))
@@ -109,6 +109,7 @@ func (r *PublicationRepository) ListPublicationAssignmentsForWeek(
 		if err := rows.Scan(
 			&assignment.AssignmentID,
 			&assignment.SlotID,
+			&assignment.Weekday,
 			&assignment.PositionID,
 			&assignment.UserID,
 			&assignment.Name,

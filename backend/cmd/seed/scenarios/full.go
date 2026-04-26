@@ -54,16 +54,12 @@ func RunFull(ctx context.Context, tx *sql.Tx, opts Options) error {
 
 func fullSlotDefinitions() []slotDefinition {
 	return []slotDefinition{
-		{Weekday: 1, StartTime: "09:00", EndTime: "12:00", Positions: twoPositions(0, 1)},
-		{Weekday: 1, StartTime: "14:00", EndTime: "17:00", Positions: twoPositions(0, 1)},
-		{Weekday: 2, StartTime: "09:00", EndTime: "12:00", Positions: twoPositions(0, 1)},
-		{Weekday: 2, StartTime: "14:00", EndTime: "17:00", Positions: twoPositions(0, 1)},
-		{Weekday: 3, StartTime: "09:00", EndTime: "12:00", Positions: twoPositions(0, 1)},
-		{Weekday: 3, StartTime: "19:00", EndTime: "21:00", Positions: twoPositions(2, 3)},
-		{Weekday: 4, StartTime: "09:00", EndTime: "12:00", Positions: twoPositions(0, 2)},
-		{Weekday: 4, StartTime: "14:00", EndTime: "17:00", Positions: twoPositions(1, 3)},
-		{Weekday: 5, StartTime: "09:00", EndTime: "12:00", Positions: twoPositions(0, 1)},
-		{Weekday: 5, StartTime: "14:00", EndTime: "17:00", Positions: twoPositions(2, 3)},
+		{Weekdays: []int{1, 2, 3, 5}, StartTime: "09:00", EndTime: "12:00", Positions: twoPositions(0, 1)},
+		{Weekdays: []int{4}, StartTime: "09:00", EndTime: "12:00", Positions: twoPositions(0, 2)},
+		{Weekdays: []int{1, 2}, StartTime: "14:00", EndTime: "17:00", Positions: twoPositions(0, 1)},
+		{Weekdays: []int{4}, StartTime: "14:00", EndTime: "17:00", Positions: twoPositions(1, 3)},
+		{Weekdays: []int{5}, StartTime: "14:00", EndTime: "17:00", Positions: twoPositions(2, 3)},
+		{Weekdays: []int{3}, StartTime: "19:00", EndTime: "21:00", Positions: twoPositions(2, 3)},
 	}
 }
 

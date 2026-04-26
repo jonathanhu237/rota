@@ -57,6 +57,7 @@ func (s *PublicationService) AutoAssignPublication(
 		solverCandidates = append(solverCandidates, AutoAssignCandidate{
 			UserID:     candidate.UserID,
 			SlotID:     candidate.SlotID,
+			Weekday:    candidate.Weekday,
 			PositionID: candidate.PositionID,
 		})
 	}
@@ -71,6 +72,7 @@ func (s *PublicationService) AutoAssignPublication(
 		replacementAssignments = append(replacementAssignments, repository.ReplaceAssignmentParams{
 			UserID:     assignment.UserID,
 			SlotID:     assignment.SlotID,
+			Weekday:    assignment.Weekday,
 			PositionID: assignment.PositionID,
 		})
 	}

@@ -546,11 +546,13 @@ func seedSubmission(
 			publication_id,
 			user_id,
 			slot_id,
+			weekday,
 			created_at
 		)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, publication_id, user_id, slot_id, created_at;
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, publication_id, user_id, slot_id, weekday, created_at;
 	`
+	weekday := seedSlotWeekday(t, db, slotID)
 
 	submission := &model.AvailabilitySubmission{}
 	if err := db.QueryRowContext(
@@ -559,12 +561,14 @@ func seedSubmission(
 		publicationID,
 		userID,
 		slotID,
+		weekday,
 		createdAt,
 	).Scan(
 		&submission.ID,
 		&submission.PublicationID,
 		&submission.UserID,
 		&submission.SlotID,
+		&submission.Weekday,
 		&submission.CreatedAt,
 	); err != nil {
 		t.Fatalf("seed submission: %v", err)
@@ -586,12 +590,14 @@ func seedAssignment(
 			publication_id,
 			user_id,
 			slot_id,
+			weekday,
 			position_id,
 			created_at
 		)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, publication_id, user_id, slot_id, position_id, created_at;
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, publication_id, user_id, slot_id, weekday, position_id, created_at;
 	`
+	weekday := seedSlotWeekday(t, db, slotID)
 
 	assignment := &model.Assignment{}
 	if err := db.QueryRowContext(
@@ -600,6 +606,7 @@ func seedAssignment(
 		publicationID,
 		userID,
 		slotID,
+		weekday,
 		positionID,
 		createdAt,
 	).Scan(
@@ -607,6 +614,7 @@ func seedAssignment(
 		&assignment.PublicationID,
 		&assignment.UserID,
 		&assignment.SlotID,
+		&assignment.Weekday,
 		&assignment.PositionID,
 		&assignment.CreatedAt,
 	); err != nil {
@@ -614,4 +622,18 @@ func seedAssignment(
 	}
 
 	return assignment
+}
+
+func seedSlotWeekday(t testing.TB, db *sql.DB, slotID int64) int {
+	t.Helper()
+
+	var weekday int
+	if err := db.QueryRowContext(
+		context.Background(),
+		`SELECT weekday FROM template_slot_weekdays WHERE slot_id = $1 ORDER BY weekday ASC LIMIT 1;`,
+		slotID,
+	).Scan(&weekday); err != nil {
+		t.Fatalf("load slot weekday: %v", err)
+	}
+	return weekday
 }

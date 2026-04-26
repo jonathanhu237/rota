@@ -30,7 +30,7 @@ type Template struct {
 type TemplateSlot struct {
 	ID         int64
 	TemplateID int64
-	Weekday    int
+	Weekdays   []int
 	StartTime  string
 	EndTime    string
 	CreatedAt  time.Time

@@ -10,10 +10,10 @@ func TestAutoAssignSolver(t *testing.T) {
 			{SlotID: 21, PositionID: 101, Weekday: 1, StartTime: "09:00", EndTime: "12:00", RequiredHeadcount: 1},
 			{SlotID: 22, PositionID: 102, Weekday: 2, StartTime: "09:00", EndTime: "12:00", RequiredHeadcount: 1},
 		}, []AutoAssignCandidate{
-			{UserID: 1, SlotID: 21, PositionID: 101},
-			{UserID: 1, SlotID: 22, PositionID: 102},
-			{UserID: 2, SlotID: 21, PositionID: 101},
-			{UserID: 2, SlotID: 22, PositionID: 102},
+			{UserID: 1, SlotID: 21, Weekday: 1, PositionID: 101},
+			{UserID: 1, SlotID: 22, Weekday: 1, PositionID: 102},
+			{UserID: 2, SlotID: 21, Weekday: 1, PositionID: 101},
+			{UserID: 2, SlotID: 22, Weekday: 2, PositionID: 102},
 		})
 		if err != nil {
 			t.Fatalf("SolveAutoAssignments returned error: %v", err)
@@ -37,15 +37,15 @@ func TestAutoAssignSolver(t *testing.T) {
 			{SlotID: 22, PositionID: 102, Weekday: 2, StartTime: "09:00", EndTime: "12:00", RequiredHeadcount: 1},
 			{SlotID: 23, PositionID: 103, Weekday: 3, StartTime: "09:00", EndTime: "12:00", RequiredHeadcount: 1},
 		}, []AutoAssignCandidate{
-			{UserID: 1, SlotID: 21, PositionID: 101},
-			{UserID: 1, SlotID: 22, PositionID: 102},
-			{UserID: 1, SlotID: 23, PositionID: 103},
-			{UserID: 2, SlotID: 21, PositionID: 101},
-			{UserID: 2, SlotID: 22, PositionID: 102},
-			{UserID: 2, SlotID: 23, PositionID: 103},
-			{UserID: 3, SlotID: 21, PositionID: 101},
-			{UserID: 3, SlotID: 22, PositionID: 102},
-			{UserID: 3, SlotID: 23, PositionID: 103},
+			{UserID: 1, SlotID: 21, Weekday: 1, PositionID: 101},
+			{UserID: 1, SlotID: 22, Weekday: 2, PositionID: 102},
+			{UserID: 1, SlotID: 23, Weekday: 3, PositionID: 103},
+			{UserID: 2, SlotID: 21, Weekday: 1, PositionID: 101},
+			{UserID: 2, SlotID: 22, Weekday: 2, PositionID: 102},
+			{UserID: 2, SlotID: 23, Weekday: 3, PositionID: 103},
+			{UserID: 3, SlotID: 21, Weekday: 1, PositionID: 101},
+			{UserID: 3, SlotID: 22, Weekday: 2, PositionID: 102},
+			{UserID: 3, SlotID: 23, Weekday: 3, PositionID: 103},
 		})
 		if err != nil {
 			t.Fatalf("SolveAutoAssignments returned error: %v", err)
@@ -64,9 +64,9 @@ func TestAutoAssignSolver(t *testing.T) {
 			{SlotID: 21, PositionID: 101, Weekday: 1, StartTime: "09:00", EndTime: "12:00", RequiredHeadcount: 1},
 			{SlotID: 22, PositionID: 102, Weekday: 2, StartTime: "09:00", EndTime: "12:00", RequiredHeadcount: 1},
 		}, []AutoAssignCandidate{
-			{UserID: 1, SlotID: 21, PositionID: 101},
-			{UserID: 1, SlotID: 22, PositionID: 102},
-			{UserID: 2, SlotID: 21, PositionID: 101},
+			{UserID: 1, SlotID: 21, Weekday: 1, PositionID: 101},
+			{UserID: 1, SlotID: 22, Weekday: 2, PositionID: 102},
+			{UserID: 2, SlotID: 21, Weekday: 1, PositionID: 101},
 		})
 		if err != nil {
 			t.Fatalf("SolveAutoAssignments returned error: %v", err)
@@ -88,11 +88,11 @@ func TestAutoAssignSolver(t *testing.T) {
 		assignments, err := SolveAutoAssignments([]AutoAssignSlotPosition{
 			{SlotID: 21, PositionID: 101, Weekday: 1, StartTime: "09:00", EndTime: "12:00", RequiredHeadcount: 3},
 		}, []AutoAssignCandidate{
-			{UserID: 1, SlotID: 21, PositionID: 101},
-			{UserID: 2, SlotID: 21, PositionID: 101},
-			{UserID: 3, SlotID: 21, PositionID: 101},
-			{UserID: 4, SlotID: 21, PositionID: 101},
-			{UserID: 5, SlotID: 21, PositionID: 101},
+			{UserID: 1, SlotID: 21, Weekday: 1, PositionID: 101},
+			{UserID: 2, SlotID: 21, Weekday: 1, PositionID: 101},
+			{UserID: 3, SlotID: 21, Weekday: 1, PositionID: 101},
+			{UserID: 4, SlotID: 21, Weekday: 1, PositionID: 101},
+			{UserID: 5, SlotID: 21, Weekday: 1, PositionID: 101},
 		})
 		if err != nil {
 			t.Fatalf("SolveAutoAssignments returned error: %v", err)
@@ -110,8 +110,8 @@ func TestAutoAssignSolver(t *testing.T) {
 			{SlotID: 21, PositionID: 101, Weekday: 1, StartTime: "09:00", EndTime: "12:00", RequiredHeadcount: 1},
 			{SlotID: 22, PositionID: 102, Weekday: 1, StartTime: "11:00", EndTime: "14:00", RequiredHeadcount: 1},
 		}, []AutoAssignCandidate{
-			{UserID: 1, SlotID: 21, PositionID: 101},
-			{UserID: 1, SlotID: 22, PositionID: 102},
+			{UserID: 1, SlotID: 21, Weekday: 1, PositionID: 101},
+			{UserID: 1, SlotID: 22, Weekday: 2, PositionID: 102},
 		})
 		if err != nil {
 			t.Fatalf("SolveAutoAssignments returned error: %v", err)
@@ -129,8 +129,8 @@ func TestAutoAssignSolver(t *testing.T) {
 			{SlotID: 21, PositionID: 101, Weekday: 1, StartTime: "09:00", EndTime: "12:00", RequiredHeadcount: 1},
 			{SlotID: 21, PositionID: 102, Weekday: 1, StartTime: "09:00", EndTime: "12:00", RequiredHeadcount: 1},
 		}, []AutoAssignCandidate{
-			{UserID: 1, SlotID: 21, PositionID: 101},
-			{UserID: 1, SlotID: 21, PositionID: 102},
+			{UserID: 1, SlotID: 21, Weekday: 1, PositionID: 101},
+			{UserID: 1, SlotID: 21, Weekday: 1, PositionID: 102},
 		})
 		if err != nil {
 			t.Fatalf("SolveAutoAssignments returned error: %v", err)
@@ -161,8 +161,8 @@ func TestAutoAssignSolver(t *testing.T) {
 		assignments, err := SolveAutoAssignments([]AutoAssignSlotPosition{
 			{SlotID: 21, PositionID: 101, Weekday: 1, StartTime: "09:00", EndTime: "12:00", RequiredHeadcount: 3},
 		}, []AutoAssignCandidate{
-			{UserID: 1, SlotID: 21, PositionID: 101},
-			{UserID: 2, SlotID: 21, PositionID: 101},
+			{UserID: 1, SlotID: 21, Weekday: 1, PositionID: 101},
+			{UserID: 2, SlotID: 21, Weekday: 1, PositionID: 101},
 		})
 		if err != nil {
 			t.Fatalf("SolveAutoAssignments returned error: %v", err)
@@ -185,18 +185,18 @@ func TestAutoAssignSolver(t *testing.T) {
 			{SlotID: 26, PositionID: 106, Weekday: 6, StartTime: "09:00", EndTime: "12:00", RequiredHeadcount: 1},
 		}
 		candidates := []AutoAssignCandidate{
-			{UserID: 1, SlotID: 21, PositionID: 101},
-			{UserID: 1, SlotID: 22, PositionID: 102},
-			{UserID: 1, SlotID: 23, PositionID: 103},
-			{UserID: 1, SlotID: 24, PositionID: 104},
-			{UserID: 1, SlotID: 25, PositionID: 105},
-			{UserID: 1, SlotID: 26, PositionID: 106},
-			{UserID: 2, SlotID: 21, PositionID: 101},
-			{UserID: 2, SlotID: 22, PositionID: 102},
-			{UserID: 2, SlotID: 23, PositionID: 103},
-			{UserID: 2, SlotID: 24, PositionID: 104},
-			{UserID: 3, SlotID: 21, PositionID: 101},
-			{UserID: 3, SlotID: 22, PositionID: 102},
+			{UserID: 1, SlotID: 21, Weekday: 1, PositionID: 101},
+			{UserID: 1, SlotID: 22, Weekday: 2, PositionID: 102},
+			{UserID: 1, SlotID: 23, Weekday: 3, PositionID: 103},
+			{UserID: 1, SlotID: 24, Weekday: 4, PositionID: 104},
+			{UserID: 1, SlotID: 25, Weekday: 5, PositionID: 105},
+			{UserID: 1, SlotID: 26, Weekday: 6, PositionID: 106},
+			{UserID: 2, SlotID: 21, Weekday: 1, PositionID: 101},
+			{UserID: 2, SlotID: 22, Weekday: 2, PositionID: 102},
+			{UserID: 2, SlotID: 23, Weekday: 3, PositionID: 103},
+			{UserID: 2, SlotID: 24, Weekday: 4, PositionID: 104},
+			{UserID: 3, SlotID: 21, Weekday: 1, PositionID: 101},
+			{UserID: 3, SlotID: 22, Weekday: 2, PositionID: 102},
 		}
 
 		assignments, err := SolveAutoAssignments(slotPositions, candidates)

@@ -234,7 +234,7 @@ func main() {
 	mux.HandleFunc("GET /roster/current", authHandler.RequireAuth(publicationHandler.GetCurrentRoster))
 	mux.HandleFunc("GET /publications/{id}/submissions/me", authHandler.RequireAuth(publicationHandler.ListMySubmissionSlots))
 	mux.HandleFunc("POST /publications/{id}/submissions", authHandler.RequireAuth(publicationHandler.CreateSubmission))
-	mux.HandleFunc("DELETE /publications/{id}/submissions/{slot_id}", authHandler.RequireAuth(publicationHandler.DeleteSubmission))
+	mux.HandleFunc("DELETE /publications/{id}/submissions/{slot_id}/{weekday}", authHandler.RequireAuth(publicationHandler.DeleteSubmission))
 	mux.HandleFunc("GET /publications/{id}/shifts/me", authHandler.RequireAuth(publicationHandler.ListMyQualifiedShifts))
 	mux.HandleFunc("POST /publications/{id}/shift-changes", authHandler.RequireAuth(shiftChangeHandler.Create))
 	mux.HandleFunc("GET /publications/{id}/shift-changes", authHandler.RequireAuth(shiftChangeHandler.List))

@@ -120,7 +120,7 @@ func TestApplySwapDisabledCounterpart(t *testing.T) {
 	now := serviceIntegrationTestTime()
 	pubID, templateID, positionID := seedPublishedSchedulingPublication(t, db, "Disabled Swap", now)
 	slotRequester := seedServiceSlot(t, db, templateID, 1, "09:00", "11:00")
-	slotCounterpart := seedServiceSlot(t, db, templateID, 2, "09:00", "11:00")
+	slotCounterpart := seedServiceSlot(t, db, templateID, 2, "12:00", "14:00")
 	seedServiceSlotPosition(t, db, slotRequester, positionID, 1)
 	seedServiceSlotPosition(t, db, slotCounterpart, positionID, 1)
 	requester := seedServiceUser(t, db, "disabled-swap-requester@example.com", "Disabled Swap Requester")
@@ -182,13 +182,14 @@ func seedServiceAssignment(
 	if err := db.QueryRowContext(
 		context.Background(),
 		`
-			INSERT INTO assignments (publication_id, user_id, slot_id, position_id, created_at)
-			VALUES ($1, $2, $3, $4, $5)
-			RETURNING id, publication_id, user_id, slot_id, position_id, created_at;
-		`,
+				INSERT INTO assignments (publication_id, user_id, slot_id, weekday, position_id, created_at)
+				VALUES ($1, $2, $3, $4, $5, $6)
+				RETURNING id, publication_id, user_id, slot_id, weekday, position_id, created_at;
+			`,
 		publicationID,
 		userID,
 		slotID,
+		seedServiceSlotWeekday(t, db, slotID),
 		positionID,
 		createdAt,
 	).Scan(
@@ -196,6 +197,7 @@ func seedServiceAssignment(
 		&assignment.PublicationID,
 		&assignment.UserID,
 		&assignment.SlotID,
+		&assignment.Weekday,
 		&assignment.PositionID,
 		&assignment.CreatedAt,
 	); err != nil {

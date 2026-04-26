@@ -304,11 +304,12 @@ func (s *LeaveService) PreviewOccurrences(
 		}
 		slot := publicationShiftSlot(shift)
 		position := publicationShiftPosition(shift)
+		assignmentOccurrence := &model.Assignment{Weekday: assignment.Weekday}
 		for date := from; !date.After(to); date = date.AddDate(0, 0, 1) {
-			if weekdayToSlotValue(date.Weekday()) != shift.Weekday {
+			if weekdayToSlotValue(date.Weekday()) != assignment.Weekday {
 				continue
 			}
-			if err := model.IsValidOccurrence(publication, slot, date, now); err != nil {
+			if err := model.IsValidOccurrenceForAssignment(publication, slot, assignmentOccurrence, date, now); err != nil {
 				continue
 			}
 			start, err := model.OccurrenceStart(slot, date)

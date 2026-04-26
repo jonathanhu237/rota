@@ -18,7 +18,11 @@ type AvailabilityGridProps = {
   shifts: QualifiedShift[]
   selectedSlots: SlotRef[]
   isPending: boolean
-  onToggle: (slotID: number, checked: boolean) => void
+  onToggle: (slotID: number, weekday: number, checked: boolean) => void
+}
+
+function getSlotWeekdayKey(slotID: number, weekday: number) {
+  return `${slotID}:${weekday}`
 }
 
 export function AvailabilityGrid({
@@ -29,7 +33,9 @@ export function AvailabilityGrid({
 }: AvailabilityGridProps) {
   const { t } = useTranslation()
   const groupedShifts = groupQualifiedShiftsByWeekday(shifts)
-  const selectedSlotSet = new Set(selectedSlots.map((slot) => slot.slot_id))
+  const selectedSlotSet = new Set(
+    selectedSlots.map((slot) => getSlotWeekdayKey(slot.slot_id, slot.weekday)),
+  )
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -51,15 +57,21 @@ export function AvailabilityGrid({
               ) : (
                 weekdayShifts.map((shift) => (
                   <label
-                    key={shift.slot_id}
+                    key={getSlotWeekdayKey(shift.slot_id, shift.weekday)}
                     className="flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/20"
                   >
                     <Checkbox
-                      checked={selectedSlotSet.has(shift.slot_id)}
+                      checked={selectedSlotSet.has(
+                        getSlotWeekdayKey(shift.slot_id, shift.weekday),
+                      )}
                       className="mt-0.5"
                       disabled={isPending}
                       onChange={(event) =>
-                        onToggle(shift.slot_id, event.currentTarget.checked)
+                        onToggle(
+                          shift.slot_id,
+                          shift.weekday,
+                          event.currentTarget.checked,
+                        )
                       }
                     />
                     <div className="grid gap-1">

@@ -244,7 +244,7 @@ func TestTemplateServiceCreateTemplate(t *testing.T) {
 }
 
 func TestTemplateServiceGetTemplateByID(t *testing.T) {
-	t.Run("sorts slots by weekday, start time, and nested position id", func(t *testing.T) {
+	t.Run("sorts slots by start time, end time, and nested position id", func(t *testing.T) {
 		t.Parallel()
 
 		service := NewTemplateService(
@@ -256,20 +256,23 @@ func TestTemplateServiceGetTemplateByID(t *testing.T) {
 						Slots: []*model.TemplateSlot{
 							{
 								ID:        3,
-								Weekday:   3,
+								Weekdays:  []int{3},
 								StartTime: "11:00",
+								EndTime:   "12:00",
 								Positions: []*model.TemplateSlotPosition{{ID: 31, PositionID: 4}, {ID: 32, PositionID: 2}},
 							},
 							{
 								ID:        2,
-								Weekday:   1,
+								Weekdays:  []int{1},
 								StartTime: "12:00",
+								EndTime:   "13:00",
 								Positions: []*model.TemplateSlotPosition{{ID: 21, PositionID: 8}},
 							},
 							{
 								ID:        1,
-								Weekday:   1,
+								Weekdays:  []int{1},
 								StartTime: "09:00",
+								EndTime:   "10:00",
 								Positions: []*model.TemplateSlotPosition{{ID: 12, PositionID: 7}, {ID: 11, PositionID: 3}},
 							},
 						},
@@ -289,7 +292,7 @@ func TestTemplateServiceGetTemplateByID(t *testing.T) {
 			template.Slots[1].ID,
 			template.Slots[2].ID,
 		}
-		wantIDs := []int64{1, 2, 3}
+		wantIDs := []int64{1, 3, 2}
 		for i := range wantIDs {
 			if gotIDs[i] != wantIDs[i] {
 				t.Fatalf("expected slot order %v, got %v", wantIDs, gotIDs)
@@ -511,7 +514,7 @@ func TestTemplateServiceCloneTemplate(t *testing.T) {
 						Name:     name,
 						IsLocked: false,
 						Slots: []*model.TemplateSlot{
-							{ID: 1, Weekday: 1, Positions: []*model.TemplateSlotPosition{{ID: 2, PositionID: 5}}},
+							{ID: 1, Weekdays: []int{1}, Positions: []*model.TemplateSlotPosition{{ID: 2, PositionID: 5}}},
 						},
 					}, nil
 				},
@@ -657,13 +660,13 @@ func TestTemplateServiceCreateTemplateSlot(t *testing.T) {
 		service := NewTemplateService(
 			&templateRepositoryMock{
 				createSlotFunc: func(ctx context.Context, params repository.CreateTemplateSlotParams) (*model.TemplateSlot, error) {
-					if params.TemplateID != 5 || params.Weekday != 2 || params.StartTime != "09:00" || params.EndTime != "12:00" {
+					if params.TemplateID != 5 || !intSlicesEqual(params.Weekdays, []int{2, 4}) || params.StartTime != "09:00" || params.EndTime != "12:00" {
 						t.Fatalf("unexpected create slot params: %+v", params)
 					}
 					return &model.TemplateSlot{
 						ID:         1,
 						TemplateID: params.TemplateID,
-						Weekday:    params.Weekday,
+						Weekdays:   append([]int(nil), params.Weekdays...),
 						StartTime:  params.StartTime,
 						EndTime:    params.EndTime,
 					}, nil
@@ -674,14 +677,14 @@ func TestTemplateServiceCreateTemplateSlot(t *testing.T) {
 
 		slot, err := service.CreateTemplateSlot(context.Background(), CreateTemplateSlotInput{
 			TemplateID: 5,
-			Weekday:    2,
+			Weekdays:   []int{4, 2, 2},
 			StartTime:  "09:00",
 			EndTime:    "12:00",
 		})
 		if err != nil {
 			t.Fatalf("CreateTemplateSlot returned error: %v", err)
 		}
-		if slot.ID != 1 || slot.Weekday != 2 {
+		if slot.ID != 1 || !intSlicesEqual(slot.Weekdays, []int{2, 4}) {
 			t.Fatalf("unexpected slot: %+v", slot)
 		}
 	})
@@ -693,7 +696,7 @@ func TestTemplateServiceCreateTemplateSlot(t *testing.T) {
 
 		_, err := service.CreateTemplateSlot(context.Background(), CreateTemplateSlotInput{
 			TemplateID: 1,
-			Weekday:    1,
+			Weekdays:   []int{1},
 			StartTime:  "09:00",
 			EndTime:    "09:00",
 		})
@@ -710,13 +713,13 @@ func TestTemplateServiceUpdateTemplateSlot(t *testing.T) {
 		service := NewTemplateService(
 			&templateRepositoryMock{
 				updateSlotFunc: func(ctx context.Context, params repository.UpdateTemplateSlotParams) (*model.TemplateSlot, error) {
-					if params.TemplateID != 4 || params.SlotID != 8 || params.Weekday != 5 || params.StartTime != "13:00" || params.EndTime != "16:00" {
+					if params.TemplateID != 4 || params.SlotID != 8 || !intSlicesEqual(params.Weekdays, []int{1, 5}) || params.StartTime != "13:00" || params.EndTime != "16:00" {
 						t.Fatalf("unexpected update slot params: %+v", params)
 					}
 					return &model.TemplateSlot{
 						ID:         params.SlotID,
 						TemplateID: params.TemplateID,
-						Weekday:    params.Weekday,
+						Weekdays:   append([]int(nil), params.Weekdays...),
 						StartTime:  params.StartTime,
 						EndTime:    params.EndTime,
 					}, nil
@@ -728,14 +731,14 @@ func TestTemplateServiceUpdateTemplateSlot(t *testing.T) {
 		slot, err := service.UpdateTemplateSlot(context.Background(), UpdateTemplateSlotInput{
 			TemplateID: 4,
 			SlotID:     8,
-			Weekday:    5,
+			Weekdays:   []int{5, 1},
 			StartTime:  "13:00",
 			EndTime:    "16:00",
 		})
 		if err != nil {
 			t.Fatalf("UpdateTemplateSlot returned error: %v", err)
 		}
-		if slot.ID != 8 || slot.Weekday != 5 {
+		if slot.ID != 8 || !intSlicesEqual(slot.Weekdays, []int{1, 5}) {
 			t.Fatalf("unexpected slot: %+v", slot)
 		}
 	})
@@ -755,7 +758,7 @@ func TestTemplateServiceUpdateTemplateSlot(t *testing.T) {
 		_, err := service.UpdateTemplateSlot(context.Background(), UpdateTemplateSlotInput{
 			TemplateID: 2,
 			SlotID:     99,
-			Weekday:    1,
+			Weekdays:   []int{1},
 			StartTime:  "09:00",
 			EndTime:    "10:00",
 		})
@@ -1018,4 +1021,16 @@ func TestTemplateServiceDeleteTemplateSlotPosition(t *testing.T) {
 			t.Fatalf("expected ErrTemplateLocked, got %v", err)
 		}
 	})
+}
+
+func intSlicesEqual(left, right []int) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }

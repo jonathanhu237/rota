@@ -29,6 +29,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			PublicationID: 1,
 			UserID:        8,
 			SlotID:        21,
+			Weekday:       1,
 			PositionID:    101,
 		})
 		if err != nil {
@@ -80,6 +81,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 			PositionID:    101,
 		})
 		if err != nil {
@@ -90,6 +92,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 			PositionID:    102,
 		})
 		if !errors.Is(err, ErrAssignmentUserAlreadyInSlot) {
@@ -133,6 +136,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 					PublicationID: 1,
 					UserID:        7,
 					SlotID:        21,
+					Weekday:       1,
 					PositionID:    101,
 				})
 				if tc.wantErr != nil {
@@ -160,7 +164,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		repo.templateSlots[99] = &model.TemplateSlot{
 			ID:         99,
 			TemplateID: 2,
-			Weekday:    5,
+			Weekdays:   []int{5},
 			StartTime:  "10:00",
 			EndTime:    "12:00",
 		}
@@ -171,10 +175,31 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        99,
+			Weekday:       5,
 			PositionID:    101,
 		})
 		if !errors.Is(err, ErrTemplateSlotNotFound) {
 			t.Fatalf("expected ErrTemplateSlotNotFound, got %v", err)
+		}
+	})
+
+	t.Run("rejects weekday not covered by slot", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+		repo := newPublicationRepositoryStatefulMock()
+		repo.publications[1] = assigningPublication(now)
+		service := NewPublicationService(repo, fixedClock{now: now})
+
+		_, err := service.CreateAssignment(context.Background(), CreateAssignmentInput{
+			PublicationID: 1,
+			UserID:        8,
+			SlotID:        21,
+			Weekday:       2,
+			PositionID:    101,
+		})
+		if !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("expected ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -190,6 +215,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			PublicationID: 1,
 			UserID:        999,
 			SlotID:        21,
+			Weekday:       1,
 			PositionID:    101,
 		})
 		if !errors.Is(err, ErrUserNotFound) {
@@ -212,6 +238,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			PublicationID: 1,
 			UserID:        9,
 			SlotID:        21,
+			Weekday:       1,
 			PositionID:    101,
 		})
 		if !errors.Is(err, ErrUserDisabled) {
@@ -235,6 +262,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 			PositionID:    101,
 		})
 		if !errors.Is(err, ErrPublicationNotFound) {
@@ -251,7 +279,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		repo.templateSlots[24] = &model.TemplateSlot{
 			ID:         24,
 			TemplateID: 1,
-			Weekday:    2,
+			Weekdays:   []int{2},
 			StartTime:  "11:00",
 			EndTime:    "14:00",
 		}
@@ -261,6 +289,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 			PositionID:    101,
 			CreatedAt:     now.Add(-15 * time.Minute),
 		}
@@ -270,6 +299,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        24,
+			Weekday:       2,
 			PositionID:    102,
 		})
 		if err != nil {
@@ -289,7 +319,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		repo.templateSlots[25] = &model.TemplateSlot{
 			ID:         25,
 			TemplateID: 1,
-			Weekday:    1,
+			Weekdays:   []int{1},
 			StartTime:  "12:00",
 			EndTime:    "15:00",
 		}
@@ -299,6 +329,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 			PositionID:    101,
 			CreatedAt:     now.Add(-15 * time.Minute),
 		}
@@ -308,6 +339,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        25,
+			Weekday:       1,
 			PositionID:    102,
 		})
 		if err != nil {
@@ -329,6 +361,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 			PositionID:    101,
 			CreatedAt:     now.Add(-15 * time.Minute),
 		}
@@ -410,6 +443,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 			PositionID:    101,
 			CreatedAt:     now.Add(-30 * time.Minute),
 		}
@@ -418,6 +452,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			PublicationID: 1,
 			UserID:        8,
 			SlotID:        22,
+			Weekday:       3,
 			PositionID:    102,
 			CreatedAt:     now.Add(-20 * time.Minute),
 		}
@@ -476,6 +511,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 			PositionID:    101,
 			CreatedAt:     now.Add(-15 * time.Minute),
 		}
@@ -530,6 +566,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 			PositionID:    101,
 			CreatedAt:     now.Add(-15 * time.Minute),
 		}
@@ -572,6 +609,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 			PositionID:    101,
 			CreatedAt:     now.Add(-15 * time.Minute),
 		}
@@ -635,6 +673,7 @@ func TestPublicationServiceCreateAssignmentDisabledAfterPrecheck(t *testing.T) {
 		PublicationID: 1,
 		UserID:        7,
 		SlotID:        21,
+		Weekday:       1,
 		PositionID:    101,
 	})
 	if !errors.Is(err, ErrUserDisabled) {
@@ -668,6 +707,7 @@ func TestPublicationServiceDeleteAssignment(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 			PositionID:    101,
 			CreatedAt:     now.Add(-15 * time.Minute),
 		}
@@ -1032,6 +1072,7 @@ func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 			CreatedAt:     now.Add(-2 * time.Hour),
 		}
 		repo.submissions[submissionKey(1, 8, 21)] = &model.AvailabilitySubmission{
@@ -1039,6 +1080,7 @@ func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
 			PublicationID: 1,
 			UserID:        8,
 			SlotID:        21,
+			Weekday:       1,
 			CreatedAt:     now.Add(-90 * time.Minute),
 		}
 		delete(repo.qualifiedByUser, 7)
@@ -1055,6 +1097,7 @@ func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
 			PublicationID: 1,
 			UserID:        8,
 			SlotID:        21,
+			Weekday:       1,
 			PositionID:    101,
 			CreatedAt:     now.Add(-30 * time.Minute),
 		}
@@ -1104,7 +1147,7 @@ func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
 		repo.templateSlots[23] = &model.TemplateSlot{
 			ID:         23,
 			TemplateID: 1,
-			Weekday:    1,
+			Weekdays:   []int{1},
 			StartTime:  "14:00",
 			EndTime:    "18:00",
 		}
@@ -1114,6 +1157,7 @@ func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
 			PublicationID: 1,
 			UserID:        8,
 			SlotID:        21,
+			Weekday:       1,
 			PositionID:    101,
 			CreatedAt:     now.Add(-20 * time.Minute),
 		}
@@ -1122,6 +1166,7 @@ func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 			PositionID:    101,
 			CreatedAt:     now.Add(-30 * time.Minute),
 		}

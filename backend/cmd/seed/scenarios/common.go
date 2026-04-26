@@ -22,6 +22,7 @@ type Options struct {
 
 type slotPosition struct {
 	SlotID     int64
+	Weekday    int
 	PositionID int64
 }
 
@@ -29,6 +30,7 @@ type assignmentRecord struct {
 	ID         int64
 	UserID     int64
 	SlotID     int64
+	Weekday    int
 	PositionID int64
 }
 
@@ -38,7 +40,7 @@ type positionHeadcount struct {
 }
 
 type slotDefinition struct {
-	Weekday   int
+	Weekdays  []int
 	StartTime string
 	EndTime   string
 	Positions []positionHeadcount
@@ -174,22 +176,41 @@ func insertSlots(
 ) ([]slotPosition, error) {
 	entries := make([]slotPosition, 0)
 	for _, definition := range definitions {
+		if len(definition.Weekdays) == 0 {
+			return nil, fmt.Errorf("slot %s-%s must include at least one weekday", definition.StartTime, definition.EndTime)
+		}
 		var slotID int64
 		err := tx.QueryRowContext(
 			ctx,
 			`
-				INSERT INTO template_slots (template_id, weekday, start_time, end_time, created_at, updated_at)
-				VALUES ($1, $2, $3, $4, $5, $5)
-				RETURNING id;
-			`,
+					INSERT INTO template_slots (template_id, start_time, end_time, created_at, updated_at)
+					VALUES ($1, $2, $3, $4, $4)
+					RETURNING id;
+				`,
 			templateID,
-			definition.Weekday,
 			definition.StartTime,
 			definition.EndTime,
 			now,
 		).Scan(&slotID)
 		if err != nil {
-			return nil, fmt.Errorf("insert slot weekday=%d %s-%s: %w", definition.Weekday, definition.StartTime, definition.EndTime, err)
+			return nil, fmt.Errorf("insert slot %s-%s: %w", definition.StartTime, definition.EndTime, err)
+		}
+
+		for _, weekday := range definition.Weekdays {
+			if weekday < 1 || weekday > 7 {
+				return nil, fmt.Errorf("slot %s-%s has invalid weekday %d", definition.StartTime, definition.EndTime, weekday)
+			}
+			if _, err := tx.ExecContext(
+				ctx,
+				`
+					INSERT INTO template_slot_weekdays (slot_id, weekday)
+					VALUES ($1, $2);
+				`,
+				slotID,
+				weekday,
+			); err != nil {
+				return nil, fmt.Errorf("insert slot-weekday slot=%d weekday=%d: %w", slotID, weekday, err)
+			}
 		}
 
 		for _, position := range definition.Positions {
@@ -214,7 +235,9 @@ func insertSlots(
 			); err != nil {
 				return nil, fmt.Errorf("insert slot-position slot=%d position=%d: %w", slotID, positionID, err)
 			}
-			entries = append(entries, slotPosition{SlotID: slotID, PositionID: positionID})
+			for _, weekday := range definition.Weekdays {
+				entries = append(entries, slotPosition{SlotID: slotID, Weekday: weekday, PositionID: positionID})
+			}
 		}
 	}
 	return entries, nil
@@ -310,36 +333,39 @@ func insertAvailabilitySubmissions(
 	now time.Time,
 ) error {
 	for _, userID := range userIDs {
-		submittedSlots := make(map[int64]struct{})
+		submittedSlots := make(map[slotWeekdayKey]struct{})
 		for _, entry := range entries {
-			if _, submitted := submittedSlots[entry.SlotID]; submitted {
+			key := slotWeekdayKey{SlotID: entry.SlotID, Weekday: entry.Weekday}
+			if _, submitted := submittedSlots[key]; submitted {
 				continue
 			}
 			if !qualified[userID][entry.PositionID] {
 				continue
 			}
-			if (userID+entry.SlotID)%modulus >= threshold {
+			if (userID+entry.SlotID+int64(entry.Weekday))%modulus >= threshold {
 				continue
 			}
 			if _, err := tx.ExecContext(
 				ctx,
 				`
 					INSERT INTO availability_submissions (
-						publication_id,
-						user_id,
-						slot_id,
-						created_at
-					)
-					VALUES ($1, $2, $3, $4);
-				`,
+							publication_id,
+							user_id,
+							slot_id,
+							weekday,
+							created_at
+						)
+						VALUES ($1, $2, $3, $4, $5);
+					`,
 				publicationID,
 				userID,
 				entry.SlotID,
+				entry.Weekday,
 				now,
 			); err != nil {
-				return fmt.Errorf("insert submission publication=%d user=%d slot=%d: %w", publicationID, userID, entry.SlotID, err)
+				return fmt.Errorf("insert submission publication=%d user=%d slot=%d weekday=%d: %w", publicationID, userID, entry.SlotID, entry.Weekday, err)
 			}
-			submittedSlots[entry.SlotID] = struct{}{}
+			submittedSlots[key] = struct{}{}
 		}
 	}
 	return nil
@@ -354,19 +380,20 @@ func insertAssignments(
 	now time.Time,
 ) ([]assignmentRecord, error) {
 	assignments := make([]assignmentRecord, 0, len(entries))
-	slotOrdinal := make(map[int64]int)
-	slotBase := make(map[int64]int)
+	slotOrdinal := make(map[slotWeekdayKey]int)
+	slotBase := make(map[slotWeekdayKey]int)
 	nextSlotBase := 0
 
 	for _, entry := range entries {
-		base, ok := slotBase[entry.SlotID]
+		key := slotWeekdayKey{SlotID: entry.SlotID, Weekday: entry.Weekday}
+		base, ok := slotBase[key]
 		if !ok {
 			base = nextSlotBase
-			slotBase[entry.SlotID] = base
+			slotBase[key] = base
 			nextSlotBase++
 		}
-		ordinal := slotOrdinal[entry.SlotID]
-		slotOrdinal[entry.SlotID] = ordinal + 1
+		ordinal := slotOrdinal[key]
+		slotOrdinal[key] = ordinal + 1
 		userID := userIDs[(base+ordinal)%len(userIDs)]
 
 		var id int64
@@ -374,30 +401,38 @@ func insertAssignments(
 			ctx,
 			`
 				INSERT INTO assignments (
-					publication_id,
-					user_id,
-					slot_id,
-					position_id,
-					created_at
-				)
-				VALUES ($1, $2, $3, $4, $5)
-				RETURNING id;
-			`,
+						publication_id,
+						user_id,
+						slot_id,
+						weekday,
+						position_id,
+						created_at
+					)
+					VALUES ($1, $2, $3, $4, $5, $6)
+					RETURNING id;
+				`,
 			publicationID,
 			userID,
 			entry.SlotID,
+			entry.Weekday,
 			entry.PositionID,
 			now,
 		).Scan(&id)
 		if err != nil {
-			return nil, fmt.Errorf("insert assignment publication=%d user=%d slot=%d position=%d: %w", publicationID, userID, entry.SlotID, entry.PositionID, err)
+			return nil, fmt.Errorf("insert assignment publication=%d user=%d slot=%d weekday=%d position=%d: %w", publicationID, userID, entry.SlotID, entry.Weekday, entry.PositionID, err)
 		}
 		assignments = append(assignments, assignmentRecord{
 			ID:         id,
 			UserID:     userID,
 			SlotID:     entry.SlotID,
+			Weekday:    entry.Weekday,
 			PositionID: entry.PositionID,
 		})
 	}
 	return assignments, nil
+}
+
+type slotWeekdayKey struct {
+	SlotID  int64
+	Weekday int
 }

@@ -49,7 +49,7 @@ describe("AvailabilityGrid", () => {
       <AvailabilityGrid
         isPending={false}
         onToggle={onToggle}
-        selectedSlots={[{ slot_id: 22 }]}
+        selectedSlots={[{ slot_id: 22, weekday: 2 }]}
         shifts={shifts}
       />,
     )
@@ -63,8 +63,8 @@ describe("AvailabilityGrid", () => {
     await user.click(getAllByRole("checkbox")[1])
 
     expect(getAllByText("availability.shift.composition").length).toBeGreaterThan(0)
-    expect(onToggle).toHaveBeenNthCalledWith(1, 21, true)
-    expect(onToggle).toHaveBeenNthCalledWith(2, 22, false)
+    expect(onToggle).toHaveBeenNthCalledWith(1, 21, 1, true)
+    expect(onToggle).toHaveBeenNthCalledWith(2, 22, 2, false)
   })
 
   it("disables checkboxes while pending", () => {

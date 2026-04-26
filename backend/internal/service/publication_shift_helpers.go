@@ -15,6 +15,7 @@ func buildPublicationShiftIndex(
 		}
 		index[slotPositionKey{
 			SlotID:     shift.SlotID,
+			Weekday:    shift.Weekday,
 			PositionID: shift.PositionID,
 		}] = shift
 	}
@@ -43,6 +44,7 @@ func findPublicationShiftForAssignment(
 	}
 	return shiftIndex[slotPositionKey{
 		SlotID:     assignment.SlotID,
+		Weekday:    assignment.Weekday,
 		PositionID: assignment.PositionID,
 	}]
 }
@@ -56,6 +58,7 @@ func findPublicationShiftForParticipant(
 	}
 	return shiftIndex[slotPositionKey{
 		SlotID:     assignment.SlotID,
+		Weekday:    assignment.Weekday,
 		PositionID: assignment.PositionID,
 	}]
 }

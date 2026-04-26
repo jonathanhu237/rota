@@ -63,9 +63,11 @@ function AvailabilityPage() {
   const toggleSubmissionMutation = useMutation({
     mutationFn: async ({
       slotID,
+      weekday,
       checked,
     }: {
       slotID: number
+      weekday: number
       checked: boolean
     }) => {
       if (!currentPublication) {
@@ -73,11 +75,15 @@ function AvailabilityPage() {
       }
 
       if (checked) {
-        await createAvailabilitySubmission(currentPublication.id, slotID)
+        await createAvailabilitySubmission(
+          currentPublication.id,
+          slotID,
+          weekday,
+        )
         return
       }
 
-      await deleteAvailabilitySubmission(currentPublication.id, slotID)
+      await deleteAvailabilitySubmission(currentPublication.id, slotID, weekday)
     },
     onSuccess: async () => {
       await invalidateAvailability()
@@ -208,9 +214,10 @@ function AvailabilityPage() {
                 shifts={shiftsQuery.data}
                 selectedSlots={submissionsQuery.data ?? []}
                 isPending={toggleSubmissionMutation.isPending}
-                onToggle={(slotID, checked) =>
+                onToggle={(slotID, weekday, checked) =>
                   toggleSubmissionMutation.mutate({
                     slotID,
+                    weekday,
                     checked,
                   })
                 }

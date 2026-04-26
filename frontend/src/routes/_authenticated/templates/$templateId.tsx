@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next"
 import { CloneTemplateDialog } from "@/components/templates/clone-template-dialog"
 import { DeleteTemplateEntryDialog } from "@/components/templates/delete-template-entry-dialog"
 import { DeleteTemplateDialog } from "@/components/templates/delete-template-dialog"
-import { groupTemplateSlotsByWeekday } from "@/components/templates/group-template-slots"
+import { sortTemplateSlots } from "@/components/templates/group-template-slots"
 import { TemplateSlotDialog } from "@/components/templates/template-slot-dialog"
 import { TemplateSlotPositionDialog } from "@/components/templates/template-slot-position-dialog"
 import {
@@ -60,7 +60,6 @@ export const Route = createFileRoute("/_authenticated/templates/$templateId")({
 
 type SlotDialogState = {
   mode: "create" | "edit"
-  initialWeekday?: number
   slot: TemplateSlot | null
 }
 
@@ -340,7 +339,7 @@ function TemplateDetailPage() {
   const positionsByID = new Map(
     (positionsQuery.data ?? []).map((position) => [position.id, position]),
   )
-  const groupedSlots = groupTemplateSlotsByWeekday(template.slots ?? [])
+  const sortedSlots = sortTemplateSlots(template.slots ?? [])
   const isLocked = template.is_locked
   const canManagePositions =
     !positionsQuery.isLoading &&
@@ -353,7 +352,7 @@ function TemplateDetailPage() {
 
   const getSlotSummary = (slot: TemplateSlot) =>
     t("templates.deleteSlotDialog.summary", {
-      weekday: t(weekdayKeyMap[slot.weekday]),
+      weekdays: formatWeekdays(slot.weekdays, t),
       startTime: slot.start_time,
       endTime: slot.end_time,
     })
@@ -371,6 +370,26 @@ function TemplateDetailPage() {
       startTime: slot.start_time,
       endTime: slot.end_time,
       headcount: positionEntry.required_headcount,
+    })
+  }
+
+  const toggleSlotWeekday = (slot: TemplateSlot, weekday: number) => {
+    const isSelected = slot.weekdays.includes(weekday)
+    const weekdays = isSelected
+      ? slot.weekdays.filter((value) => value !== weekday)
+      : [...slot.weekdays, weekday]
+
+    if (weekdays.length === 0) {
+      return
+    }
+
+    updateSlotMutation.mutate({
+      slotID: slot.id,
+      values: {
+        weekdays,
+        start_time: slot.start_time,
+        end_time: slot.end_time,
+      },
     })
   }
 
@@ -473,7 +492,6 @@ function TemplateDetailPage() {
               onClick={() =>
                 setSlotDialogState({
                   mode: "create",
-                  initialWeekday: 1,
                   slot: null,
                 })
               }
@@ -493,167 +511,165 @@ function TemplateDetailPage() {
                 {t("templates.noPositions")}
               </p>
             )}
-            {weekdayList.map((weekday) => {
-              const slots = groupedSlots[weekday]
+            {sortedSlots.length === 0 ? (
+              <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                {t("templates.noSlots")}
+              </div>
+            ) : (
+              sortedSlots.map((slot) => (
+                <article key={slot.id} className="grid gap-4 rounded-xl border p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="grid gap-2">
+                      <div className="font-medium">
+                        {t("templates.slot.summary", {
+                          startTime: slot.start_time,
+                          endTime: slot.end_time,
+                        })}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {weekdayList.map((weekday) => {
+                          const selected = slot.weekdays.includes(weekday)
+                          const isLastSelected =
+                            selected && slot.weekdays.length === 1
 
-              return (
-                <section key={weekday} className="grid gap-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-base font-semibold">
-                      {t(weekdayKeyMap[weekday])}
-                    </h3>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        setSlotDialogState({
-                          mode: "create",
-                          initialWeekday: weekday,
-                          slot: null,
-                        })
-                      }
-                      disabled={isLocked}
-                    >
-                      {t("templates.actions.addSlot")}
-                    </Button>
+                          return (
+                            <button
+                              key={weekday}
+                              type="button"
+                              className={
+                                selected
+                                  ? "rounded-md border border-primary bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:opacity-70"
+                                  : "rounded-md border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground disabled:opacity-70"
+                              }
+                              disabled={
+                                isLocked ||
+                                updateSlotMutation.isPending ||
+                                isLastSelected
+                              }
+                              aria-pressed={selected}
+                              onClick={() => toggleSlotWeekday(slot, weekday)}
+                            >
+                              {t(weekdayKeyMap[weekday])}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {slot.positions.length === 0
+                          ? t("templates.noPositionsForSlot")
+                          : t("templates.slot.positionsCount", {
+                              count: slot.positions.length,
+                            })}
+                      </div>
+                    </div>
+                    {!isLocked && (
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            setSlotDialogState({
+                              mode: "edit",
+                              slot,
+                            })
+                          }
+                        >
+                          {t("templates.actions.editSlot")}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={!canManagePositions}
+                          onClick={() =>
+                            setSlotPositionDialogState({
+                              mode: "create",
+                              slot,
+                              positionEntry: null,
+                            })
+                          }
+                        >
+                          {t("templates.actions.addPosition")}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="destructive"
+                          disabled={deleteSlotMutation.isPending}
+                          onClick={() => setSlotPendingDeletion(slot)}
+                        >
+                          {t("templates.actions.deleteSlot")}
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                  {slots.length === 0 && (
+
+                  {slot.positions.length === 0 ? (
                     <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                      {t("templates.noSlotsForWeekday")}
+                      {t("templates.noPositionsForSlot")}
+                    </div>
+                  ) : (
+                    <div className="grid gap-3">
+                      {slot.positions.map((positionEntry) => {
+                        const positionName =
+                          positionsByID.get(positionEntry.position_id)?.name ??
+                          t("templates.unknownPosition")
+
+                        return (
+                          <div
+                            key={positionEntry.id}
+                            className="flex flex-col gap-3 rounded-xl border border-dashed p-4 sm:flex-row sm:items-center sm:justify-between"
+                          >
+                            <div className="grid gap-1">
+                              <div className="font-medium">{positionName}</div>
+                              <div className="text-sm text-muted-foreground">
+                                {t("templates.position.summary", {
+                                  headcount: positionEntry.required_headcount,
+                                })}
+                              </div>
+                            </div>
+                            {!isLocked && (
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={!canManagePositions}
+                                  onClick={() =>
+                                    setSlotPositionDialogState({
+                                      mode: "edit",
+                                      slot,
+                                      positionEntry,
+                                    })
+                                  }
+                                >
+                                  {t("templates.actions.editPosition")}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="destructive"
+                                  disabled={deleteSlotPositionMutation.isPending}
+                                  onClick={() =>
+                                    setSlotPositionPendingDeletion({
+                                      slot,
+                                      positionEntry,
+                                    })
+                                  }
+                                >
+                                  {t("templates.actions.deletePosition")}
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
-                  {slots.map((slot) => (
-                    <article
-                      key={slot.id}
-                      className="grid gap-4 rounded-xl border p-4"
-                    >
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="grid gap-1">
-                          <div className="font-medium">
-                            {t("templates.slot.summary", {
-                              startTime: slot.start_time,
-                              endTime: slot.end_time,
-                            })}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {slot.positions.length === 0
-                              ? t("templates.noPositionsForSlot")
-                              : t("templates.slot.positionsCount", {
-                                  count: slot.positions.length,
-                                })}
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={isLocked}
-                            onClick={() =>
-                              setSlotDialogState({
-                                mode: "edit",
-                                initialWeekday: slot.weekday,
-                                slot,
-                              })
-                            }
-                          >
-                            {t("templates.actions.editSlot")}
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={isLocked || !canManagePositions}
-                            onClick={() =>
-                              setSlotPositionDialogState({
-                                mode: "create",
-                                slot,
-                                positionEntry: null,
-                              })
-                            }
-                          >
-                            {t("templates.actions.addPosition")}
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="destructive"
-                            disabled={isLocked || deleteSlotMutation.isPending}
-                            onClick={() => setSlotPendingDeletion(slot)}
-                          >
-                            {t("templates.actions.deleteSlot")}
-                          </Button>
-                        </div>
-                      </div>
-
-                      {slot.positions.length === 0 ? (
-                        <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                          {t("templates.noPositionsForSlot")}
-                        </div>
-                      ) : (
-                        <div className="grid gap-3">
-                          {slot.positions.map((positionEntry) => {
-                            const positionName =
-                              positionsByID.get(positionEntry.position_id)?.name ??
-                              t("templates.unknownPosition")
-
-                            return (
-                              <div
-                                key={positionEntry.id}
-                                className="flex flex-col gap-3 rounded-xl border border-dashed p-4 sm:flex-row sm:items-center sm:justify-between"
-                              >
-                                <div className="grid gap-1">
-                                  <div className="font-medium">{positionName}</div>
-                                  <div className="text-sm text-muted-foreground">
-                                    {t("templates.position.summary", {
-                                      headcount: positionEntry.required_headcount,
-                                    })}
-                                  </div>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    disabled={isLocked || !canManagePositions}
-                                    onClick={() =>
-                                      setSlotPositionDialogState({
-                                        mode: "edit",
-                                        slot,
-                                        positionEntry,
-                                      })
-                                    }
-                                  >
-                                    {t("templates.actions.editPosition")}
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="destructive"
-                                    disabled={
-                                      isLocked || deleteSlotPositionMutation.isPending
-                                    }
-                                    onClick={() =>
-                                      setSlotPositionPendingDeletion({
-                                        slot,
-                                        positionEntry,
-                                      })
-                                    }
-                                  >
-                                    {t("templates.actions.deletePosition")}
-                                  </Button>
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </article>
-                  ))}
-                </section>
-              )
-            })}
+                </article>
+              ))
+            )}
           </CardContent>
         </Card>
       </div>
@@ -661,7 +677,6 @@ function TemplateDetailPage() {
       <TemplateSlotDialog
         mode={slotDialogState?.mode ?? "create"}
         open={slotDialogState !== null}
-        initialWeekday={slotDialogState?.initialWeekday}
         slot={slotDialogState?.slot ?? null}
         isPending={slotMutationPending}
         onOpenChange={(open) => {
@@ -800,4 +815,14 @@ const weekdayKeyMap: Record<number, string> = {
   5: "templates.weekday.fri",
   6: "templates.weekday.sat",
   7: "templates.weekday.sun",
+}
+
+function formatWeekdays(
+  weekdays: number[],
+  t: (key: string, options?: Record<string, unknown>) => string,
+) {
+  return [...weekdays]
+    .sort((left, right) => left - right)
+    .map((weekday) => t(weekdayKeyMap[weekday]))
+    .join(", ")
 }

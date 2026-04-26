@@ -56,7 +56,7 @@ type replaceTemplateRequest struct {
 }
 
 type templateSlotRequest struct {
-	Weekday   int    `json:"weekday"`
+	Weekdays  []int  `json:"weekdays"`
 	StartTime string `json:"start_time"`
 	EndTime   string `json:"end_time"`
 }
@@ -223,7 +223,7 @@ func (h *TemplateHandler) CreateSlot(w http.ResponseWriter, r *http.Request) {
 
 	slot, err := h.templateService.CreateTemplateSlot(r.Context(), service.CreateTemplateSlotInput{
 		TemplateID: templateID,
-		Weekday:    req.Weekday,
+		Weekdays:   req.Weekdays,
 		StartTime:  req.StartTime,
 		EndTime:    req.EndTime,
 	})
@@ -259,7 +259,7 @@ func (h *TemplateHandler) UpdateSlot(w http.ResponseWriter, r *http.Request) {
 	slot, err := h.templateService.UpdateTemplateSlot(r.Context(), service.UpdateTemplateSlotInput{
 		TemplateID: templateID,
 		SlotID:     slotID,
-		Weekday:    req.Weekday,
+		Weekdays:   req.Weekdays,
 		StartTime:  req.StartTime,
 		EndTime:    req.EndTime,
 	})

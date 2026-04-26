@@ -139,7 +139,7 @@ export type UpdateTemplateInput = {
 }
 
 export type CreateTemplateSlotInput = {
-  weekday: number
+  weekdays: number[]
   start_time: string
   end_time: string
 }
@@ -172,6 +172,7 @@ export type UpdatePublicationInput = {
 export type CreateAssignmentInput = {
   user_id: number
   slot_id: number
+  weekday: number
   position_id: number
 }
 
@@ -615,17 +616,22 @@ export async function deleteAssignment(
 export async function createAvailabilitySubmission(
   publicationID: number,
   slotID: number,
+  weekday: number,
 ) {
   await api.post(`/publications/${publicationID}/submissions`, {
     slot_id: slotID,
+    weekday,
   })
 }
 
 export async function deleteAvailabilitySubmission(
   publicationID: number,
   slotID: number,
+  weekday: number,
 ) {
-  await api.delete(`/publications/${publicationID}/submissions/${slotID}`)
+  await api.delete(
+    `/publications/${publicationID}/submissions/${slotID}/${weekday}`,
+  )
 }
 
 export type ShiftChangeRequestResponse = {

@@ -308,7 +308,7 @@
     "deleteSlotDialog": {
       "title": "删除时段",
       "description": "确认删除 {{summary}}？此操作无法撤销。",
-      "summary": "{{weekday}} · {{startTime}}-{{endTime}}",
+      "summary": "{{weekdays}} · {{startTime}}-{{endTime}}",
       "confirm": "确认删除时段",
       "submitting": "删除中..."
     },
@@ -327,7 +327,8 @@
       "submitting": "删除中..."
     },
     "slotsTitle": "每周时段",
-    "slotsDescription": "按星期管理模板的时段，以及每个时段内的岗位配置。",
+    "slotsDescription": "管理模板的时段，以及每个时段内的岗位配置和适用星期。",
+    "noSlots": "这个模板还没有添加任何时段。",
     "noSlotsForWeekday": "这一天还没有任何时段。",
     "noPositionsForSlot": "这个时段还没有添加岗位配置。",
     "shiftsTitle": "每周班次",
@@ -338,7 +339,7 @@
     "unknownPosition": "未知岗位",
     "lockedBanner": "该模板已锁定，无法编辑或删除。如需修改，请先克隆。",
     "slot": {
-      "weekday": "星期",
+      "weekday": "适用星期",
       "startTime": "开始时间",
       "endTime": "结束时间",
       "summary": "{{startTime}}-{{endTime}}",
@@ -351,9 +352,9 @@
     },
     "slotDialog": {
       "createTitle": "新增时段",
-      "createDescription": "为该模板新增一个每周时段。",
+      "createDescription": "新增一个时段，并选择它适用的星期。",
       "editTitle": "编辑时段",
-      "editDescription": "更新所选的每周时段。",
+      "editDescription": "更新所选时段和适用星期。",
       "submitCreate": "创建时段",
       "submitEdit": "保存时段",
       "submittingCreate": "创建中...",

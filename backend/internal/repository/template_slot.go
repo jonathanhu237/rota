@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/jonathanhu237/rota/backend/internal/model"
+	"github.com/lib/pq"
 )
 
 var (
@@ -233,27 +234,24 @@ func getTemplateSlotByID(
 ) (*model.TemplateSlot, error) {
 	const query = `
 		SELECT
-			id,
-			template_id,
-			weekday,
-			TO_CHAR(start_time, 'HH24:MI'),
-			TO_CHAR(end_time, 'HH24:MI'),
-			created_at,
-			updated_at
-		FROM template_slots
-		WHERE template_id = $1 AND id = $2;
+			ts.id,
+			ts.template_id,
+			COALESCE(
+				array_agg(tsw.weekday ORDER BY tsw.weekday)
+					FILTER (WHERE tsw.weekday IS NOT NULL),
+				ARRAY[]::integer[]
+			),
+			TO_CHAR(ts.start_time, 'HH24:MI'),
+			TO_CHAR(ts.end_time, 'HH24:MI'),
+			ts.created_at,
+			ts.updated_at
+		FROM template_slots ts
+		LEFT JOIN template_slot_weekdays tsw ON tsw.slot_id = ts.id
+		WHERE ts.template_id = $1 AND ts.id = $2
+		GROUP BY ts.id;
 	`
 
-	slot := &model.TemplateSlot{}
-	err := db.QueryRowContext(ctx, query, templateID, slotID).Scan(
-		&slot.ID,
-		&slot.TemplateID,
-		&slot.Weekday,
-		&slot.StartTime,
-		&slot.EndTime,
-		&slot.CreatedAt,
-		&slot.UpdatedAt,
-	)
+	slot, err := scanTemplateSlot(db.QueryRowContext(ctx, query, templateID, slotID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrTemplateSlotNotFound
 	}
@@ -271,16 +269,22 @@ func listTemplateSlots(
 ) ([]*model.TemplateSlot, error) {
 	const query = `
 		SELECT
-			id,
-			template_id,
-			weekday,
-			TO_CHAR(start_time, 'HH24:MI'),
-			TO_CHAR(end_time, 'HH24:MI'),
-			created_at,
-			updated_at
-		FROM template_slots
-		WHERE template_id = $1
-		ORDER BY weekday ASC, start_time ASC, id ASC;
+			ts.id,
+			ts.template_id,
+			COALESCE(
+				array_agg(tsw.weekday ORDER BY tsw.weekday)
+					FILTER (WHERE tsw.weekday IS NOT NULL),
+				ARRAY[]::integer[]
+			),
+			TO_CHAR(ts.start_time, 'HH24:MI'),
+			TO_CHAR(ts.end_time, 'HH24:MI'),
+			ts.created_at,
+			ts.updated_at
+		FROM template_slots ts
+		LEFT JOIN template_slot_weekdays tsw ON tsw.slot_id = ts.id
+		WHERE ts.template_id = $1
+		GROUP BY ts.id
+		ORDER BY ts.start_time ASC, ts.end_time ASC, ts.id ASC;
 	`
 
 	rows, err := db.QueryContext(ctx, query, templateID)
@@ -291,16 +295,8 @@ func listTemplateSlots(
 
 	slots := make([]*model.TemplateSlot, 0)
 	for rows.Next() {
-		slot := &model.TemplateSlot{}
-		if err := rows.Scan(
-			&slot.ID,
-			&slot.TemplateID,
-			&slot.Weekday,
-			&slot.StartTime,
-			&slot.EndTime,
-			&slot.CreatedAt,
-			&slot.UpdatedAt,
-		); err != nil {
+		slot, err := scanTemplateSlot(rows)
+		if err != nil {
 			return nil, err
 		}
 		slots = append(slots, slot)
@@ -310,6 +306,27 @@ func listTemplateSlots(
 	}
 
 	return slots, nil
+}
+
+func scanTemplateSlot(row scanner) (*model.TemplateSlot, error) {
+	slot := &model.TemplateSlot{}
+	var weekdays pq.Int64Array
+	if err := row.Scan(
+		&slot.ID,
+		&slot.TemplateID,
+		&weekdays,
+		&slot.StartTime,
+		&slot.EndTime,
+		&slot.CreatedAt,
+		&slot.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	slot.Weekdays = make([]int, 0, len(weekdays))
+	for _, weekday := range weekdays {
+		slot.Weekdays = append(slot.Weekdays, int(weekday))
+	}
+	return slot, nil
 }
 
 func getTemplateSlotPositionByID(

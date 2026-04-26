@@ -27,6 +27,7 @@ func TestAssignmentRepositoryIntegration(t *testing.T) {
 			PublicationID: publication.ID,
 			UserID:        user.ID,
 			SlotID:        slotID,
+			Weekday:       1,
 			PositionID:    positionID,
 			CreatedAt:     testTime(),
 		})
@@ -41,6 +42,7 @@ func TestAssignmentRepositoryIntegration(t *testing.T) {
 			PublicationID: publication.ID,
 			UserID:        user.ID,
 			SlotID:        slotID,
+			Weekday:       1,
 			PositionID:    secondPosition.ID,
 			CreatedAt:     testTime().AddDate(0, 0, 1),
 		})
@@ -143,7 +145,7 @@ func TestAssignmentRepositoryIntegration(t *testing.T) {
 		if err := repo.ReplaceAssignments(ctx, ReplaceAssignmentsParams{
 			PublicationID: publication.ID,
 			Assignments: []ReplaceAssignmentParams{
-				{UserID: secondUser.ID, SlotID: slotID, PositionID: positionID},
+				{UserID: secondUser.ID, SlotID: slotID, Weekday: 1, PositionID: positionID},
 			},
 			CreatedAt: testTime().Add(5 * time.Minute),
 		}); err != nil {
@@ -171,7 +173,7 @@ func TestAssignmentRepositoryIntegration(t *testing.T) {
 		err := repo.ReplaceAssignments(ctx, ReplaceAssignmentsParams{
 			PublicationID: publication.ID,
 			Assignments: []ReplaceAssignmentParams{
-				{UserID: 999, SlotID: slotID, PositionID: positionID},
+				{UserID: 999, SlotID: slotID, Weekday: 1, PositionID: positionID},
 			},
 			CreatedAt: testTime(),
 		})
@@ -195,10 +197,11 @@ func TestAssignmentRepositoryIntegration(t *testing.T) {
 
 		_, err := db.ExecContext(
 			ctx,
-			`INSERT INTO assignments (publication_id, user_id, slot_id, position_id, created_at) VALUES ($1, $2, $3, $4, $5)`,
+			`INSERT INTO assignments (publication_id, user_id, slot_id, weekday, position_id, created_at) VALUES ($1, $2, $3, $4, $5, $6)`,
 			publication.ID,
 			user.ID,
 			slotID,
+			1,
 			otherPosition.ID,
 			testTime(),
 		)
@@ -221,10 +224,11 @@ func TestAssignmentRepositoryIntegration(t *testing.T) {
 
 		_, err := db.ExecContext(
 			ctx,
-			`INSERT INTO assignments (publication_id, user_id, slot_id, position_id, created_at) VALUES ($1, $2, $3, $4, $5)`,
+			`INSERT INTO assignments (publication_id, user_id, slot_id, weekday, position_id, created_at) VALUES ($1, $2, $3, $4, $5, $6)`,
 			publication.ID,
 			user.ID,
 			slotID,
+			1,
 			secondPosition.ID,
 			testTime().Add(time.Minute),
 		)

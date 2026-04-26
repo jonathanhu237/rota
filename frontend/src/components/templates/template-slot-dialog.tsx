@@ -1,9 +1,10 @@
 import { useEffect, useEffectEvent } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -24,7 +25,6 @@ import {
 type TemplateSlotDialogProps = {
   mode: "create" | "edit"
   open: boolean
-  initialWeekday?: number
   slot?: TemplateSlot | null
   isPending: boolean
   onOpenChange: (open: boolean) => void
@@ -32,6 +32,7 @@ type TemplateSlotDialogProps = {
 }
 
 const weekdayOptions = [1, 2, 3, 4, 5, 6, 7] as const
+const defaultWeekdays = [1, 2, 3, 4, 5]
 
 const weekdayKeyMap: Record<number, string> = {
   1: "templates.weekday.mon",
@@ -43,13 +44,9 @@ const weekdayKeyMap: Record<number, string> = {
   7: "templates.weekday.sun",
 }
 
-const selectClassName =
-  "border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-
 export function TemplateSlotDialog({
   mode,
   open,
-  initialWeekday,
   slot,
   isPending,
   onOpenChange,
@@ -62,24 +59,27 @@ export function TemplateSlotDialog({
     register,
     handleSubmit,
     reset,
+    setValue,
+    control,
     trigger,
     formState: { errors },
   } = useForm<TemplateSlotFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      weekday: slot?.weekday ?? initialWeekday ?? 1,
+      weekdays: slot?.weekdays ?? defaultWeekdays,
       start_time: slot?.start_time ?? "09:00",
       end_time: slot?.end_time ?? "10:00",
     },
   })
+  const selectedWeekdays = useWatch({ control, name: "weekdays" }) ?? []
 
   useEffect(() => {
     reset({
-      weekday: slot?.weekday ?? initialWeekday ?? 1,
+      weekdays: slot?.weekdays ?? defaultWeekdays,
       start_time: slot?.start_time ?? "09:00",
       end_time: slot?.end_time ?? "10:00",
     })
-  }, [initialWeekday, open, reset, slot])
+  }, [open, reset, slot])
 
   const revalidateVisibleErrors = useEffectEvent(() => {
     const errorFields = Object.keys(errors) as (keyof TemplateSlotFormValues)[]
@@ -112,23 +112,32 @@ export function TemplateSlotDialog({
           onSubmit={handleSubmit((values) => onSubmit(values))}
         >
           <div className="grid gap-2">
-            <Label htmlFor="template-slot-weekday">
-              {t("templates.slot.weekday")}
-            </Label>
-            <select
-              className={selectClassName}
-              id="template-slot-weekday"
-              {...register("weekday", { valueAsNumber: true })}
-            >
+            <Label>{t("templates.slot.weekday")}</Label>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {weekdayOptions.map((weekday) => (
-                <option key={weekday} value={weekday}>
-                  {t(weekdayKeyMap[weekday])}
-                </option>
+                <label
+                  key={weekday}
+                  className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
+                >
+                  <Checkbox
+                    checked={selectedWeekdays.includes(weekday)}
+                    onChange={(event) => {
+                      const next = event.currentTarget.checked
+                        ? [...selectedWeekdays, weekday]
+                        : selectedWeekdays.filter((value) => value !== weekday)
+                      setValue("weekdays", next, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      })
+                    }}
+                  />
+                  <span>{t(weekdayKeyMap[weekday])}</span>
+                </label>
               ))}
-            </select>
-            {errors.weekday && (
+            </div>
+            {errors.weekdays && (
               <p className="text-sm text-destructive">
-                {errors.weekday.message}
+                {errors.weekdays.message}
               </p>
             )}
           </div>

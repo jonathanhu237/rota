@@ -64,7 +64,7 @@ type templateResponse struct {
 type templateSlotResponse struct {
 	ID         int64                          `json:"id"`
 	TemplateID int64                          `json:"template_id"`
-	Weekday    int                            `json:"weekday"`
+	Weekdays   []int                          `json:"weekdays"`
 	StartTime  string                         `json:"start_time"`
 	EndTime    string                         `json:"end_time"`
 	CreatedAt  time.Time                      `json:"created_at"`
@@ -259,7 +259,7 @@ func newTemplateSlotResponse(slot *model.TemplateSlot) templateSlotResponse {
 	response := templateSlotResponse{
 		ID:         slot.ID,
 		TemplateID: slot.TemplateID,
-		Weekday:    slot.Weekday,
+		Weekdays:   append([]int(nil), slot.Weekdays...),
 		StartTime:  slot.StartTime,
 		EndTime:    slot.EndTime,
 		CreatedAt:  slot.CreatedAt,
@@ -314,10 +314,17 @@ func newPublicationSlotResponse(slot *model.TemplateSlot) publicationSlotRespons
 
 	return publicationSlotResponse{
 		ID:        slot.ID,
-		Weekday:   slot.Weekday,
+		Weekday:   publicationSlotWeekday(slot),
 		StartTime: slot.StartTime,
 		EndTime:   slot.EndTime,
 	}
+}
+
+func publicationSlotWeekday(slot *model.TemplateSlot) int {
+	if slot == nil || len(slot.Weekdays) == 0 {
+		return 0
+	}
+	return slot.Weekdays[0]
 }
 
 func newPublicationPositionResponse(position *model.Position) publicationPositionResponse {

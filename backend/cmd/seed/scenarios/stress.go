@@ -120,24 +120,21 @@ func RunStress(ctx context.Context, tx *sql.Tx, opts Options) error {
 }
 
 func stressSlotDefinitions() []slotDefinition {
-	definitions := make([]slotDefinition, 0, 27)
-	for weekday := 1; weekday <= 5; weekday++ {
-		definitions = append(definitions,
-			slotDefinition{Weekday: weekday, StartTime: "08:00", EndTime: "10:00", Positions: threePositions(0, 1, 2)},
-			slotDefinition{Weekday: weekday, StartTime: "10:30", EndTime: "12:30", Positions: threePositions(1, 2, 3)},
-			slotDefinition{Weekday: weekday, StartTime: "13:30", EndTime: "15:30", Positions: threePositions(2, 3, 4)},
-			slotDefinition{Weekday: weekday, StartTime: "16:00", EndTime: "18:00", Positions: threePositions(3, 4, 5)},
-		)
+	return []slotDefinition{
+		{Weekdays: weekdayRange(1, 5), StartTime: "08:00", EndTime: "10:00", Positions: threePositions(0, 1, 2)},
+		{Weekdays: weekdayRange(1, 5), StartTime: "10:30", EndTime: "12:30", Positions: threePositions(1, 2, 3)},
+		{Weekdays: weekdayRange(1, 5), StartTime: "13:30", EndTime: "15:30", Positions: threePositions(2, 3, 4)},
+		{Weekdays: weekdayRange(1, 5), StartTime: "16:00", EndTime: "18:00", Positions: threePositions(3, 4, 5)},
+		{Weekdays: weekdayRange(1, 7), StartTime: "19:00", EndTime: "21:00", Positions: twoPositions(6, 7)},
 	}
-	for weekday := 1; weekday <= 7; weekday++ {
-		definitions = append(definitions, slotDefinition{
-			Weekday:   weekday,
-			StartTime: "19:00",
-			EndTime:   "21:00",
-			Positions: twoPositions(6, 7),
-		})
+}
+
+func weekdayRange(start, end int) []int {
+	weekdays := make([]int, 0, end-start+1)
+	for weekday := start; weekday <= end; weekday++ {
+		weekdays = append(weekdays, weekday)
 	}
-	return definitions
+	return weekdays
 }
 
 func threePositions(first, second, third int) []positionHeadcount {
@@ -253,10 +250,9 @@ func nextAssignmentOccurrenceDate(
 	if err := tx.QueryRowContext(
 		ctx,
 		`
-			SELECT ts.weekday
-			FROM assignments a
-			INNER JOIN template_slots ts ON ts.id = a.slot_id
-			WHERE a.id = $1;
+				SELECT a.weekday
+				FROM assignments a
+				WHERE a.id = $1;
 		`,
 		assignmentID,
 	).Scan(&weekday); err != nil {

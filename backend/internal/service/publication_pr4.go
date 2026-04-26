@@ -58,7 +58,12 @@ func (s *PublicationService) CreateAssignment(
 	ctx context.Context,
 	input CreateAssignmentInput,
 ) (*model.Assignment, error) {
-	if input.PublicationID <= 0 || input.UserID <= 0 || input.SlotID <= 0 || input.PositionID <= 0 {
+	if input.PublicationID <= 0 ||
+		input.UserID <= 0 ||
+		input.SlotID <= 0 ||
+		input.Weekday < 1 ||
+		input.Weekday > 7 ||
+		input.PositionID <= 0 {
 		return nil, ErrInvalidInput
 	}
 
@@ -71,8 +76,12 @@ func (s *PublicationService) CreateAssignment(
 		return nil, ErrPublicationNotMutable
 	}
 
-	if _, err := s.publicationRepo.GetSlot(ctx, publication.TemplateID, input.SlotID); err != nil {
+	slot, err := s.publicationRepo.GetSlot(ctx, publication.TemplateID, input.SlotID)
+	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
+	}
+	if !slotHasWeekday(slot, input.Weekday) {
+		return nil, ErrInvalidInput
 	}
 
 	slotPositions, err := s.publicationRepo.ListSlotPositions(ctx, input.SlotID)
@@ -96,6 +105,7 @@ func (s *PublicationService) CreateAssignment(
 		PublicationID: input.PublicationID,
 		UserID:        input.UserID,
 		SlotID:        input.SlotID,
+		Weekday:       input.Weekday,
 		PositionID:    input.PositionID,
 		CreatedAt:     now,
 	})
@@ -112,6 +122,7 @@ func (s *PublicationService) CreateAssignment(
 			"publication_id": assignment.PublicationID,
 			"user_id":        assignment.UserID,
 			"slot_id":        assignment.SlotID,
+			"weekday":        assignment.Weekday,
 			"position_id":    assignment.PositionID,
 		},
 	})
@@ -185,6 +196,7 @@ func (s *PublicationService) DeleteAssignment(
 	if deletedAssignment != nil {
 		metadata["user_id"] = deletedAssignment.UserID
 		metadata["slot_id"] = deletedAssignment.SlotID
+		metadata["weekday"] = deletedAssignment.Weekday
 		metadata["position_id"] = deletedAssignment.PositionID
 	}
 	audit.Record(ctx, audit.Event{
@@ -384,16 +396,18 @@ func (s *PublicationService) GetAssignmentBoard(
 		Slots:       make([]*AssignmentBoardSlotResult, 0),
 	}
 
-	slotIDs := make([]int64, 0, len(boardView))
-	for slotID := range boardView {
-		slotIDs = append(slotIDs, slotID)
+	slotKeys := make([]repository.AssignmentBoardSlotKey, 0, len(boardView))
+	for key := range boardView {
+		slotKeys = append(slotKeys, key)
 	}
-	sort.Slice(slotIDs, func(i, j int) bool {
-		left := boardView[slotIDs[i]].Slot
-		right := boardView[slotIDs[j]].Slot
+	sort.Slice(slotKeys, func(i, j int) bool {
+		left := boardView[slotKeys[i]].Slot
+		right := boardView[slotKeys[j]].Slot
+		leftWeekday := slotKeys[i].Weekday
+		rightWeekday := slotKeys[j].Weekday
 		switch {
-		case left.Weekday != right.Weekday:
-			return left.Weekday < right.Weekday
+		case leftWeekday != rightWeekday:
+			return leftWeekday < rightWeekday
 		case left.StartTime != right.StartTime:
 			return left.StartTime < right.StartTime
 		case left.EndTime != right.EndTime:
@@ -403,13 +417,13 @@ func (s *PublicationService) GetAssignmentBoard(
 		}
 	})
 
-	for _, slotID := range slotIDs {
-		slotView := boardView[slotID]
+	for _, key := range slotKeys {
+		slotView := boardView[key]
 		slotResult := &AssignmentBoardSlotResult{
 			Slot: &model.TemplateSlot{
 				ID:         slotView.Slot.ID,
 				TemplateID: slotView.Slot.TemplateID,
-				Weekday:    slotView.Slot.Weekday,
+				Weekdays:   []int{key.Weekday},
 				StartTime:  slotView.Slot.StartTime,
 				EndTime:    slotView.Slot.EndTime,
 			},
@@ -632,6 +646,7 @@ func (s *PublicationService) buildRoster(
 	for _, assignment := range assignments {
 		key := slotPositionKey{
 			SlotID:     assignment.SlotID,
+			Weekday:    assignment.Weekday,
 			PositionID: assignment.PositionID,
 		}
 		assignmentsBySlotPosition[key] = append(assignmentsBySlotPosition[key], assignment)
@@ -667,6 +682,7 @@ func (s *PublicationService) buildRoster(
 
 		key := slotPositionKey{
 			SlotID:     shift.SlotID,
+			Weekday:    shift.Weekday,
 			PositionID: shift.PositionID,
 		}
 		slotResult.Positions = append(slotResult.Positions, &RosterPositionResult{
@@ -738,7 +754,13 @@ func weekdayToSlotValue(weekday time.Weekday) int {
 
 type slotPositionKey struct {
 	SlotID     int64
+	Weekday    int
 	PositionID int64
+}
+
+type slotCellKey struct {
+	SlotID  int64
+	Weekday int
 }
 
 func publicationShiftSlot(shift *model.PublicationShift) *model.TemplateSlot {
@@ -749,7 +771,7 @@ func publicationShiftSlot(shift *model.PublicationShift) *model.TemplateSlot {
 	return &model.TemplateSlot{
 		ID:         shift.SlotID,
 		TemplateID: shift.TemplateID,
-		Weekday:    shift.Weekday,
+		Weekdays:   []int{shift.Weekday},
 		StartTime:  shift.StartTime,
 		EndTime:    shift.EndTime,
 		CreatedAt:  shift.CreatedAt,

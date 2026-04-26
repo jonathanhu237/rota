@@ -127,11 +127,11 @@ func listServiceUserAssignmentWindows(
 		context.Background(),
 		`
 			SELECT TO_CHAR(ts.start_time, 'HH24:MI'), TO_CHAR(ts.end_time, 'HH24:MI')
-			FROM assignments a
-			INNER JOIN template_slots ts ON ts.id = a.slot_id
-			WHERE a.publication_id = $1
-				AND a.user_id = $2
-				AND ts.weekday = $3
+				FROM assignments a
+				INNER JOIN template_slots ts ON ts.id = a.slot_id
+				WHERE a.publication_id = $1
+					AND a.user_id = $2
+					AND a.weekday = $3
 			ORDER BY ts.start_time ASC, ts.id ASC, a.position_id ASC;
 		`,
 		publicationID,
@@ -273,6 +273,7 @@ func resetServiceIntegrationDB(ctx context.Context, db *sql.DB) error {
 		"assignments",
 		"availability_submissions",
 		"template_slot_positions",
+		"template_slot_weekdays",
 		"template_slots",
 		"user_setup_tokens",
 		"publications",
@@ -404,17 +405,24 @@ func seedServiceSlot(
 	if err := db.QueryRowContext(
 		context.Background(),
 		`
-			INSERT INTO template_slots (template_id, weekday, start_time, end_time, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $5)
+			INSERT INTO template_slots (template_id, start_time, end_time, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $4)
 			RETURNING id;
 		`,
 		templateID,
-		weekday,
 		startTime,
 		endTime,
 		now,
 	).Scan(&id); err != nil {
 		t.Fatalf("seed slot: %v", err)
+	}
+	if _, err := db.ExecContext(
+		context.Background(),
+		`INSERT INTO template_slot_weekdays (slot_id, weekday) VALUES ($1, $2);`,
+		id,
+		weekday,
+	); err != nil {
+		t.Fatalf("seed slot weekday: %v", err)
 	}
 	return id
 }
@@ -506,18 +514,34 @@ func seedServiceSubmission(
 		context.Background(),
 		`
 			INSERT INTO availability_submissions (
-				publication_id,
-				user_id,
-				slot_id,
-				created_at
-			)
-			VALUES ($1, $2, $3, $4);
-		`,
+					publication_id,
+					user_id,
+					slot_id,
+					weekday,
+					created_at
+				)
+				VALUES ($1, $2, $3, $4, $5);
+			`,
 		publicationID,
 		userID,
 		slotID,
+		seedServiceSlotWeekday(t, db, slotID),
 		createdAt,
 	); err != nil {
 		t.Fatalf("seed submission: %v", err)
 	}
+}
+
+func seedServiceSlotWeekday(t testing.TB, db *sql.DB, slotID int64) int {
+	t.Helper()
+
+	var weekday int
+	if err := db.QueryRowContext(
+		context.Background(),
+		`SELECT weekday FROM template_slot_weekdays WHERE slot_id = $1 ORDER BY weekday ASC LIMIT 1;`,
+		slotID,
+	).Scan(&weekday); err != nil {
+		t.Fatalf("load service slot weekday: %v", err)
+	}
+	return weekday
 }

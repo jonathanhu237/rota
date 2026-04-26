@@ -370,6 +370,7 @@ func TestPublicationHandler(t *testing.T) {
 					PublicationID: input.PublicationID,
 					UserID:        input.UserID,
 					SlotID:        input.SlotID,
+					Weekday:       input.Weekday,
 					CreatedAt:     samplePublicationTime(),
 				}, nil
 			},
@@ -377,7 +378,7 @@ func TestPublicationHandler(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		req := requestWithUser(
 			requestWithPathValues(jsonRequest(t, http.MethodPost, "/publications/1/submissions", map[string]any{
-				"slot_id": 21,
+				"slot_id": 21, "weekday": 1,
 			}), map[string]string{"id": "1"}),
 			sampleUser(),
 		)
@@ -402,6 +403,7 @@ func TestPublicationHandler(t *testing.T) {
 					PublicationID: input.PublicationID,
 					UserID:        input.UserID,
 					SlotID:        input.SlotID,
+					Weekday:       input.Weekday,
 					CreatedAt:     samplePublicationTime(),
 				}, nil
 			},
@@ -409,7 +411,7 @@ func TestPublicationHandler(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		req := requestWithUser(
 			requestWithPathValues(jsonRequest(t, http.MethodPost, "/publications/1/submissions", map[string]any{
-				"slot_id": 21, "position_id": 101,
+				"slot_id": 21, "weekday": 1, "position_id": 101,
 			}), map[string]string{"id": "1"}),
 			sampleUser(),
 		)
@@ -448,7 +450,7 @@ func TestPublicationHandler(t *testing.T) {
 				recorder := httptest.NewRecorder()
 				req := requestWithUser(
 					requestWithPathValues(jsonRequest(t, http.MethodPost, "/publications/1/submissions", map[string]any{
-						"slot_id": 21,
+						"slot_id": 21, "weekday": 1,
 					}), map[string]string{"id": "1"}),
 					sampleUser(),
 				)
@@ -485,8 +487,8 @@ func TestPublicationHandler(t *testing.T) {
 		})
 		recorder := httptest.NewRecorder()
 		req := requestWithUser(
-			requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/publications/1/submissions/21", nil), map[string]string{
-				"id": "1", "slot_id": "21",
+			requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/publications/1/submissions/21/1", nil), map[string]string{
+				"id": "1", "slot_id": "21", "weekday": "1",
 			}),
 			sampleUser(),
 		)
@@ -508,8 +510,8 @@ func TestPublicationHandler(t *testing.T) {
 		})
 		recorder := httptest.NewRecorder()
 		req := requestWithUser(
-			requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/publications/1/submissions/21", nil), map[string]string{
-				"id": "1", "slot_id": "21",
+			requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/publications/1/submissions/21/1", nil), map[string]string{
+				"id": "1", "slot_id": "21", "weekday": "1",
 			}),
 			sampleUser(),
 		)
@@ -619,6 +621,7 @@ func TestPublicationHandler(t *testing.T) {
 					PublicationID: input.PublicationID,
 					UserID:        input.UserID,
 					SlotID:        input.SlotID,
+					Weekday:       input.Weekday,
 					PositionID:    input.PositionID,
 					CreatedAt:     samplePublicationTime(),
 				}, nil
@@ -626,7 +629,7 @@ func TestPublicationHandler(t *testing.T) {
 		})
 		recorder := httptest.NewRecorder()
 		req := requestWithPathValues(jsonRequest(t, http.MethodPost, "/publications/1/assignments", map[string]any{
-			"user_id": 1, "slot_id": 21, "position_id": 101,
+			"user_id": 1, "slot_id": 21, "weekday": 1, "position_id": 101,
 		}), map[string]string{"id": "1"})
 
 		handler.CreateAssignment(recorder, req)
@@ -664,7 +667,7 @@ func TestPublicationHandler(t *testing.T) {
 				})
 				recorder := httptest.NewRecorder()
 				req := requestWithPathValues(jsonRequest(t, http.MethodPost, "/publications/1/assignments", map[string]any{
-					"user_id": 1, "slot_id": 21, "position_id": 101,
+					"user_id": 1, "slot_id": 21, "weekday": 1, "position_id": 101,
 				}), map[string]string{"id": "1"})
 
 				handler.CreateAssignment(recorder, req)
@@ -923,7 +926,7 @@ func samplePublicationSlot() *model.TemplateSlot {
 	return &model.TemplateSlot{
 		ID:         21,
 		TemplateID: 1,
-		Weekday:    1,
+		Weekdays:   []int{1},
 		StartTime:  "09:00",
 		EndTime:    "12:00",
 		CreatedAt:  now,

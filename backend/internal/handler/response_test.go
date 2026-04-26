@@ -157,7 +157,7 @@ func TestRosterResponseOmitsAssignmentEmail(t *testing.T) {
 						Slot: &model.TemplateSlot{
 							ID:         11,
 							TemplateID: 3,
-							Weekday:    1,
+							Weekdays:   []int{1},
 							StartTime:  "09:00",
 							EndTime:    "12:00",
 						},

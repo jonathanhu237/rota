@@ -102,10 +102,12 @@ describe("draft state reducers", () => {
         name: "Bob",
         email: "bob@example.com",
         slotID: 1,
+        weekday: 1,
         positionID: 101,
       },
       {
         slotID: 2,
+        weekday: 1,
         positionID: 101,
       },
     )
@@ -115,6 +117,7 @@ describe("draft state reducers", () => {
       kind: "assign",
       userID: 11,
       slotID: 2,
+      weekday: 1,
       positionID: 101,
       isUnqualified: false,
     })
@@ -129,6 +132,7 @@ describe("draft state reducers", () => {
         name: "Bob",
         email: "bob@example.com",
         slotID: 1,
+        weekday: 1,
         positionID: 101,
       },
       {
@@ -137,15 +141,18 @@ describe("draft state reducers", () => {
         name: "Dana",
         email: "dana@example.com",
         slotID: 2,
+        weekday: 1,
         positionID: 102,
       },
       {
         slotID: 2,
+        weekday: 1,
         positionID: 102,
         isUnqualified: true,
       },
       {
         slotID: 1,
+        weekday: 1,
         positionID: 101,
       },
     )
@@ -160,6 +167,7 @@ describe("draft state reducers", () => {
       kind: "assign",
       userID: 11,
       slotID: 2,
+      weekday: 1,
       positionID: 102,
       isUnqualified: true,
     })
@@ -174,6 +182,7 @@ describe("draft state reducers", () => {
         name: "Bob",
         email: "bob@example.com",
         slotID: 1,
+        weekday: 1,
         positionID: 101,
       },
       {
@@ -183,6 +192,7 @@ describe("draft state reducers", () => {
       },
       {
         slotID: 1,
+        weekday: 1,
         positionID: 101,
       },
     )
@@ -192,6 +202,7 @@ describe("draft state reducers", () => {
       kind: "assign",
       userID: 10,
       slotID: 1,
+      weekday: 1,
       positionID: 101,
     })
   })
@@ -206,6 +217,7 @@ describe("draft state reducers", () => {
       },
       {
         slotID: 2,
+        weekday: 1,
         positionID: 101,
       },
     )
@@ -215,6 +227,7 @@ describe("draft state reducers", () => {
       kind: "assign",
       userID: 10,
       slotID: 2,
+      weekday: 1,
       positionID: 101,
     })
   })
@@ -230,10 +243,12 @@ describe("draft projection", () => {
         name: "Bob",
         email: "bob@example.com",
         slotID: 1,
+        weekday: 1,
         positionID: 101,
       },
       {
         slotID: 2,
+        weekday: 1,
         positionID: 101,
       },
     )
@@ -245,6 +260,7 @@ describe("draft projection", () => {
         name: "Dana",
         email: "dana@example.com",
         slotID: 2,
+        weekday: 1,
         positionID: 102,
       },
       {
@@ -254,20 +270,20 @@ describe("draft projection", () => {
       },
       {
         slotID: 2,
+        weekday: 1,
         positionID: 102,
       },
     )
 
     const projected = applyDraftToBoard(slots, state)
 
-    expect(projected.get(getBoardCellKey(1, 101))).toEqual([])
-    expect(projected.get(getBoardCellKey(2, 101))?.map((item) => item.name)).toEqual([
-      "Cara",
-      "Bob",
-    ])
-    expect(projected.get(getBoardCellKey(2, 102))?.map((item) => item.name)).toEqual([
-      "Alice",
-    ])
+    expect(projected.get(getBoardCellKey(1, 1, 101))).toEqual([])
+    expect(
+      projected.get(getBoardCellKey(2, 1, 101))?.map((item) => item.name),
+    ).toEqual(["Cara", "Bob"])
+    expect(
+      projected.get(getBoardCellKey(2, 1, 102))?.map((item) => item.name),
+    ).toEqual(["Alice"])
   })
 
   it("computes hours with and without drafts", () => {
@@ -281,10 +297,12 @@ describe("draft projection", () => {
         name: "Bob",
         email: "bob@example.com",
         slotID: 1,
+        weekday: 1,
         positionID: 101,
       },
       {
         slotID: 2,
+        weekday: 1,
         positionID: 101,
       },
     )
@@ -302,6 +320,7 @@ describe("draft projection", () => {
       },
       {
         slotID: 2,
+        weekday: 1,
         positionID: 101,
       },
     )

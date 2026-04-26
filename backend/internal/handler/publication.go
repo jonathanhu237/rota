@@ -54,7 +54,8 @@ type submissionsMeResponse struct {
 }
 
 type slotRefResponse struct {
-	SlotID int64 `json:"slot_id"`
+	SlotID  int64 `json:"slot_id"`
+	Weekday int   `json:"weekday"`
 }
 
 type shiftsMeResponse struct {
@@ -78,12 +79,14 @@ type updatePublicationRequest struct {
 }
 
 type createSubmissionRequest struct {
-	SlotID int64 `json:"slot_id"`
+	SlotID  int64 `json:"slot_id"`
+	Weekday int   `json:"weekday"`
 }
 
 type createAssignmentRequest struct {
 	UserID     int64 `json:"user_id"`
 	SlotID     int64 `json:"slot_id"`
+	Weekday    int   `json:"weekday"`
 	PositionID int64 `json:"position_id"`
 }
 
@@ -260,7 +263,8 @@ func (h *PublicationHandler) ListMySubmissionSlots(w http.ResponseWriter, r *htt
 	responseSlots := make([]slotRefResponse, 0, len(slots))
 	for _, slot := range slots {
 		responseSlots = append(responseSlots, slotRefResponse{
-			SlotID: slot.SlotID,
+			SlotID:  slot.SlotID,
+			Weekday: slot.Weekday,
 		})
 	}
 
@@ -287,7 +291,7 @@ func (h *PublicationHandler) CreateSubmission(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
 		return
 	}
-	if req.SlotID <= 0 {
+	if req.SlotID <= 0 || req.Weekday < 1 || req.Weekday > 7 {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
 		return
 	}
@@ -296,6 +300,7 @@ func (h *PublicationHandler) CreateSubmission(w http.ResponseWriter, r *http.Req
 		PublicationID: publicationID,
 		UserID:        user.ID,
 		SlotID:        req.SlotID,
+		Weekday:       req.Weekday,
 	}); err != nil {
 		h.writePublicationServiceError(w, err)
 		return
@@ -322,11 +327,17 @@ func (h *PublicationHandler) DeleteSubmission(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid slot id")
 		return
 	}
+	weekday, err := parsePathID(r, "weekday")
+	if err != nil || weekday < 1 || weekday > 7 {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid weekday")
+		return
+	}
 
 	if err := h.publicationService.DeleteAvailabilitySubmission(r.Context(), service.DeleteAvailabilitySubmissionInput{
 		PublicationID: publicationID,
 		UserID:        user.ID,
 		SlotID:        slotID,
+		Weekday:       int(weekday),
 	}); err != nil {
 		h.writePublicationServiceError(w, err)
 		return
@@ -408,7 +419,7 @@ func (h *PublicationHandler) CreateAssignment(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
 		return
 	}
-	if req.UserID <= 0 || req.SlotID <= 0 || req.PositionID <= 0 {
+	if req.UserID <= 0 || req.SlotID <= 0 || req.Weekday < 1 || req.Weekday > 7 || req.PositionID <= 0 {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
 		return
 	}
@@ -417,6 +428,7 @@ func (h *PublicationHandler) CreateAssignment(w http.ResponseWriter, r *http.Req
 		PublicationID: publicationID,
 		UserID:        req.UserID,
 		SlotID:        req.SlotID,
+		Weekday:       req.Weekday,
 		PositionID:    req.PositionID,
 	}); err != nil {
 		h.writePublicationServiceError(w, err)

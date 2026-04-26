@@ -20,12 +20,14 @@ type AutoAssignSlotPosition struct {
 type AutoAssignCandidate struct {
 	UserID     int64
 	SlotID     int64
+	Weekday    int
 	PositionID int64
 }
 
 type AutoAssignment struct {
 	UserID     int64
 	SlotID     int64
+	Weekday    int
 	PositionID int64
 }
 
@@ -76,33 +78,34 @@ func SolveAutoAssignments(
 		return make([]AutoAssignment, 0), nil
 	}
 
-	slotIDsByUser := make(map[int64]map[int64]struct{})
-	slotPositionKeysByUserSlot := make(map[int64]map[int64]map[slotPositionKey]struct{})
+	slotCellsByUser := make(map[int64]map[slotCellKey]struct{})
+	slotPositionKeysByUserCell := make(map[int64]map[slotCellKey]map[slotPositionKey]struct{})
 	for _, candidate := range candidates {
-		if candidate.UserID <= 0 || candidate.SlotID <= 0 || candidate.PositionID <= 0 {
+		if candidate.UserID <= 0 || candidate.SlotID <= 0 || candidate.Weekday <= 0 || candidate.PositionID <= 0 {
 			continue
 		}
-		key := slotPositionKey{SlotID: candidate.SlotID, PositionID: candidate.PositionID}
+		cellKey := slotCellKey{SlotID: candidate.SlotID, Weekday: candidate.Weekday}
+		key := slotPositionKey{SlotID: candidate.SlotID, Weekday: candidate.Weekday, PositionID: candidate.PositionID}
 		if _, ok := preparedSlotPositions[key]; !ok {
 			continue
 		}
-		if slotIDsByUser[candidate.UserID] == nil {
-			slotIDsByUser[candidate.UserID] = make(map[int64]struct{})
+		if slotCellsByUser[candidate.UserID] == nil {
+			slotCellsByUser[candidate.UserID] = make(map[slotCellKey]struct{})
 		}
-		slotIDsByUser[candidate.UserID][candidate.SlotID] = struct{}{}
-		if slotPositionKeysByUserSlot[candidate.UserID] == nil {
-			slotPositionKeysByUserSlot[candidate.UserID] = make(map[int64]map[slotPositionKey]struct{})
+		slotCellsByUser[candidate.UserID][cellKey] = struct{}{}
+		if slotPositionKeysByUserCell[candidate.UserID] == nil {
+			slotPositionKeysByUserCell[candidate.UserID] = make(map[slotCellKey]map[slotPositionKey]struct{})
 		}
-		if slotPositionKeysByUserSlot[candidate.UserID][candidate.SlotID] == nil {
-			slotPositionKeysByUserSlot[candidate.UserID][candidate.SlotID] = make(map[slotPositionKey]struct{})
+		if slotPositionKeysByUserCell[candidate.UserID][cellKey] == nil {
+			slotPositionKeysByUserCell[candidate.UserID][cellKey] = make(map[slotPositionKey]struct{})
 		}
-		slotPositionKeysByUserSlot[candidate.UserID][candidate.SlotID][key] = struct{}{}
+		slotPositionKeysByUserCell[candidate.UserID][cellKey][key] = struct{}{}
 	}
-	if len(slotIDsByUser) == 0 {
+	if len(slotCellsByUser) == 0 {
 		return make([]AutoAssignment, 0), nil
 	}
 
-	userIDs, overlapGroupsByUser := buildAutoAssignOverlapGroups(preparedSlots, slotIDsByUser)
+	userIDs, overlapGroupsByUser := buildAutoAssignOverlapGroups(preparedSlots, slotCellsByUser)
 	if len(userIDs) == 0 {
 		return make([]AutoAssignment, 0), nil
 	}
@@ -112,7 +115,7 @@ func SolveAutoAssignments(
 	seatNodeIDsByUser := make(map[int64][]int, len(userIDs))
 	employeeNodeIDs := make(map[int64]int, len(userIDs))
 	groupNodeIDsByUser := make(map[int64][]int, len(userIDs))
-	userSlotNodeIDsByUser := make(map[int64]map[int64]int, len(userIDs))
+	userSlotNodeIDsByUser := make(map[int64]map[slotCellKey]int, len(userIDs))
 
 	for _, userID := range userIDs {
 		groupCount := len(overlapGroupsByUser[userID])
@@ -142,9 +145,9 @@ func SolveAutoAssignments(
 		}
 		groupNodeIDsByUser[userID] = groupNodeIDs
 
-		userSlotNodeIDs := make(map[int64]int, len(slotIDsByUser[userID]))
-		for _, slotID := range sortedAutoAssignSlotIDs(preparedSlots, slotIDsByUser[userID]) {
-			userSlotNodeIDs[slotID] = nodeCount
+		userSlotNodeIDs := make(map[slotCellKey]int, len(slotCellsByUser[userID]))
+		for _, cellKey := range sortedAutoAssignSlotCells(preparedSlots, slotCellsByUser[userID]) {
+			userSlotNodeIDs[cellKey] = nodeCount
 			nodeCount++
 		}
 		userSlotNodeIDsByUser[userID] = userSlotNodeIDs
@@ -190,8 +193,8 @@ func SolveAutoAssignments(
 		for groupIndex, groupNodeID := range groupNodeIDs {
 			graph.addEdge(employeeNodeID, groupNodeID, 1, 0)
 
-			for _, slotID := range overlapGroupsByUser[userID][groupIndex] {
-				userSlotNodeID, ok := userSlotNodeIDs[slotID]
+			for _, cellKey := range overlapGroupsByUser[userID][groupIndex] {
+				userSlotNodeID, ok := userSlotNodeIDs[cellKey]
 				if !ok {
 					continue
 				}
@@ -199,7 +202,7 @@ func SolveAutoAssignments(
 
 				for _, key := range sortedAutoAssignSlotPositionKeys(
 					preparedSlotPositions,
-					slotPositionKeysByUserSlot[userID][slotID],
+					slotPositionKeysByUserCell[userID][cellKey],
 				) {
 					edgeIndex := graph.addEdge(userSlotNodeID, slotPositionNodeIDs[key], 1, 0)
 					assignmentEdges = append(assignmentEdges, autoAssignAssignmentEdge{
@@ -232,11 +235,15 @@ func SolveAutoAssignments(
 		assignments = append(assignments, AutoAssignment{
 			UserID:     edge.userID,
 			SlotID:     edge.slotPositionKey.SlotID,
+			Weekday:    edge.slotPositionKey.Weekday,
 			PositionID: edge.slotPositionKey.PositionID,
 		})
 	}
 
 	sort.Slice(assignments, func(i, j int) bool {
+		if assignments[i].Weekday != assignments[j].Weekday {
+			return assignments[i].Weekday < assignments[j].Weekday
+		}
 		if assignments[i].SlotID != assignments[j].SlotID {
 			return assignments[i].SlotID < assignments[j].SlotID
 		}
@@ -251,9 +258,9 @@ func SolveAutoAssignments(
 
 func prepareAutoAssignSlotPositions(
 	slotPositions []AutoAssignSlotPosition,
-) (map[slotPositionKey]preparedAutoAssignSlotPosition, map[int64]preparedAutoAssignSlot, int, error) {
+) (map[slotPositionKey]preparedAutoAssignSlotPosition, map[slotCellKey]preparedAutoAssignSlot, int, error) {
 	prepared := make(map[slotPositionKey]preparedAutoAssignSlotPosition, len(slotPositions))
-	preparedSlots := make(map[int64]preparedAutoAssignSlot)
+	preparedSlots := make(map[slotCellKey]preparedAutoAssignSlot)
 	totalDemand := 0
 
 	for _, slotPosition := range slotPositions {
@@ -263,9 +270,14 @@ func prepareAutoAssignSlotPositions(
 		if slotPosition.RequiredHeadcount <= 0 {
 			continue
 		}
-		key := slotPositionKey{SlotID: slotPosition.SlotID, PositionID: slotPosition.PositionID}
+		cellKey := slotCellKey{SlotID: slotPosition.SlotID, Weekday: slotPosition.Weekday}
+		key := slotPositionKey{
+			SlotID:     slotPosition.SlotID,
+			Weekday:    slotPosition.Weekday,
+			PositionID: slotPosition.PositionID,
+		}
 		if _, exists := prepared[key]; exists {
-			return nil, nil, 0, fmt.Errorf("duplicate slot-position: slot=%d position=%d", slotPosition.SlotID, slotPosition.PositionID)
+			return nil, nil, 0, fmt.Errorf("duplicate slot-position: slot=%d weekday=%d position=%d", slotPosition.SlotID, slotPosition.Weekday, slotPosition.PositionID)
 		}
 
 		startMinutes, err := parseClockMinutes(slotPosition.StartTime)
@@ -280,14 +292,14 @@ func prepareAutoAssignSlotPositions(
 			return nil, nil, 0, fmt.Errorf("invalid time window for slot %d", slotPosition.SlotID)
 		}
 
-		if existing, ok := preparedSlots[slotPosition.SlotID]; ok {
+		if existing, ok := preparedSlots[cellKey]; ok {
 			if existing.weekday != slotPosition.Weekday ||
 				existing.startMinutes != startMinutes ||
 				existing.endMinutes != endMinutes {
-				return nil, nil, 0, fmt.Errorf("inconsistent slot window for slot %d", slotPosition.SlotID)
+				return nil, nil, 0, fmt.Errorf("inconsistent slot window for slot %d weekday %d", slotPosition.SlotID, slotPosition.Weekday)
 			}
 		} else {
-			preparedSlots[slotPosition.SlotID] = preparedAutoAssignSlot{
+			preparedSlots[cellKey] = preparedAutoAssignSlot{
 				slotID:       slotPosition.SlotID,
 				weekday:      slotPosition.Weekday,
 				startMinutes: startMinutes,
@@ -307,70 +319,70 @@ func prepareAutoAssignSlotPositions(
 }
 
 func buildAutoAssignOverlapGroups(
-	preparedSlots map[int64]preparedAutoAssignSlot,
-	slotIDsByUser map[int64]map[int64]struct{},
-) ([]int64, map[int64][][]int64) {
-	userIDs := make([]int64, 0, len(slotIDsByUser))
-	for userID := range slotIDsByUser {
+	preparedSlots map[slotCellKey]preparedAutoAssignSlot,
+	slotCellsByUser map[int64]map[slotCellKey]struct{},
+) ([]int64, map[int64][][]slotCellKey) {
+	userIDs := make([]int64, 0, len(slotCellsByUser))
+	for userID := range slotCellsByUser {
 		userIDs = append(userIDs, userID)
 	}
 	sort.Slice(userIDs, func(i, j int) bool {
 		return userIDs[i] < userIDs[j]
 	})
 
-	result := make(map[int64][][]int64, len(userIDs))
+	result := make(map[int64][][]slotCellKey, len(userIDs))
 	filteredUserIDs := make([]int64, 0, len(userIDs))
 
 	for _, userID := range userIDs {
-		userSlotIDs := slotIDsByUser[userID]
-		if len(userSlotIDs) == 0 {
+		userSlotCells := slotCellsByUser[userID]
+		if len(userSlotCells) == 0 {
 			continue
 		}
 
-		slotIDsByWeekday := make(map[int][]int64)
-		for slotID := range userSlotIDs {
-			slot := preparedSlots[slotID]
-			slotIDsByWeekday[slot.weekday] = append(slotIDsByWeekday[slot.weekday], slotID)
+		slotCellsByWeekday := make(map[int][]slotCellKey)
+		for cellKey := range userSlotCells {
+			slot := preparedSlots[cellKey]
+			slotCellsByWeekday[slot.weekday] = append(slotCellsByWeekday[slot.weekday], cellKey)
 		}
 
-		weekdays := make([]int, 0, len(slotIDsByWeekday))
-		for weekday := range slotIDsByWeekday {
+		weekdays := make([]int, 0, len(slotCellsByWeekday))
+		for weekday := range slotCellsByWeekday {
 			weekdays = append(weekdays, weekday)
 		}
 		sort.Ints(weekdays)
 
-		groups := make([][]int64, 0)
+		groups := make([][]slotCellKey, 0)
 		for _, weekday := range weekdays {
-			daySlotIDs := slotIDsByWeekday[weekday]
-			sort.Slice(daySlotIDs, func(i, j int) bool {
+			daySlotCells := slotCellsByWeekday[weekday]
+			sort.Slice(daySlotCells, func(i, j int) bool {
 				return comparePreparedAutoAssignSlot(
-					preparedSlots[daySlotIDs[i]],
-					preparedSlots[daySlotIDs[j]],
+					preparedSlots[daySlotCells[i]],
+					preparedSlots[daySlotCells[j]],
 				) < 0
 			})
 
-			visited := make([]bool, len(daySlotIDs))
-			for index := range daySlotIDs {
+			visited := make([]bool, len(daySlotCells))
+			for index := range daySlotCells {
 				if visited[index] {
 					continue
 				}
 
-				component := make([]int64, 0)
+				component := make([]slotCellKey, 0)
 				queue := []int{index}
 				visited[index] = true
 
 				for len(queue) > 0 {
 					current := queue[0]
 					queue = queue[1:]
-					component = append(component, daySlotIDs[current])
+					component = append(component, daySlotCells[current])
 
-					for next := range daySlotIDs {
+					for next := range daySlotCells {
 						if visited[next] {
 							continue
 						}
 						if !slotsOverlap(
-							preparedSlots[daySlotIDs[current]],
-							preparedSlots[daySlotIDs[next]],
+							preparedSlots[daySlotCells[current]],
+							preparedSlots[daySlotCells[next]],
 						) {
 							continue
 						}
@@ -400,13 +412,13 @@ func buildAutoAssignOverlapGroups(
 	return filteredUserIDs, result
 }
 
-func sortedAutoAssignSlotIDs(
-	preparedSlots map[int64]preparedAutoAssignSlot,
-	slotIDs map[int64]struct{},
-) []int64 {
-	result := make([]int64, 0, len(slotIDs))
-	for slotID := range slotIDs {
-		result = append(result, slotID)
+func sortedAutoAssignSlotCells(
+	preparedSlots map[slotCellKey]preparedAutoAssignSlot,
+	slotCells map[slotCellKey]struct{},
+) []slotCellKey {
+	result := make([]slotCellKey, 0, len(slotCells))
+	for cellKey := range slotCells {
+		result = append(result, cellKey)
 	}
 	sort.Slice(result, func(i, j int) bool {
 		return comparePreparedAutoAssignSlot(preparedSlots[result[i]], preparedSlots[result[j]]) < 0

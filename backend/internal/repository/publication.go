@@ -55,6 +55,7 @@ type UpsertAvailabilitySubmissionParams struct {
 	PublicationID    int64
 	UserID           int64
 	SlotID           int64
+	Weekday          int
 	PublicationState *model.PublicationState
 	Now              time.Time
 }
@@ -63,6 +64,7 @@ type DeleteAvailabilitySubmissionParams struct {
 	PublicationID    int64
 	UserID           int64
 	SlotID           int64
+	Weekday          int
 	PublicationState *model.PublicationState
 	Now              time.Time
 }
@@ -361,10 +363,10 @@ func (r *PublicationRepository) ListSubmissionSlots(
 	}
 
 	const query = `
-		SELECT asub.slot_id
+		SELECT asub.slot_id, asub.weekday
 		FROM availability_submissions asub
 		WHERE asub.publication_id = $1 AND asub.user_id = $2
-		ORDER BY asub.slot_id ASC;
+		ORDER BY asub.weekday ASC, asub.slot_id ASC;
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, publicationID, userID)
@@ -376,7 +378,7 @@ func (r *PublicationRepository) ListSubmissionSlots(
 	slots := make([]model.SlotRef, 0)
 	for rows.Next() {
 		var slot model.SlotRef
-		if err := rows.Scan(&slot.SlotID); err != nil {
+		if err := rows.Scan(&slot.SlotID, &slot.Weekday); err != nil {
 			return nil, err
 		}
 		slots = append(slots, slot)
@@ -402,7 +404,13 @@ func (r *PublicationRepository) UpsertSubmission(
 		return nil, err
 	}
 
-	if err := ensureSlotBelongsToPublicationTemplate(ctx, tx, params.PublicationID, params.SlotID); err != nil {
+	if err := ensureSlotWeekdayBelongsToPublicationTemplate(
+		ctx,
+		tx,
+		params.PublicationID,
+		params.SlotID,
+		params.Weekday,
+	); err != nil {
 		return nil, err
 	}
 
@@ -411,11 +419,12 @@ func (r *PublicationRepository) UpsertSubmission(
 			publication_id,
 			user_id,
 			slot_id,
+			weekday,
 			created_at
 		)
-		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (publication_id, user_id, slot_id) DO NOTHING
-		RETURNING id, publication_id, user_id, slot_id, created_at;
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (publication_id, user_id, slot_id, weekday) DO NOTHING
+		RETURNING id, publication_id, user_id, slot_id, weekday, created_at;
 	`
 
 	submission, err := scanSubmission(tx.QueryRowContext(
@@ -424,11 +433,19 @@ func (r *PublicationRepository) UpsertSubmission(
 		params.PublicationID,
 		params.UserID,
 		params.SlotID,
+		params.Weekday,
 		params.Now,
 	))
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		submission, err = getSubmissionByKey(ctx, tx, params.PublicationID, params.UserID, params.SlotID)
+		submission, err = getSubmissionByKey(
+			ctx,
+			tx,
+			params.PublicationID,
+			params.UserID,
+			params.SlotID,
+			params.Weekday,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -459,10 +476,17 @@ func (r *PublicationRepository) DeleteSubmission(
 
 	const query = `
 		DELETE FROM availability_submissions
-		WHERE publication_id = $1 AND user_id = $2 AND slot_id = $3;
+		WHERE publication_id = $1 AND user_id = $2 AND slot_id = $3 AND weekday = $4;
 	`
 
-	if _, err := tx.ExecContext(ctx, query, params.PublicationID, params.UserID, params.SlotID); err != nil {
+	if _, err := tx.ExecContext(
+		ctx,
+		query,
+		params.PublicationID,
+		params.UserID,
+		params.SlotID,
+		params.Weekday,
+	); err != nil {
 		return err
 	}
 
@@ -504,7 +528,7 @@ func (r *PublicationRepository) ListQualifiedPublicationSlotPositions(
 	const query = `
 		SELECT
 			ts.id,
-			ts.weekday,
+			tsw.weekday,
 			TO_CHAR(ts.start_time, 'HH24:MI'),
 			TO_CHAR(ts.end_time, 'HH24:MI'),
 			tsp.position_id,
@@ -512,6 +536,7 @@ func (r *PublicationRepository) ListQualifiedPublicationSlotPositions(
 			tsp.required_headcount
 		FROM publications p
 		INNER JOIN template_slots ts ON ts.template_id = p.template_id
+		INNER JOIN template_slot_weekdays tsw ON tsw.slot_id = ts.id
 		INNER JOIN template_slot_positions tsp ON tsp.slot_id = ts.id
 		INNER JOIN positions pos ON pos.id = tsp.position_id
 		WHERE p.id = $1
@@ -522,7 +547,7 @@ func (r *PublicationRepository) ListQualifiedPublicationSlotPositions(
 				WHERE qualified_tsp.slot_id = ts.id
 					AND up.user_id = $2
 			)
-		ORDER BY ts.weekday ASC, ts.start_time ASC, ts.id ASC, tsp.position_id ASC;
+		ORDER BY tsw.weekday ASC, ts.start_time ASC, ts.id ASC, tsp.position_id ASC;
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, publicationID, userID)
@@ -532,7 +557,7 @@ func (r *PublicationRepository) ListQualifiedPublicationSlotPositions(
 	defer rows.Close()
 
 	shifts := make([]*model.QualifiedShift, 0)
-	shiftsBySlotID := make(map[int64]*model.QualifiedShift)
+	shiftsBySlotRef := make(map[model.SlotRef]*model.QualifiedShift)
 	for rows.Next() {
 		var (
 			slotID            int64
@@ -554,7 +579,8 @@ func (r *PublicationRepository) ListQualifiedPublicationSlotPositions(
 		); err != nil {
 			return nil, err
 		}
-		shift := shiftsBySlotID[slotID]
+		slotRef := model.SlotRef{SlotID: slotID, Weekday: weekday}
+		shift := shiftsBySlotRef[slotRef]
 		if shift == nil {
 			shift = &model.QualifiedShift{
 				SlotID:      slotID,
@@ -563,7 +589,7 @@ func (r *PublicationRepository) ListQualifiedPublicationSlotPositions(
 				EndTime:     endTime,
 				Composition: make([]model.QualifiedShiftComposition, 0),
 			}
-			shiftsBySlotID[slotID] = shift
+			shiftsBySlotRef[slotRef] = shift
 			shifts = append(shifts, shift)
 		}
 		shift.Composition = append(shift.Composition, model.QualifiedShiftComposition{
@@ -707,10 +733,40 @@ func ensureSlotBelongsToPublicationTemplate(
 	return nil
 }
 
+func ensureSlotWeekdayBelongsToPublicationTemplate(
+	ctx context.Context,
+	db dbtx,
+	publicationID, slotID int64,
+	weekday int,
+) error {
+	const query = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM publications p
+			INNER JOIN template_slots ts ON ts.template_id = p.template_id
+			INNER JOIN template_slot_weekdays tsw ON tsw.slot_id = ts.id
+			WHERE p.id = $1
+				AND ts.id = $2
+				AND tsw.weekday = $3
+		);
+	`
+
+	var exists bool
+	if err := db.QueryRowContext(ctx, query, publicationID, slotID, weekday).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return ErrTemplateSlotNotFound
+	}
+
+	return nil
+}
+
 func getSubmissionByKey(
 	ctx context.Context,
 	db dbtx,
 	publicationID, userID, slotID int64,
+	weekday int,
 ) (*model.AvailabilitySubmission, error) {
 	const query = `
 		SELECT
@@ -718,14 +774,16 @@ func getSubmissionByKey(
 			asub.publication_id,
 			asub.user_id,
 			asub.slot_id,
+			asub.weekday,
 			asub.created_at
 		FROM availability_submissions asub
 		WHERE asub.publication_id = $1
 			AND asub.user_id = $2
-			AND asub.slot_id = $3;
+			AND asub.slot_id = $3
+			AND asub.weekday = $4;
 	`
 
-	return submissionFromRow(db.QueryRowContext(ctx, query, publicationID, userID, slotID))
+	return submissionFromRow(db.QueryRowContext(ctx, query, publicationID, userID, slotID, weekday))
 }
 
 func publicationExists(ctx context.Context, db dbtx, publicationID int64) (bool, error) {
@@ -776,6 +834,7 @@ func scanSubmission(row scanner) (*model.AvailabilitySubmission, error) {
 		&submission.PublicationID,
 		&submission.UserID,
 		&submission.SlotID,
+		&submission.Weekday,
 		&submission.CreatedAt,
 	)
 	if err != nil {

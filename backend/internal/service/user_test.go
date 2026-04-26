@@ -600,7 +600,7 @@ func TestUserServiceAuditMetadataHasNoSecrets(t *testing.T) {
 		&userSessionStoreMock{},
 		WithSetupFlows(SetupFlowConfig{
 			TxManager:          &setupTxManagerMock{withinTxFunc: withSetupRepos(txUserRepo, txTokenRepo)},
-			OutboxRepo:            &emailerMock{sendFunc: func(ctx context.Context, msg email.Message) error { return nil }},
+			OutboxRepo:         &emailerMock{sendFunc: func(ctx context.Context, msg email.Message) error { return nil }},
 			Logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
 			AppBaseURL:         "http://localhost:5173",
 			InvitationTokenTTL: 72 * time.Hour,

@@ -24,6 +24,7 @@ func TestPublicationServiceAutoAssignPublication(t *testing.T) {
 			PublicationID: 1,
 			UserID:        7,
 			SlotID:        21,
+			Weekday:       1,
 			CreatedAt:     now.Add(-2 * time.Hour),
 		}
 		repo.submissions[submissionKey(1, 8, 21)] = &model.AvailabilitySubmission{
@@ -31,6 +32,7 @@ func TestPublicationServiceAutoAssignPublication(t *testing.T) {
 			PublicationID: 1,
 			UserID:        8,
 			SlotID:        21,
+			Weekday:       1,
 			CreatedAt:     now.Add(-2 * time.Hour),
 		}
 		repo.submissions[submissionKey(1, 8, 22)] = &model.AvailabilitySubmission{
@@ -38,6 +40,7 @@ func TestPublicationServiceAutoAssignPublication(t *testing.T) {
 			PublicationID: 1,
 			UserID:        8,
 			SlotID:        22,
+			Weekday:       3,
 			CreatedAt:     now.Add(-2 * time.Hour),
 		}
 		repo.assignments[assignmentKey(1, 8, 21)] = &model.Assignment{
@@ -45,6 +48,7 @@ func TestPublicationServiceAutoAssignPublication(t *testing.T) {
 			PublicationID: 1,
 			UserID:        8,
 			SlotID:        21,
+			Weekday:       1,
 			PositionID:    101,
 			CreatedAt:     now.Add(-time.Hour),
 		}
@@ -68,7 +72,7 @@ func TestPublicationServiceAutoAssignPublication(t *testing.T) {
 		if _, ok := repo.assignments[assignmentKey(1, 7, 21)]; !ok {
 			t.Fatalf("expected user 7 assigned to slot 21, got %+v", repo.assignments)
 		}
-		if _, ok := repo.assignments[assignmentKey(1, 8, 22)]; !ok {
+		if _, ok := repo.assignments[assignmentKey(1, 8, 22, 3)]; !ok {
 			t.Fatalf("expected user 8 assigned to slot 22, got %+v", repo.assignments)
 		}
 		if len(result.Slots) != 2 {

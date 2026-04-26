@@ -15,6 +15,7 @@ type Assignment struct {
 	PublicationID int64
 	UserID        int64
 	SlotID        int64
+	Weekday       int
 	PositionID    int64
 	CreatedAt     time.Time
 }
@@ -35,6 +36,7 @@ type PublicationShift struct {
 
 type AssignmentCandidate struct {
 	SlotID     int64
+	Weekday    int
 	PositionID int64
 	UserID     int64
 	Name       string
@@ -44,6 +46,7 @@ type AssignmentCandidate struct {
 type AssignmentParticipant struct {
 	AssignmentID int64
 	SlotID       int64
+	Weekday      int
 	PositionID   int64
 	UserID       int64
 	Name         string

@@ -68,6 +68,7 @@ function PublicationAssignmentsPage() {
             type: "assign"
             userID: number
             slotID: number
+            weekday: number
             positionID: number
           }
         | { type: "unassign"; assignmentID: number },
@@ -76,6 +77,7 @@ function PublicationAssignmentsPage() {
         await createAssignment(numericPublicationID, {
           user_id: action.userID,
           slot_id: action.slotID,
+          weekday: action.weekday,
           position_id: action.positionID,
         })
         return
@@ -207,18 +209,20 @@ function PublicationAssignmentsPage() {
               slots={board.slots}
               isPending={isPending}
               isReadOnly={isReadOnly}
-              onAssign={(userID, slotID, positionID) =>
+              onAssign={(userID, slotID, weekday, positionID) =>
                 updateAssignmentMutation.mutate({
                   type: "assign",
                   userID,
                   slotID,
+                  weekday,
                   positionID,
                 })
               }
-              onDraftAssign={(userID, slotID, positionID) =>
+              onDraftAssign={(userID, slotID, weekday, positionID) =>
                 createAssignment(numericPublicationID, {
                   user_id: userID,
                   slot_id: slotID,
+                  weekday,
                   position_id: positionID,
                 })
               }

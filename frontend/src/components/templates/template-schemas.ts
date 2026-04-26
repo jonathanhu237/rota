@@ -23,13 +23,24 @@ export function createTemplateSlotSchema(
 ) {
   return z
     .object({
-      weekday: z
-        .number({
-          invalid_type_error: t("templates.validation.weekdayRequired"),
-        })
-        .int()
-        .min(1, t("templates.validation.invalidWeekday"))
-        .max(7, t("templates.validation.invalidWeekday")),
+      weekdays: z
+        .array(
+          z
+            .number({
+              invalid_type_error: t("templates.validation.weekdayRequired"),
+            })
+            .int()
+            .min(1, t("templates.validation.invalidWeekday"))
+            .max(7, t("templates.validation.invalidWeekday")),
+          {
+            invalid_type_error: t("templates.validation.weekdayRequired"),
+            required_error: t("templates.validation.weekdayRequired"),
+          },
+        )
+        .min(1, t("templates.validation.weekdayRequired"))
+        .transform((weekdays) =>
+          Array.from(new Set(weekdays)).sort((left, right) => left - right),
+        ),
       start_time: z
         .string()
         .trim()
