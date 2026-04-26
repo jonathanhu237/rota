@@ -3,9 +3,7 @@
 ## Purpose
 
 Rota is an internal tool with no public signup. Administrators create accounts, invitees activate them by setting a password, and thereafter users authenticate with email and password against a Postgres-backed session conveyed through an `HttpOnly` cookie. This capability covers identity, sessions, invitation, password reset, rate limiting, and the authorization middleware shared by the rest of the API. Scheduling is covered by the scheduling capability; audit log mechanics and retention are covered by the audit capability.
-
 ## Requirements
-
 ### Requirement: Users table schema
 
 The system SHALL persist users in a `users` table with columns `id` (BIGSERIAL primary key), `email` (TEXT, unique, not null, normalized by trimming whitespace), `password_hash` (TEXT, nullable while the user is `pending`), `name` (TEXT, not null), `is_admin` (BOOLEAN, not null, default `FALSE`), `status` (TEXT, not null, default `active`, constrained by `CHECK IN ('active','disabled','pending')`), and `version` (INTEGER, not null, default `1`, used as an optimistic concurrency token). Password hashes SHALL be produced with `bcrypt.DefaultCost`.
@@ -243,7 +241,7 @@ The backend process SHALL run a background goroutine that periodically deletes l
 
 ### Requirement: Admin-driven user creation
 
-`POST /users` SHALL be an admin-only endpoint that (1) normalizes email and name, validates the email shape via `mail.ParseAddress`, and checks uniqueness — duplicates SHALL return `EMAIL_ALREADY_EXISTS`; (2) within a single transaction, inserts the user with `password_hash = NULL` and `status = 'pending'` and issues an invitation setup token; (3) after the transaction commits, sends `BuildInvitationMessage` with a link of the form `<APP_BASE_URL>/setup-password?token=<raw-token>`; (4) emits `user.create` to the audit log. The raw token SHALL NOT be logged or persisted.
+`POST /users` SHALL be an admin-only endpoint that (1) normalizes email and name, validates the email shape via `mail.ParseAddress`, and checks uniqueness — duplicates SHALL return `EMAIL_ALREADY_EXISTS`; (2) within a single transaction, inserts the user with `password_hash = NULL` and `status = 'pending'`, issues an invitation setup token, and enqueues an invitation email via `OutboxRepository.EnqueueTx` whose body contains a link of the form `<APP_BASE_URL>/setup-password?token=<raw-token>`; (3) emits `user.create` to the audit log. The raw token SHALL NOT be logged or persisted. The HTTP response is returned as soon as the transaction commits; SMTP delivery happens asynchronously via the outbox worker.
 
 #### Scenario: Duplicate email rejected
 
@@ -251,13 +249,13 @@ The backend process SHALL run a background goroutine that periodically deletes l
 - **THEN** the response is an error with code `EMAIL_ALREADY_EXISTS`
 - **AND** no user is inserted
 
-#### Scenario: Invitation issued and emailed on create
+#### Scenario: Invitation issued and enqueued on create
 
 - **GIVEN** a valid, unique email
 - **WHEN** an admin posts to `/users`
 - **THEN** a user is inserted with `status = 'pending'` and `password_hash = NULL`
 - **AND** an invitation setup token is issued in the same transaction
-- **AND** an invitation email containing `<APP_BASE_URL>/setup-password?token=<raw-token>` is sent after commit
+- **AND** an `email_outbox` row is enqueued in the same transaction containing the invitation email body with `<APP_BASE_URL>/setup-password?token=<raw-token>`
 - **AND** `user.create` is emitted
 
 ### Requirement: Invitation token TTL
@@ -272,7 +270,7 @@ Invitation tokens SHALL be valid for `INVITATION_TOKEN_TTL` (default `72h`).
 
 ### Requirement: Resend invitation
 
-`POST /users/{id}/resend-invitation` SHALL be admin-only. It SHALL refuse for non-pending users with `USER_NOT_PENDING`. It SHALL issue a fresh invitation token (implicitly invalidating any prior unused invitation tokens for the same user via `InvalidateUnusedTokens`), resend the email, and emit `user.invitation.resend`.
+`POST /users/{id}/resend-invitation` SHALL be admin-only. It SHALL refuse for non-pending users with `USER_NOT_PENDING`. It SHALL issue a fresh invitation token (implicitly invalidating any prior unused invitation tokens for the same user via `InvalidateUnusedTokens`), enqueue the invitation email via `OutboxRepository.EnqueueTx` in the same transaction, and emit `user.invitation.resend`.
 
 #### Scenario: Resend refused for non-pending user
 
@@ -286,18 +284,19 @@ Invitation tokens SHALL be valid for `INVITATION_TOKEN_TTL` (default `72h`).
 - **WHEN** an admin calls `POST /users/{id}/resend-invitation`
 - **THEN** T1's `expires_at` is set to `now` (invalidated)
 - **AND** a new invitation token T2 is issued
-- **AND** the invitation email is resent
+- **AND** an `email_outbox` row is enqueued in the same transaction with the resent invitation body
 - **AND** `user.invitation.resend` is emitted
 
 ### Requirement: Anti-enumeration password reset request
 
-`POST /auth/password-reset-request` SHALL accept `{email}` and SHALL always return the same generic 200 response body `{"message": "If an account exists, a reset link has been sent"}`, regardless of whether the email exists or is eligible. The email SHALL be trimmed; an empty email SHALL be accepted as a no-op. A reset token SHALL be issued only when the user exists and `status = 'active'`; for not-found users, pending users, and disabled users, no token SHALL be issued. Active users SHALL receive a freshly issued `password_reset` setup token valid for `PASSWORD_RESET_TOKEN_TTL` (default `1h`) and a templated email. The handler SHALL emit `auth.password_reset.request` with metadata including the email and a server-only `user_found` boolean.
+`POST /auth/password-reset-request` SHALL accept `{email}` and SHALL always return the same generic 200 response body `{"message": "If an account exists, a reset link has been sent"}`, regardless of whether the email exists or is eligible. The email SHALL be trimmed; an empty email SHALL be accepted as a no-op. A reset token SHALL be issued only when the user exists and `status = 'active'`; for not-found users, pending users, and disabled users, no token SHALL be issued. Active users SHALL receive a freshly issued `password_reset` setup token valid for `PASSWORD_RESET_TOKEN_TTL` (default `1h`) and an outbox-enqueued reset email; the email is delivered asynchronously by the outbox worker. The handler SHALL emit `auth.password_reset.request` with metadata including the email and a server-only `user_found` boolean.
 
 #### Scenario: Unknown email returns generic 200
 
 - **WHEN** `/auth/password-reset-request` is called with an email not present in `users`
 - **THEN** the response is 200 with body `{"message": "If an account exists, a reset link has been sent"}`
 - **AND** no token is issued
+- **AND** no `email_outbox` row is enqueued
 - **AND** `auth.password_reset.request` is emitted with `user_found = false`
 
 #### Scenario: Pending or disabled user returns generic 200 without token
@@ -306,22 +305,16 @@ Invitation tokens SHALL be valid for `INVITATION_TOKEN_TTL` (default `72h`).
 - **WHEN** `/auth/password-reset-request` is called with that email
 - **THEN** the response is the same generic 200 body
 - **AND** no `password_reset` token is issued
-- **AND** no reset email is sent
+- **AND** no `email_outbox` row is enqueued
 
-#### Scenario: Active user receives reset email
+#### Scenario: Active user has reset email enqueued
 
 - **GIVEN** a user with `status = 'active'`
 - **WHEN** `/auth/password-reset-request` is called with that email
 - **THEN** a new `password_reset` token is issued with TTL `PASSWORD_RESET_TOKEN_TTL`
-- **AND** a reset email is sent
+- **AND** an `email_outbox` row is enqueued in the same transaction with the reset email body
 - **AND** the response is the same generic 200 body
 - **AND** `auth.password_reset.request` is emitted with `user_found = true`
-
-#### Scenario: Empty email is a no-op
-
-- **WHEN** `/auth/password-reset-request` is called with an empty or whitespace-only email
-- **THEN** the response is the same generic 200 body
-- **AND** no lookup or token issuance occurs
 
 ### Requirement: Setup token shape
 
@@ -536,7 +529,7 @@ The system SHALL use the following error codes with the associated HTTP statuses
 
 ### Requirement: Emitted audit actions
 
-The auth and user surfaces SHALL emit the following audit actions: `auth.login.success`; `auth.login.failure` with metadata `reason ∈ {invalid_credentials, user_pending, user_disabled}`; `auth.logout`; `auth.password_reset.request` with metadata including a server-only `user_found` flag; `auth.password.set` with metadata `purpose ∈ {invitation, password_reset}`; `user.create`; `user.update`; `user.invitation.resend`; `user.invitation.email_failed` with metadata `{ email, error }` whenever an invitation email send call (in `CreateUser` or `ResendInvitation`) returns an error; `user.status.activate`; `user.status.disable`. Audit records SHALL NOT carry passwords, raw tokens, token hashes, or session ids.
+The auth and user surfaces SHALL emit the following audit actions: `auth.login.success`; `auth.login.failure` with metadata `reason ∈ {invalid_credentials, user_pending, user_disabled}`; `auth.logout`; `auth.password_reset.request` with metadata including a server-only `user_found` flag; `auth.password.set` with metadata `purpose ∈ {invitation, password_reset}`; `user.create`; `user.update`; `user.invitation.resend`; `user.invitation.email_failed` with metadata `{ email, error }` whenever an invitation email's outbox row transitions to `failed` (i.e., the worker has exhausted its retry budget); `user.status.activate`; `user.status.disable`. Audit records SHALL NOT carry passwords, raw tokens, token hashes, or session ids.
 
 #### Scenario: Login failure metadata carries reason
 
@@ -548,16 +541,18 @@ The auth and user surfaces SHALL emit the following audit actions: `auth.login.s
 - **WHEN** `/auth/setup-password` succeeds with a `password_reset` token
 - **THEN** an `auth.password.set` audit record is written with metadata `purpose = password_reset`
 
-#### Scenario: Invitation email failure is audited
+#### Scenario: Invitation email failure is audited after retry exhaustion
 
 - **GIVEN** an admin call `POST /users` whose user-creation transaction commits successfully
-- **WHEN** the post-commit `sendInvitation` returns an error (SMTP timeout, gateway rejection, etc.)
-- **THEN** the admin's HTTP response is still 201 with the new user
-- **AND** an audit event with action `user.invitation.email_failed` is recorded with `target_type = user`, `target_id = <new user id>`, and metadata `{ email, error }`
-- **AND** a WARN-level log line is written carrying the same context
-- **AND** the invitation token row remains valid (admin can call `ResendInvitation` later)
+- **AND** the outbox row enqueued for the invitation email
+- **WHEN** the outbox worker repeatedly fails to send and ultimately marks the row `failed` after exhausting the retry budget
+- **THEN** at the moment of `failed` transition, an audit event with action `user.invitation.email_failed` is recorded with `target_type = user`, `target_id = <new user id>`, and metadata `{ email, error }` (the most recent error message)
+- **AND** the original admin's HTTP response was 201 with the new user (long since returned)
+- **AND** the invitation token row remains valid (admin can call `ResendInvitation` later, which will create a fresh outbox row)
+- **AND** during the in-flight retries (before the row reaches `failed`), no `user.invitation.email_failed` audit record is emitted
 
 #### Scenario: Audit records exclude secrets
 
 - **WHEN** any auth audit event is emitted
 - **THEN** the event's metadata does not contain a password, raw token, token hash, or session id
+
