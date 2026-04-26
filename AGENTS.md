@@ -32,15 +32,17 @@ Skill details live under `.claude/skills/openspec-*/SKILL.md` (mirrored to `.cod
 
 - **One live writer per change.** Do not have Claude and Codex editing the same files concurrently. Handoff happens through the OpenSpec artifacts, not through the working tree.
 - **Apply runs on a feature branch named `change/<change-name>`, in a `git worktree`, not on `main`.** As the first step of `/opsx:apply`, Codex SHALL run `git worktree add ../<repo>-<change-name> -b change/<change-name>` from the main worktree's directory, then `cd` into that worktree for the rest of the apply run. The worktree (rather than `git checkout`) is mandatory because parallel Codex runs on different changes need independent working directories — sharing a tree corrupts files. After the worktree exists, copy `.env` over manually because it's gitignored. All apply / verify / fix-up commits land in that worktree on the feature branch; the branch merges back to `main` only after `/opsx:archive` completes — see the next bullet for the merge-back sequence.
-- **`/opsx:archive` is followed by a merge-back sequence Claude SHALL perform** when the change is on a `change/*` branch (skip if on `main` directly — legacy serial flow). Right after archive succeeds and the post-archive commit is in place, Claude runs (substituting `<branch>` for the current `change/<change-name>`):
+- **`/opsx:archive` is followed by a merge-back sequence Claude SHALL perform** when the change is on a `change/*` branch (skip if on `main` directly — legacy serial flow). The sequence rebases the feature branch onto the latest `main` and then fast-forwards `main` onto it, keeping `main` history linear (no merge bubbles). Right after archive succeeds and the post-archive commit is in place, Claude runs (substituting `<branch>` for the current `change/<change-name>` and `<worktree-path>` for the change worktree):
 
-  1. `git push origin <branch>` — pushes the feature branch so CI runs on it.
-  2. `main_path="$(git worktree list --porcelain | awk '/^worktree / {p=$2} /^branch refs\/heads\/main$/ {print p; exit}')"` — locate the main worktree.
-  3. `git -C "$main_path" merge --no-ff <branch> -m "Merge branch '<branch>' into main"` — integrate, preserving branch history.
-  4. `git -C "$main_path" push origin main` — push the merge.
-  5. Wait for CI on `main`; report success or surface failures.
-  6. `git -C "$main_path" worktree remove <worktree-path>` and `git -C "$main_path" branch -d <branch>` — local cleanup.
-  7. `git -C "$main_path" push origin --delete <branch>` — drop the remote branch (best-effort; suppress non-zero exit).
+  1. (inside the feature worktree) `git -C <worktree-path> fetch origin main && git -C <worktree-path> rebase origin/main` — replay the feature commits on top of the latest `main`. Resolve conflicts manually if any.
+  2. (inside the feature worktree) `git -C <worktree-path> push --force-with-lease origin <branch>` — push the rebased branch so CI runs on it (force needed because rebase rewrote SHAs).
+  3. `main_path="$(git worktree list --porcelain | awk '/^worktree / {p=$2} /^branch refs\/heads\/main$/ {print p; exit}')"` — locate the main worktree.
+  4. `git -C "$main_path" pull --ff-only origin main` — make sure the local `main` matches `origin/main`.
+  5. `git -C "$main_path" merge --ff-only <branch>` — fast-forward `main` onto the rebased feature branch (no merge commit). If this fails because `origin/main` moved during the rebase, redo from step 1.
+  6. `git -C "$main_path" push origin main` — push the now-linear `main`.
+  7. Wait for CI on `main`; report success or surface failures.
+  8. `git -C "$main_path" worktree remove <worktree-path>` and `git -C "$main_path" branch -d <branch>` — local cleanup.
+  9. `git -C "$main_path" push origin --delete <branch>` — drop the remote branch (best-effort; suppress non-zero exit).
 
   This sequence is Claude's responsibility because Claude is the only role with the Bash tool wired up for git plumbing. Codex finishes at apply; the user's only inputs in the lifecycle are starting Codex and saying "done".
 - **Behavior drift → fix the artifact first.** If review finds the implementation diverges from `design.md` / `tasks.md` / specs in a way that changes user-visible behavior or interfaces, update the artifact first and re-apply. Typos, renames, refactors that preserve behavior, comment tweaks, and logging changes can be patched directly without an artifact update.
