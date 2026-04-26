@@ -30,6 +30,19 @@ SOURCE_TIME_SLOT_HEADERS = [
     "16：10-18：00",
     "19：00-21：00",
 ]
+# Per-slot business schedule: which weekdays the slot is actually staffed.
+# Daytime time blocks (indexes 0..3) run Mon-Fri only.
+# The 19:00-21:00 evening block (index 4) runs all seven days.
+# Source-CSV weekday vectors that fall outside a slot's set are dropped at
+# code-gen time (the composite FK to template_slot_weekdays would reject
+# them at runtime anyway).
+SLOT_WEEKDAYS: list[tuple[int, ...]] = [
+    (1, 2, 3, 4, 5),
+    (1, 2, 3, 4, 5),
+    (1, 2, 3, 4, 5),
+    (1, 2, 3, 4, 5),
+    (1, 2, 3, 4, 5, 6, 7),
+]
 TARGET_ARCHETYPES = [
     ("FrontSenior", 10),
     ("FrontJunior", 22),
@@ -56,17 +69,18 @@ def main() -> None:
 
     employees = read_source_employees(source_path)
     seed, archetypes = assign_archetypes(employees)
-    inserted, dropped = count_domain_filtered_submissions(employees, archetypes)
+    inserted, domain_dropped, schedule_dropped = count_filtered_submissions(employees, archetypes)
     output_path.write_text(
-        render_go(employees, archetypes, seed, inserted, dropped),
+        render_go(employees, archetypes, seed, inserted, domain_dropped, schedule_dropped),
         encoding="utf-8",
     )
     subprocess.run(["gofmt", "-w", str(output_path)], check=True)
 
     print(f"generated {output_path.relative_to(project_root)}")
     print(f"assignment seed: {seed}")
-    print(f"availability submissions after domain filter: {inserted}")
-    print(f"domain-filtered source submissions dropped: {dropped}")
+    print(f"availability submissions after filters: {inserted}")
+    print(f"domain-mismatch submissions dropped: {domain_dropped}")
+    print(f"off-schedule submissions dropped: {schedule_dropped}")
 
 
 def read_source_employees(source_path: Path) -> list[SourceEmployee]:
@@ -132,9 +146,9 @@ def parse_weekdays(raw: str, row_index: int, header: str) -> tuple[int, ...]:
 
 def assign_archetypes(employees: list[SourceEmployee]) -> tuple[int, list[str]]:
     seed = ASSIGNMENT_SEED
-    source_coverage = {
-        "front": source_weekday_coverage(employees, range(4)),
-        "field": source_weekday_coverage(employees, range(4, 5)),
+    required_coverage = {
+        "front": effective_weekday_coverage(employees, range(4)),
+        "field": effective_weekday_coverage(employees, range(4, 5)),
     }
 
     for _ in range(10_000):
@@ -146,7 +160,7 @@ def assign_archetypes(employees: list[SourceEmployee]) -> tuple[int, list[str]]:
         rng = random.Random(seed)
         rng.shuffle(assignments)
 
-        if senior_coverage_ok(employees, assignments, source_coverage):
+        if senior_coverage_ok(employees, assignments, required_coverage):
             return seed, assignments
 
         seed += 1
@@ -154,19 +168,21 @@ def assign_archetypes(employees: list[SourceEmployee]) -> tuple[int, list[str]]:
     raise RuntimeError("could not assign archetypes satisfying senior coverage")
 
 
-def source_weekday_coverage(employees: list[SourceEmployee], slot_indexes: range) -> set[int]:
+def effective_weekday_coverage(employees: list[SourceEmployee], slot_indexes: range) -> set[int]:
+    """Weekdays where at least one employee marked availability AND the slot runs."""
     return {
         weekday
         for employee in employees
         for slot_index in slot_indexes
         for weekday in employee.weekdays[slot_index]
+        if weekday in SLOT_WEEKDAYS[slot_index]
     }
 
 
 def senior_coverage_ok(
     employees: list[SourceEmployee],
     assignments: list[str],
-    source_coverage: dict[str, set[int]],
+    required_coverage: dict[str, set[int]],
 ) -> bool:
     for domain, senior_archetype in SENIOR_ARCHETYPES.items():
         slot_indexes = range(4) if domain == "front" else range(4, 5)
@@ -176,26 +192,31 @@ def senior_coverage_ok(
             if archetype == senior_archetype
             for slot_index in slot_indexes
             for weekday in employee.weekdays[slot_index]
+            if weekday in SLOT_WEEKDAYS[slot_index]
         }
-        if not source_coverage[domain].issubset(covered):
+        if not required_coverage[domain].issubset(covered):
             return False
     return True
 
 
-def count_domain_filtered_submissions(
+def count_filtered_submissions(
     employees: list[SourceEmployee],
     archetypes: list[str],
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
+    """Returns (inserted, domain_dropped, schedule_dropped)."""
     inserted = 0
-    dropped = 0
+    domain_dropped = 0
+    schedule_dropped = 0
     for employee, archetype in zip(employees, archetypes):
         for slot_index, weekdays in enumerate(employee.weekdays):
-            for _ in weekdays:
-                if slot_matches_domain(slot_index, archetype):
-                    inserted += 1
+            for weekday in weekdays:
+                if not slot_matches_domain(slot_index, archetype):
+                    domain_dropped += 1
+                elif weekday not in SLOT_WEEKDAYS[slot_index]:
+                    schedule_dropped += 1
                 else:
-                    dropped += 1
-    return inserted, dropped
+                    inserted += 1
+    return inserted, domain_dropped, schedule_dropped
 
 
 def slot_matches_domain(slot_index: int, archetype: str) -> bool:
@@ -209,7 +230,8 @@ def render_go(
     archetypes: list[str],
     assignment_seed: int,
     inserted_submissions: int,
-    dropped_submissions: int,
+    domain_dropped: int,
+    schedule_dropped: int,
 ) -> str:
     time_slots = [normalize_time_slot_header(header) for header in SOURCE_TIME_SLOT_HEADERS]
     employee_literals = "\n".join(
@@ -220,6 +242,11 @@ def render_go(
         f"\t{{Start: {go_string(start)}, End: {go_string(end)}}},"
         for start, end in time_slots
     )
+    slot_weekday_literals = "\n".join(
+        f"\t{go_int_slice(weekdays)},"
+        for weekdays in SLOT_WEEKDAYS
+    )
+    total_slot_weekdays = sum(len(w) for w in SLOT_WEEKDAYS)
 
     return f"""// Code generated by backend/cmd/seed/scenarios/realistic_gen.py; DO NOT EDIT.
 
@@ -236,9 +263,11 @@ import (
 )
 
 const (
-\trealisticAssignmentSeed                = {assignment_seed}
-\trealisticExpectedAvailabilitySubmits   = {inserted_submissions}
-\trealisticDomainFilteredSubmissionDrops = {dropped_submissions}
+\trealisticAssignmentSeed                  = {assignment_seed}
+\trealisticExpectedAvailabilitySubmits     = {inserted_submissions}
+\trealisticDomainFilteredSubmissionDrops   = {domain_dropped}
+\trealisticScheduleFilteredSubmissionDrops = {schedule_dropped}
+\trealisticExpectedSlotWeekdays            = {total_slot_weekdays}
 )
 
 const (
@@ -270,6 +299,13 @@ var realisticTimeSlots = [5]struct {{
 \tEnd   string
 }}{{
 {time_slot_literals}
+}}
+
+// realisticSlotWeekdays records the business schedule per time block:
+// daytime blocks (indexes 0..3) staff Mon-Fri, the evening block (index 4)
+// staffs all seven days.
+var realisticSlotWeekdays = [5][]int{{
+{slot_weekday_literals}
 }}
 
 var realisticEmployees = [42]realisticEmployee{{
@@ -388,6 +424,7 @@ func insertRealisticUserPositions(ctx context.Context, tx *sql.Tx, userIDs [42]i
 
 func insertRealisticSlots(ctx context.Context, tx *sql.Tx, templateID int64, positionIDs [4]int64, now time.Time) ([5][8]int64, error) {{
 \tvar slotIDs [5][8]int64
+\tinsertedWeekdays := 0
 \tfor timeIndex, slot := range realisticTimeSlots {{
 \t\tvar slotID int64
 \t\tif err := tx.QueryRowContext(
@@ -405,7 +442,7 @@ func insertRealisticSlots(ctx context.Context, tx *sql.Tx, templateID int64, pos
 \t\t\treturn slotIDs, fmt.Errorf("insert realistic slot %s-%s: %w", slot.Start, slot.End, err)
 \t\t}}
 
-\t\tfor weekday := 1; weekday <= 7; weekday++ {{
+\t\tfor _, weekday := range realisticSlotWeekdays[timeIndex] {{
 \t\t\tif _, err := tx.ExecContext(
 \t\t\t\tctx,
 \t\t\t\t`INSERT INTO template_slot_weekdays (slot_id, weekday) VALUES ($1, $2);`,
@@ -415,6 +452,7 @@ func insertRealisticSlots(ctx context.Context, tx *sql.Tx, templateID int64, pos
 \t\t\t\treturn slotIDs, fmt.Errorf("insert realistic slot-weekday slot=%d weekday=%d: %w", slotID, weekday, err)
 \t\t\t}}
 \t\t\tslotIDs[timeIndex][weekday] = slotID
+\t\t\tinsertedWeekdays++
 \t\t}}
 
 \t\tpositions := realisticSlotPositions(timeIndex)
@@ -433,6 +471,9 @@ func insertRealisticSlots(ctx context.Context, tx *sql.Tx, templateID int64, pos
 \t\t\t\treturn slotIDs, fmt.Errorf("insert realistic slot-position slot=%d position=%d: %w", slotID, position.PositionIndex, err)
 \t\t\t}}
 \t\t}}
+\t}}
+\tif insertedWeekdays != realisticExpectedSlotWeekdays {{
+\t\treturn slotIDs, fmt.Errorf("realistic slot-weekday count mismatch: inserted %d, expected %d", insertedWeekdays, realisticExpectedSlotWeekdays)
 \t}}
 \treturn slotIDs, nil
 }}
@@ -470,7 +511,10 @@ func insertRealisticAvailabilitySubmissions(
 \t\t\t\t}}
 \t\t\t\tslotID := slotIDs[timeIndex][weekday]
 \t\t\t\tif slotID == 0 {{
-\t\t\t\t\treturn fmt.Errorf("missing realistic slot id for time index %d weekday %d", timeIndex, weekday)
+\t\t\t\t\t// Slot does not run on this weekday (e.g., source data ticked
+\t\t\t\t\t// Saturday daytime, but daytime slots only staff Mon-Fri).
+\t\t\t\t\t// Drop silently — the count check below catches drift.
+\t\t\t\t\tcontinue
 \t\t\t\t}}
 \t\t\t\tif _, err := tx.ExecContext(
 \t\t\t\t\tctx,

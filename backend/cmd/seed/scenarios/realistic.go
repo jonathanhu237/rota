@@ -13,9 +13,11 @@ import (
 )
 
 const (
-	realisticAssignmentSeed                = 20260428
-	realisticExpectedAvailabilitySubmits   = 224
-	realisticDomainFilteredSubmissionDrops = 140
+	realisticAssignmentSeed                  = 20260428
+	realisticExpectedAvailabilitySubmits     = 202
+	realisticDomainFilteredSubmissionDrops   = 140
+	realisticScheduleFilteredSubmissionDrops = 22
+	realisticExpectedSlotWeekdays            = 27
 )
 
 const (
@@ -51,6 +53,17 @@ var realisticTimeSlots = [5]struct {
 	{Start: "13:30", End: "16:10"},
 	{Start: "16:10", End: "18:00"},
 	{Start: "19:00", End: "21:00"},
+}
+
+// realisticSlotWeekdays records the business schedule per time block:
+// daytime blocks (indexes 0..3) staff Mon-Fri, the evening block (index 4)
+// staffs all seven days.
+var realisticSlotWeekdays = [5][]int{
+	[]int{1, 2, 3, 4, 5},
+	[]int{1, 2, 3, 4, 5},
+	[]int{1, 2, 3, 4, 5},
+	[]int{1, 2, 3, 4, 5},
+	[]int{1, 2, 3, 4, 5, 6, 7},
 }
 
 var realisticEmployees = [42]realisticEmployee{
@@ -714,6 +727,7 @@ func insertRealisticUserPositions(ctx context.Context, tx *sql.Tx, userIDs [42]i
 
 func insertRealisticSlots(ctx context.Context, tx *sql.Tx, templateID int64, positionIDs [4]int64, now time.Time) ([5][8]int64, error) {
 	var slotIDs [5][8]int64
+	insertedWeekdays := 0
 	for timeIndex, slot := range realisticTimeSlots {
 		var slotID int64
 		if err := tx.QueryRowContext(
@@ -731,7 +745,7 @@ func insertRealisticSlots(ctx context.Context, tx *sql.Tx, templateID int64, pos
 			return slotIDs, fmt.Errorf("insert realistic slot %s-%s: %w", slot.Start, slot.End, err)
 		}
 
-		for weekday := 1; weekday <= 7; weekday++ {
+		for _, weekday := range realisticSlotWeekdays[timeIndex] {
 			if _, err := tx.ExecContext(
 				ctx,
 				`INSERT INTO template_slot_weekdays (slot_id, weekday) VALUES ($1, $2);`,
@@ -741,6 +755,7 @@ func insertRealisticSlots(ctx context.Context, tx *sql.Tx, templateID int64, pos
 				return slotIDs, fmt.Errorf("insert realistic slot-weekday slot=%d weekday=%d: %w", slotID, weekday, err)
 			}
 			slotIDs[timeIndex][weekday] = slotID
+			insertedWeekdays++
 		}
 
 		positions := realisticSlotPositions(timeIndex)
@@ -759,6 +774,9 @@ func insertRealisticSlots(ctx context.Context, tx *sql.Tx, templateID int64, pos
 				return slotIDs, fmt.Errorf("insert realistic slot-position slot=%d position=%d: %w", slotID, position.PositionIndex, err)
 			}
 		}
+	}
+	if insertedWeekdays != realisticExpectedSlotWeekdays {
+		return slotIDs, fmt.Errorf("realistic slot-weekday count mismatch: inserted %d, expected %d", insertedWeekdays, realisticExpectedSlotWeekdays)
 	}
 	return slotIDs, nil
 }
@@ -796,7 +814,10 @@ func insertRealisticAvailabilitySubmissions(
 				}
 				slotID := slotIDs[timeIndex][weekday]
 				if slotID == 0 {
-					return fmt.Errorf("missing realistic slot id for time index %d weekday %d", timeIndex, weekday)
+					// Slot does not run on this weekday (e.g., source data ticked
+					// Saturday daytime, but daytime slots only staff Mon-Fri).
+					// Drop silently — the count check below catches drift.
+					continue
 				}
 				if _, err := tx.ExecContext(
 					ctx,
