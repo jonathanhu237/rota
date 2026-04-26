@@ -21,12 +21,13 @@ func buildPublicationShiftIndex(
 	return index
 }
 
-func findPublicationShiftByEntryID(
+func findPublicationShiftBySlotPosition(
 	shifts []*model.PublicationShift,
-	entryID int64,
+	slotID int64,
+	positionID int64,
 ) *model.PublicationShift {
 	for _, shift := range shifts {
-		if shift != nil && shift.ID == entryID {
+		if shift != nil && shift.SlotID == slotID && shift.PositionID == positionID {
 			return shift
 		}
 	}

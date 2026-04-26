@@ -32,7 +32,6 @@ type publicationRepositoryStatefulMock struct {
 	templates                map[int64]*model.Template
 	templateSlots            map[int64]*model.TemplateSlot
 	slotPositions            map[int64][]*model.TemplateSlotPosition
-	templateShifts           map[int64]*model.TemplateShift
 	users                    map[int64]*model.User
 	submissions              map[string]*model.AvailabilitySubmission
 	assignments              map[string]*model.Assignment
@@ -87,26 +86,6 @@ func newPublicationRepositoryStatefulMock() *publicationRepositoryStatefulMock {
 					PositionID:        102,
 					RequiredHeadcount: 1,
 				},
-			},
-		},
-		templateShifts: map[int64]*model.TemplateShift{
-			11: {
-				ID:                11,
-				TemplateID:        1,
-				Weekday:           1,
-				StartTime:         "09:00",
-				EndTime:           "12:00",
-				PositionID:        101,
-				RequiredHeadcount: 2,
-			},
-			12: {
-				ID:                12,
-				TemplateID:        1,
-				Weekday:           3,
-				StartTime:         "13:00",
-				EndTime:           "17:00",
-				PositionID:        102,
-				RequiredHeadcount: 1,
 			},
 		},
 		users: map[int64]*model.User{
@@ -347,28 +326,34 @@ func (m *publicationRepositoryStatefulMock) DeletePublication(
 	return nil
 }
 
-func (m *publicationRepositoryStatefulMock) ListSubmissionShiftIDs(
+func (m *publicationRepositoryStatefulMock) ListSubmissionSlotPositions(
 	ctx context.Context,
 	publicationID int64,
 	userID int64,
-) ([]int64, error) {
+) ([]model.SlotPositionRef, error) {
 	if _, ok := m.publications[publicationID]; !ok {
 		return nil, repository.ErrPublicationNotFound
 	}
 
-	shiftIDs := make([]int64, 0)
+	slotPositions := make([]model.SlotPositionRef, 0)
 	for _, submission := range m.submissions {
 		if submission.PublicationID != publicationID || submission.UserID != userID {
 			continue
 		}
-		shiftIDs = append(shiftIDs, submission.TemplateShiftID)
+		slotPositions = append(slotPositions, model.SlotPositionRef{
+			SlotID:     submission.SlotID,
+			PositionID: submission.PositionID,
+		})
 	}
 
-	sort.Slice(shiftIDs, func(i, j int) bool {
-		return shiftIDs[i] < shiftIDs[j]
+	sort.Slice(slotPositions, func(i, j int) bool {
+		if slotPositions[i].SlotID != slotPositions[j].SlotID {
+			return slotPositions[i].SlotID < slotPositions[j].SlotID
+		}
+		return slotPositions[i].PositionID < slotPositions[j].PositionID
 	})
 
-	return shiftIDs, nil
+	return slotPositions, nil
 }
 
 func (m *publicationRepositoryStatefulMock) UpsertSubmission(
@@ -385,17 +370,22 @@ func (m *publicationRepositoryStatefulMock) UpsertSubmission(
 		publication.UpdatedAt = params.Now
 	}
 
-	key := submissionKey(params.PublicationID, params.UserID, params.TemplateShiftID)
+	if m.findSlotPositionEntryID(params.SlotID, params.PositionID) == 0 {
+		return nil, repository.ErrTemplateSlotPositionNotFound
+	}
+
+	key := submissionKey(params.PublicationID, params.UserID, params.SlotID, params.PositionID)
 	if existing, ok := m.submissions[key]; ok {
 		return cloneSubmission(existing), nil
 	}
 
 	submission := &model.AvailabilitySubmission{
-		ID:              m.nextSubmissionID,
-		PublicationID:   params.PublicationID,
-		UserID:          params.UserID,
-		TemplateShiftID: params.TemplateShiftID,
-		CreatedAt:       params.Now,
+		ID:            m.nextSubmissionID,
+		PublicationID: params.PublicationID,
+		UserID:        params.UserID,
+		SlotID:        params.SlotID,
+		PositionID:    params.PositionID,
+		CreatedAt:     params.Now,
 	}
 
 	m.submissions[key] = cloneSubmission(submission)
@@ -418,21 +408,12 @@ func (m *publicationRepositoryStatefulMock) DeleteSubmission(
 		publication.UpdatedAt = params.Now
 	}
 
-	delete(m.submissions, submissionKey(params.PublicationID, params.UserID, params.TemplateShiftID))
-	return nil
-}
-
-func (m *publicationRepositoryStatefulMock) GetTemplateShift(
-	ctx context.Context,
-	templateID int64,
-	shiftID int64,
-) (*model.TemplateShift, error) {
-	shift, ok := m.templateShifts[shiftID]
-	if !ok || shift.TemplateID != templateID {
-		return nil, repository.ErrTemplateShiftNotFound
+	if m.findSlotPositionEntryID(params.SlotID, params.PositionID) == 0 {
+		return repository.ErrTemplateSlotPositionNotFound
 	}
 
-	return cloneTemplateShift(shift), nil
+	delete(m.submissions, submissionKey(params.PublicationID, params.UserID, params.SlotID, params.PositionID))
+	return nil
 }
 
 func (m *publicationRepositoryStatefulMock) IsUserQualifiedForPosition(
@@ -449,25 +430,34 @@ func (m *publicationRepositoryStatefulMock) IsUserQualifiedForPosition(
 	return qualified, nil
 }
 
-func (m *publicationRepositoryStatefulMock) ListQualifiedShifts(
+func (m *publicationRepositoryStatefulMock) ListQualifiedPublicationSlotPositions(
 	ctx context.Context,
 	publicationID int64,
 	userID int64,
-) ([]*model.TemplateShift, error) {
+) ([]*model.QualifiedShift, error) {
 	publication, ok := m.publications[publicationID]
 	if !ok {
 		return nil, repository.ErrPublicationNotFound
 	}
 
-	shifts := make([]*model.TemplateShift, 0)
-	for _, shift := range m.templateShifts {
-		if shift.TemplateID != publication.TemplateID {
+	shifts := make([]*model.QualifiedShift, 0)
+	for slotID, slot := range m.templateSlots {
+		if slot.TemplateID != publication.TemplateID {
 			continue
 		}
-		if qualified, _ := m.IsUserQualifiedForPosition(ctx, userID, shift.PositionID); !qualified {
-			continue
+		for _, slotPosition := range m.slotPositions[slotID] {
+			if qualified, _ := m.IsUserQualifiedForPosition(ctx, userID, slotPosition.PositionID); !qualified {
+				continue
+			}
+			shifts = append(shifts, &model.QualifiedShift{
+				SlotID:            slotID,
+				PositionID:        slotPosition.PositionID,
+				Weekday:           slot.Weekday,
+				StartTime:         slot.StartTime,
+				EndTime:           slot.EndTime,
+				RequiredHeadcount: slotPosition.RequiredHeadcount,
+			})
 		}
-		shifts = append(shifts, cloneTemplateShift(shift))
 	}
 
 	sort.Slice(shifts, func(i, j int) bool {
@@ -477,7 +467,10 @@ func (m *publicationRepositoryStatefulMock) ListQualifiedShifts(
 		if shifts[i].StartTime != shifts[j].StartTime {
 			return shifts[i].StartTime < shifts[j].StartTime
 		}
-		return shifts[i].ID < shifts[j].ID
+		if shifts[i].SlotID != shifts[j].SlotID {
+			return shifts[i].SlotID < shifts[j].SlotID
+		}
+		return shifts[i].PositionID < shifts[j].PositionID
 	})
 
 	return shifts, nil
@@ -491,12 +484,12 @@ func (m *publicationRepositoryStatefulMock) CreateAssignment(
 		return nil, repository.ErrPublicationNotFound
 	}
 
-	slotID, positionID, _, err := m.resolveAssignmentRef(params.SlotID, params.PositionID, params.TemplateShiftID)
+	slotID, positionID, _, err := m.resolveAssignmentRef(params.SlotID, params.PositionID)
 	if err != nil {
 		return nil, err
 	}
 
-	key := m.assignmentStorageKey(params.PublicationID, params.UserID, params.SlotID, slotID, params.TemplateShiftID)
+	key := assignmentKey(params.PublicationID, params.UserID, slotID)
 	if _, ok := m.assignments[key]; ok {
 		return nil, repository.ErrAssignmentUserAlreadyInSlot
 	}
@@ -552,11 +545,11 @@ func (m *publicationRepositoryStatefulMock) ReplaceAssignments(
 	}
 
 	for _, input := range params.Assignments {
-		slotID, positionID, _, err := m.resolveAssignmentRef(input.SlotID, input.PositionID, input.TemplateShiftID)
+		slotID, positionID, _, err := m.resolveAssignmentRef(input.SlotID, input.PositionID)
 		if err != nil {
 			return err
 		}
-		key := m.assignmentStorageKey(params.PublicationID, input.UserID, input.SlotID, slotID, input.TemplateShiftID)
+		key := assignmentKey(params.PublicationID, input.UserID, slotID)
 		m.assignments[key] = &model.Assignment{
 			ID:            m.nextAssignmentID,
 			PublicationID: params.PublicationID,
@@ -650,14 +643,12 @@ func (m *publicationRepositoryStatefulMock) ListPublicationShifts(
 	}
 
 	shifts := make([]*model.PublicationShift, 0)
-	seenShiftIDs := make(map[int64]struct{})
 	for slotID, slot := range m.templateSlots {
 		if slot.TemplateID != publication.TemplateID {
 			continue
 		}
 
 		for _, slotPosition := range m.slotPositions[slotID] {
-			seenShiftIDs[slotPosition.ID] = struct{}{}
 			shifts = append(shifts, &model.PublicationShift{
 				ID:                slotPosition.ID,
 				SlotID:            slotID,
@@ -672,32 +663,6 @@ func (m *publicationRepositoryStatefulMock) ListPublicationShifts(
 				UpdatedAt:         slot.UpdatedAt,
 			})
 		}
-	}
-	for _, shift := range m.templateShifts {
-		if shift.TemplateID != publication.TemplateID {
-			continue
-		}
-		if _, ok := seenShiftIDs[shift.ID]; ok {
-			continue
-		}
-
-		slotID := m.findSlotIDByTemplateShiftID(shift.ID)
-		if slotID == 0 {
-			slotID = shift.ID
-		}
-		shifts = append(shifts, &model.PublicationShift{
-			ID:                shift.ID,
-			SlotID:            slotID,
-			TemplateID:        shift.TemplateID,
-			Weekday:           shift.Weekday,
-			StartTime:         shift.StartTime,
-			EndTime:           shift.EndTime,
-			PositionID:        shift.PositionID,
-			PositionName:      mockPositionName(shift.PositionID),
-			RequiredHeadcount: shift.RequiredHeadcount,
-			CreatedAt:         shift.CreatedAt,
-			UpdatedAt:         shift.UpdatedAt,
-		})
 	}
 
 	sort.Slice(shifts, func(i, j int) bool {
@@ -1331,12 +1296,12 @@ func TestPublicationServiceDeletePublication(t *testing.T) {
 			CreatedAt:         now.Add(-24 * time.Hour),
 			UpdatedAt:         now.Add(-24 * time.Hour),
 		}
-		repo.submissions[submissionKey(1, 7, 11)] = &model.AvailabilitySubmission{
-			ID:              1,
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
-			CreatedAt:       now.Add(-2 * time.Hour),
+		repo.submissions[submissionKey(1, 7, 21, 101)] = &model.AvailabilitySubmission{
+			ID:            1,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21, PositionID: 101,
+			CreatedAt: now.Add(-2 * time.Hour),
 		}
 		service := NewPublicationService(repo, fixedClock{now: now})
 
@@ -1456,34 +1421,35 @@ func TestPublicationServiceDeletePublication(t *testing.T) {
 	})
 }
 
-func TestPublicationServiceListAvailabilitySubmissionShiftIDs(t *testing.T) {
-	t.Run("returns submitted shift IDs", func(t *testing.T) {
+func TestPublicationServiceListAvailabilitySubmissionSlotPositions(t *testing.T) {
+	t.Run("returns submitted slot positions", func(t *testing.T) {
 		t.Parallel()
 
 		repo := newPublicationRepositoryStatefulMock()
-		repo.submissions[submissionKey(1, 7, 11)] = &model.AvailabilitySubmission{
-			ID:              1,
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
+		repo.submissions[submissionKey(1, 7, 21, 101)] = &model.AvailabilitySubmission{
+			ID:            1,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21, PositionID: 101,
 		}
-		repo.submissions[submissionKey(1, 7, 12)] = &model.AvailabilitySubmission{
-			ID:              2,
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 12,
+		repo.submissions[submissionKey(1, 7, 22, 102)] = &model.AvailabilitySubmission{
+			ID:            2,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        22, PositionID: 102,
 		}
 		service := NewPublicationService(repo, fixedClock{})
 
-		shiftIDs, err := service.ListAvailabilitySubmissionShiftIDs(context.Background(), 1, 7)
+		slotPositions, err := service.ListAvailabilitySubmissionSlotPositions(context.Background(), 1, 7)
 		if err != nil {
-			t.Fatalf("ListAvailabilitySubmissionShiftIDs returned error: %v", err)
+			t.Fatalf("ListAvailabilitySubmissionSlotPositions returned error: %v", err)
 		}
-		if len(shiftIDs) != 2 {
-			t.Fatalf("expected 2 shift ids, got %v", shiftIDs)
+		if len(slotPositions) != 2 {
+			t.Fatalf("expected 2 slot positions, got %v", slotPositions)
 		}
-		if shiftIDs[0] != 11 || shiftIDs[1] != 12 {
-			t.Fatalf("expected [11 12], got %v", shiftIDs)
+		if slotPositions[0] != (model.SlotPositionRef{SlotID: 21, PositionID: 101}) ||
+			slotPositions[1] != (model.SlotPositionRef{SlotID: 22, PositionID: 102}) {
+			t.Fatalf("unexpected slot positions: %v", slotPositions)
 		}
 	})
 
@@ -1493,15 +1459,15 @@ func TestPublicationServiceListAvailabilitySubmissionShiftIDs(t *testing.T) {
 		repo := newPublicationRepositoryStatefulMock()
 		service := NewPublicationService(repo, fixedClock{})
 
-		shiftIDs, err := service.ListAvailabilitySubmissionShiftIDs(context.Background(), 1, 8)
+		slotPositions, err := service.ListAvailabilitySubmissionSlotPositions(context.Background(), 1, 8)
 		if err != nil {
-			t.Fatalf("ListAvailabilitySubmissionShiftIDs returned error: %v", err)
+			t.Fatalf("ListAvailabilitySubmissionSlotPositions returned error: %v", err)
 		}
-		if shiftIDs == nil {
+		if slotPositions == nil {
 			t.Fatal("expected empty slice, got nil")
 		}
-		if len(shiftIDs) != 0 {
-			t.Fatalf("expected no shift ids, got %v", shiftIDs)
+		if len(slotPositions) != 0 {
+			t.Fatalf("expected no slot positions, got %v", slotPositions)
 		}
 	})
 
@@ -1511,7 +1477,7 @@ func TestPublicationServiceListAvailabilitySubmissionShiftIDs(t *testing.T) {
 		repo := newPublicationRepositoryStatefulMock()
 		service := NewPublicationService(repo, fixedClock{})
 
-		_, err := service.ListAvailabilitySubmissionShiftIDs(context.Background(), 999, 7)
+		_, err := service.ListAvailabilitySubmissionSlotPositions(context.Background(), 999, 7)
 		if !errors.Is(err, ErrPublicationNotFound) {
 			t.Fatalf("expected ErrPublicationNotFound, got %v", err)
 		}
@@ -1531,14 +1497,15 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		ctx := stub.ContextWith(context.Background())
 
 		submission, err := service.CreateAvailabilitySubmission(ctx, CreateAvailabilitySubmissionInput{
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21, PositionID: 101,
 		})
 		if err != nil {
 			t.Fatalf("CreateAvailabilitySubmission returned error: %v", err)
 		}
-		if submission.PublicationID != 1 || submission.UserID != 7 || submission.TemplateShiftID != 11 {
+		if submission.PublicationID != 1 || submission.UserID != 7 ||
+			submission.SlotID != 21 || submission.PositionID != 101 {
 			t.Fatalf("unexpected submission: %+v", submission)
 		}
 
@@ -1555,8 +1522,8 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		if event.Metadata["publication_id"] != int64(1) {
 			t.Fatalf("expected publication_id=1 in metadata, got %+v", event.Metadata)
 		}
-		if event.Metadata["template_shift_id"] != int64(11) {
-			t.Fatalf("expected template_shift_id=11 in metadata, got %+v", event.Metadata)
+		if event.Metadata["slot_id"] != int64(21) || event.Metadata["position_id"] != int64(101) {
+			t.Fatalf("expected slot_id=21 and position_id=101 in metadata, got %+v", event.Metadata)
 		}
 	})
 
@@ -1570,9 +1537,9 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		service := NewPublicationService(repo, fixedClock{now: now})
 
 		_, err := service.CreateAvailabilitySubmission(context.Background(), CreateAvailabilitySubmissionInput{
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21, PositionID: 101,
 		})
 		if err != nil {
 			t.Fatalf("CreateAvailabilitySubmission returned error: %v", err)
@@ -1591,17 +1558,17 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		service := NewPublicationService(repo, fixedClock{now: now})
 
 		first, err := service.CreateAvailabilitySubmission(context.Background(), CreateAvailabilitySubmissionInput{
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21, PositionID: 101,
 		})
 		if err != nil {
 			t.Fatalf("first CreateAvailabilitySubmission returned error: %v", err)
 		}
 		second, err := service.CreateAvailabilitySubmission(context.Background(), CreateAvailabilitySubmissionInput{
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21, PositionID: 101,
 		})
 		if err != nil {
 			t.Fatalf("second CreateAvailabilitySubmission returned error: %v", err)
@@ -1634,9 +1601,9 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		service := NewPublicationService(repo, fixedClock{now: now})
 
 		_, err := service.CreateAvailabilitySubmission(context.Background(), CreateAvailabilitySubmissionInput{
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21, PositionID: 101,
 		})
 		if !errors.Is(err, ErrPublicationNotCollecting) {
 			t.Fatalf("expected ErrPublicationNotCollecting, got %v", err)
@@ -1663,39 +1630,30 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		service := NewPublicationService(repo, fixedClock{now: now})
 
 		_, err := service.CreateAvailabilitySubmission(context.Background(), CreateAvailabilitySubmissionInput{
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21, PositionID: 101,
 		})
 		if !errors.Is(err, ErrPublicationNotCollecting) {
 			t.Fatalf("expected ErrPublicationNotCollecting, got %v", err)
 		}
 	})
 
-	t.Run("rejects shift outside publication template", func(t *testing.T) {
+	t.Run("rejects slot position outside publication template", func(t *testing.T) {
 		t.Parallel()
 
 		now := time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC)
 		repo := newPublicationRepositoryStatefulMock()
 		repo.publications[1] = collectingPublication(now)
-		repo.templateShifts[99] = &model.TemplateShift{
-			ID:                99,
-			TemplateID:        999,
-			Weekday:           5,
-			StartTime:         "10:00",
-			EndTime:           "12:00",
-			PositionID:        101,
-			RequiredHeadcount: 1,
-		}
 		service := NewPublicationService(repo, fixedClock{now: now})
 
 		_, err := service.CreateAvailabilitySubmission(context.Background(), CreateAvailabilitySubmissionInput{
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 99,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        99, PositionID: 199,
 		})
-		if !errors.Is(err, ErrTemplateShiftNotFound) {
-			t.Fatalf("expected ErrTemplateShiftNotFound, got %v", err)
+		if !errors.Is(err, ErrTemplateSlotPositionNotFound) {
+			t.Fatalf("expected ErrTemplateSlotPositionNotFound, got %v", err)
 		}
 	})
 
@@ -1711,9 +1669,9 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		ctx := stub.ContextWith(context.Background())
 
 		_, err := service.CreateAvailabilitySubmission(ctx, CreateAvailabilitySubmissionInput{
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 12,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        22, PositionID: 102,
 		})
 		if !errors.Is(err, ErrNotQualified) {
 			t.Fatalf("expected ErrNotQualified, got %v", err)
@@ -1733,9 +1691,9 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		})
 
 		_, err := service.CreateAvailabilitySubmission(context.Background(), CreateAvailabilitySubmissionInput{
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21, PositionID: 101,
 		})
 		if !errors.Is(err, ErrPublicationNotFound) {
 			t.Fatalf("expected ErrPublicationNotFound, got %v", err)
@@ -1750,12 +1708,12 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 		now := time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC)
 		repo := newPublicationRepositoryStatefulMock()
 		repo.publications[1] = collectingPublication(now)
-		repo.submissions[submissionKey(1, 7, 11)] = &model.AvailabilitySubmission{
-			ID:              1,
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
-			CreatedAt:       now.Add(-15 * time.Minute),
+		repo.submissions[submissionKey(1, 7, 21, 101)] = &model.AvailabilitySubmission{
+			ID:            1,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21, PositionID: 101,
+			CreatedAt: now.Add(-15 * time.Minute),
 		}
 		service := NewPublicationService(repo, fixedClock{now: now})
 
@@ -1763,9 +1721,9 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 		ctx := stub.ContextWith(context.Background())
 
 		err := service.DeleteAvailabilitySubmission(ctx, DeleteAvailabilitySubmissionInput{
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21, PositionID: 101,
 		})
 		if err != nil {
 			t.Fatalf("DeleteAvailabilitySubmission returned error: %v", err)
@@ -1781,14 +1739,14 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 		if event.TargetType != audit.TargetTypeAvailabilitySubmission {
 			t.Fatalf("unexpected target type: %q", event.TargetType)
 		}
-		if event.TargetID == nil || *event.TargetID != 11 {
+		if event.TargetID != nil {
 			t.Fatalf("unexpected target id: %v", event.TargetID)
 		}
 		if event.Metadata["publication_id"] != int64(1) {
 			t.Fatalf("expected publication_id=1 in metadata, got %+v", event.Metadata)
 		}
-		if event.Metadata["template_shift_id"] != int64(11) {
-			t.Fatalf("expected template_shift_id=11 in metadata, got %+v", event.Metadata)
+		if event.Metadata["slot_id"] != int64(21) || event.Metadata["position_id"] != int64(101) {
+			t.Fatalf("expected slot_id=21 and position_id=101 in metadata, got %+v", event.Metadata)
 		}
 	})
 
@@ -1801,9 +1759,9 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 		service := NewPublicationService(repo, fixedClock{now: now})
 
 		err := service.DeleteAvailabilitySubmission(context.Background(), DeleteAvailabilitySubmissionInput{
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21, PositionID: 101,
 		})
 		if err != nil {
 			t.Fatalf("DeleteAvailabilitySubmission returned error: %v", err)
@@ -1816,20 +1774,20 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 		now := time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC)
 		repo := newPublicationRepositoryStatefulMock()
 		repo.publications[1] = collectingPublication(now)
-		repo.submissions[submissionKey(1, 7, 11)] = &model.AvailabilitySubmission{
-			ID:              1,
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
-			CreatedAt:       now.Add(-15 * time.Minute),
+		repo.submissions[submissionKey(1, 7, 21, 101)] = &model.AvailabilitySubmission{
+			ID:            1,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21, PositionID: 101,
+			CreatedAt: now.Add(-15 * time.Minute),
 		}
 		delete(repo.qualifiedByUser, 7)
 		service := NewPublicationService(repo, fixedClock{now: now})
 
 		err := service.DeleteAvailabilitySubmission(context.Background(), DeleteAvailabilitySubmissionInput{
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21, PositionID: 101,
 		})
 		if err != nil {
 			t.Fatalf("DeleteAvailabilitySubmission returned error: %v", err)
@@ -1862,9 +1820,9 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 		ctx := stub.ContextWith(context.Background())
 
 		err := service.DeleteAvailabilitySubmission(ctx, DeleteAvailabilitySubmissionInput{
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21, PositionID: 101,
 		})
 		if !errors.Is(err, ErrPublicationNotCollecting) {
 			t.Fatalf("expected ErrPublicationNotCollecting, got %v", err)
@@ -1875,8 +1833,8 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 	})
 }
 
-func TestPublicationServiceListQualifiedPublicationShifts(t *testing.T) {
-	t.Run("returns qualified shifts during collecting", func(t *testing.T) {
+func TestPublicationServiceListQualifiedPublicationSlotPositions(t *testing.T) {
+	t.Run("returns qualified slot positions during collecting", func(t *testing.T) {
 		t.Parallel()
 
 		now := time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC)
@@ -1884,12 +1842,12 @@ func TestPublicationServiceListQualifiedPublicationShifts(t *testing.T) {
 		repo.publications[1] = collectingPublication(now)
 		service := NewPublicationService(repo, fixedClock{now: now})
 
-		shifts, err := service.ListQualifiedPublicationShifts(context.Background(), 1, 7)
+		shifts, err := service.ListQualifiedPublicationSlotPositions(context.Background(), 1, 7)
 		if err != nil {
-			t.Fatalf("ListQualifiedPublicationShifts returned error: %v", err)
+			t.Fatalf("ListQualifiedPublicationSlotPositions returned error: %v", err)
 		}
-		if len(shifts) != 1 || shifts[0].ID != 11 {
-			t.Fatalf("expected one qualified shift 11, got %+v", shifts)
+		if len(shifts) != 1 || shifts[0].SlotID != 21 || shifts[0].PositionID != 101 {
+			t.Fatalf("expected one qualified slot position 21/101, got %+v", shifts)
 		}
 	})
 
@@ -1912,7 +1870,7 @@ func TestPublicationServiceListQualifiedPublicationShifts(t *testing.T) {
 		}
 		service := NewPublicationService(repo, fixedClock{now: now})
 
-		_, err := service.ListQualifiedPublicationShifts(context.Background(), 1, 7)
+		_, err := service.ListQualifiedPublicationSlotPositions(context.Background(), 1, 7)
 		if !errors.Is(err, ErrPublicationNotCollecting) {
 			t.Fatalf("expected ErrPublicationNotCollecting, got %v", err)
 		}
@@ -2005,24 +1963,13 @@ func collectingPublication(now time.Time) *model.Publication {
 	}
 }
 
-func (m *publicationRepositoryStatefulMock) resolveAssignmentRef(
-	slotID, positionID, templateShiftID int64,
-) (int64, int64, int64, error) {
-	switch {
-	case slotID > 0 && positionID > 0:
-		templateShiftID = m.findTemplateShiftID(slotID, positionID)
-		if templateShiftID == 0 {
-			return 0, 0, 0, repository.ErrTemplateSlotPositionNotFound
-		}
-		return slotID, positionID, templateShiftID, nil
-	case templateShiftID > 0:
-		if shift, ok := m.templateShifts[templateShiftID]; ok {
-			return m.findSlotIDByTemplateShiftID(templateShiftID), shift.PositionID, templateShiftID, nil
-		}
-		return 0, 0, 0, repository.ErrTemplateShiftNotFound
-	default:
+func (m *publicationRepositoryStatefulMock) resolveAssignmentRef(slotID, positionID int64) (int64, int64, int64, error) {
+	entryID := m.findSlotPositionEntryID(slotID, positionID)
+	if slotID <= 0 || positionID <= 0 || entryID == 0 {
 		return 0, 0, 0, repository.ErrTemplateSlotPositionNotFound
 	}
+
+	return slotID, positionID, entryID, nil
 }
 
 func (m *publicationRepositoryStatefulMock) resolveStoredSubmissionRef(
@@ -2032,13 +1979,7 @@ func (m *publicationRepositoryStatefulMock) resolveStoredSubmissionRef(
 		return 0, 0, 0
 	}
 
-	if submission.TemplateShiftID > 0 {
-		if shift, ok := m.templateShifts[submission.TemplateShiftID]; ok {
-			return m.findSlotIDByTemplateShiftID(submission.TemplateShiftID), shift.PositionID, submission.TemplateShiftID
-		}
-	}
-
-	return 0, 0, submission.TemplateShiftID
+	return submission.SlotID, submission.PositionID, m.findSlotPositionEntryID(submission.SlotID, submission.PositionID)
 }
 
 func (m *publicationRepositoryStatefulMock) resolveStoredAssignmentRef(
@@ -2049,7 +1990,7 @@ func (m *publicationRepositoryStatefulMock) resolveStoredAssignmentRef(
 	}
 
 	if assignment.SlotID > 0 && assignment.PositionID > 0 {
-		return assignment.SlotID, assignment.PositionID, m.findTemplateShiftID(assignment.SlotID, assignment.PositionID)
+		return assignment.SlotID, assignment.PositionID, m.findSlotPositionEntryID(assignment.SlotID, assignment.PositionID)
 	}
 
 	return assignment.SlotID, assignment.PositionID, 0
@@ -2062,36 +2003,10 @@ func (m *publicationRepositoryStatefulMock) resolveAssignmentSlot(assignment *mo
 	return m.templateSlots[assignment.SlotID]
 }
 
-func (m *publicationRepositoryStatefulMock) assignmentStorageKey(
-	publicationID, userID, requestedSlotID, resolvedSlotID, templateShiftID int64,
-) string {
-	if resolvedSlotID > 0 {
-		return assignmentKey(publicationID, userID, resolvedSlotID)
-	}
-	if requestedSlotID > 0 {
-		return assignmentKey(publicationID, userID, requestedSlotID)
-	}
-	if templateShiftID > 0 {
-		return assignmentKey(publicationID, userID, m.findSlotIDByTemplateShiftID(templateShiftID))
-	}
-	return assignmentKey(publicationID, userID, 0)
-}
-
-func (m *publicationRepositoryStatefulMock) findTemplateShiftID(slotID, positionID int64) int64 {
+func (m *publicationRepositoryStatefulMock) findSlotPositionEntryID(slotID, positionID int64) int64 {
 	for _, slotPosition := range m.slotPositions[slotID] {
 		if slotPosition.PositionID == positionID {
 			return slotPosition.ID
-		}
-	}
-	return 0
-}
-
-func (m *publicationRepositoryStatefulMock) findSlotIDByTemplateShiftID(templateShiftID int64) int64 {
-	for slotID, slotPositions := range m.slotPositions {
-		for _, slotPosition := range slotPositions {
-			if slotPosition.ID == templateShiftID {
-				return slotID
-			}
 		}
 	}
 	return 0
@@ -2110,14 +2025,17 @@ func mockPositionName(positionID int64) string {
 	}
 }
 
-func submissionKey(publicationID, userID, shiftID int64) string {
+func submissionKey(publicationID, userID, slotID, positionID int64) string {
 	return strconv.FormatInt(publicationID, 10) +
 		":" + strconv.FormatInt(userID, 10) +
-		":" + strconv.FormatInt(shiftID, 10)
+		":" + strconv.FormatInt(slotID, 10) +
+		":" + strconv.FormatInt(positionID, 10)
 }
 
 func assignmentKey(publicationID, userID, slotID int64) string {
-	return submissionKey(publicationID, userID, slotID)
+	return strconv.FormatInt(publicationID, 10) +
+		":" + strconv.FormatInt(userID, 10) +
+		":" + strconv.FormatInt(slotID, 10)
 }
 
 func clonePublication(publication *model.Publication) *model.Publication {
@@ -2144,14 +2062,5 @@ func cloneAssignment(assignment *model.Assignment) *model.Assignment {
 	}
 
 	cloned := *assignment
-	return &cloned
-}
-
-func cloneTemplateShift(shift *model.TemplateShift) *model.TemplateShift {
-	if shift == nil {
-		return nil
-	}
-
-	cloned := *shift
 	return &cloned
 }

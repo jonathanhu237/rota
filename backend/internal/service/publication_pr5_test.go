@@ -19,26 +19,26 @@ func TestPublicationServiceAutoAssignPublication(t *testing.T) {
 		repo := newPublicationRepositoryStatefulMock()
 		repo.publications[1] = assigningPublication(now)
 		repo.slotPositions[21][0].RequiredHeadcount = 1
-		repo.submissions[submissionKey(1, 7, 11)] = &model.AvailabilitySubmission{
-			ID:              1,
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
-			CreatedAt:       now.Add(-2 * time.Hour),
+		repo.submissions[submissionKey(1, 7, 21, 101)] = &model.AvailabilitySubmission{
+			ID:            1,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21, PositionID: 101,
+			CreatedAt: now.Add(-2 * time.Hour),
 		}
-		repo.submissions[submissionKey(1, 8, 11)] = &model.AvailabilitySubmission{
-			ID:              2,
-			PublicationID:   1,
-			UserID:          8,
-			TemplateShiftID: 11,
-			CreatedAt:       now.Add(-2 * time.Hour),
+		repo.submissions[submissionKey(1, 8, 21, 101)] = &model.AvailabilitySubmission{
+			ID:            2,
+			PublicationID: 1,
+			UserID:        8,
+			SlotID:        21, PositionID: 101,
+			CreatedAt: now.Add(-2 * time.Hour),
 		}
-		repo.submissions[submissionKey(1, 8, 12)] = &model.AvailabilitySubmission{
-			ID:              3,
-			PublicationID:   1,
-			UserID:          8,
-			TemplateShiftID: 12,
-			CreatedAt:       now.Add(-2 * time.Hour),
+		repo.submissions[submissionKey(1, 8, 22, 102)] = &model.AvailabilitySubmission{
+			ID:            3,
+			PublicationID: 1,
+			UserID:        8,
+			SlotID:        22, PositionID: 102,
+			CreatedAt: now.Add(-2 * time.Hour),
 		}
 		repo.assignments[assignmentKey(1, 8, 21)] = &model.Assignment{
 			ID:            1,
@@ -157,12 +157,12 @@ func TestPublicationServiceAutoAssignSkipsRevokedQualification(t *testing.T) {
 	repo := newPublicationRepositoryStatefulMock()
 	repo.publications[1] = assigningPublication(now)
 	repo.slotPositions[21][0].RequiredHeadcount = 1
-	repo.submissions[submissionKey(1, 7, 11)] = &model.AvailabilitySubmission{
-		ID:              1,
-		PublicationID:   1,
-		UserID:          7,
-		TemplateShiftID: 11,
-		CreatedAt:       now.Add(-time.Hour),
+	repo.submissions[submissionKey(1, 7, 21, 101)] = &model.AvailabilitySubmission{
+		ID:            1,
+		PublicationID: 1,
+		UserID:        7,
+		SlotID:        21, PositionID: 101,
+		CreatedAt: now.Add(-time.Hour),
 	}
 	delete(repo.qualifiedByUser[7], 101)
 
@@ -186,12 +186,12 @@ func TestPublicationServiceAutoAssignSkipsDisabled(t *testing.T) {
 	repo.publications[1] = assigningPublication(now)
 	repo.slotPositions[21][0].RequiredHeadcount = 1
 	repo.users[7].Status = model.UserStatusDisabled
-	repo.submissions[submissionKey(1, 7, 11)] = &model.AvailabilitySubmission{
-		ID:              1,
-		PublicationID:   1,
-		UserID:          7,
-		TemplateShiftID: 11,
-		CreatedAt:       now.Add(-time.Hour),
+	repo.submissions[submissionKey(1, 7, 21, 101)] = &model.AvailabilitySubmission{
+		ID:            1,
+		PublicationID: 1,
+		UserID:        7,
+		SlotID:        21, PositionID: 101,
+		CreatedAt: now.Add(-time.Hour),
 	}
 
 	service := NewPublicationService(repo, fixedClock{now: now})

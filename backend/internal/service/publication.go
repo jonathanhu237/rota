@@ -51,13 +51,13 @@ type publicationRepository interface {
 	CreatePublication(ctx context.Context, params repository.CreatePublicationParams) (*model.Publication, error)
 	UpdatePublicationFields(ctx context.Context, params repository.UpdatePublicationFieldsParams) (*model.Publication, error)
 	DeletePublication(ctx context.Context, params repository.DeletePublicationParams) error
-	ListSubmissionShiftIDs(ctx context.Context, publicationID, userID int64) ([]int64, error)
+	ListSubmissionSlotPositions(ctx context.Context, publicationID, userID int64) ([]model.SlotPositionRef, error)
 	UpsertSubmission(ctx context.Context, params repository.UpsertAvailabilitySubmissionParams) (*model.AvailabilitySubmission, error)
 	DeleteSubmission(ctx context.Context, params repository.DeleteAvailabilitySubmissionParams) error
 	GetSlot(ctx context.Context, templateID, slotID int64) (*model.TemplateSlot, error)
 	ListSlotPositions(ctx context.Context, slotID int64) ([]*model.TemplateSlotPosition, error)
 	IsUserQualifiedForPosition(ctx context.Context, userID, positionID int64) (bool, error)
-	ListQualifiedShifts(ctx context.Context, publicationID, userID int64) ([]*model.TemplateShift, error)
+	ListQualifiedPublicationSlotPositions(ctx context.Context, publicationID, userID int64) ([]*model.QualifiedShift, error)
 	CreateAssignment(ctx context.Context, params repository.CreateAssignmentParams) (*model.Assignment, error)
 	DeleteAssignment(ctx context.Context, params repository.DeleteAssignmentParams) error
 	CountAssignmentOverridesByAssignment(ctx context.Context, assignmentID int64) (int64, error)
@@ -120,15 +120,17 @@ type UpdatePublicationInput struct {
 }
 
 type CreateAvailabilitySubmissionInput struct {
-	PublicationID   int64
-	UserID          int64
-	TemplateShiftID int64
+	PublicationID int64
+	UserID        int64
+	SlotID        int64
+	PositionID    int64
 }
 
 type DeleteAvailabilitySubmissionInput struct {
-	PublicationID   int64
-	UserID          int64
-	TemplateShiftID int64
+	PublicationID int64
+	UserID        int64
+	SlotID        int64
+	PositionID    int64
 }
 
 type CreateAssignmentInput struct {
@@ -418,27 +420,27 @@ func (s *PublicationService) DeletePublication(ctx context.Context, id int64) er
 	return ErrPublicationNotFound
 }
 
-func (s *PublicationService) ListAvailabilitySubmissionShiftIDs(
+func (s *PublicationService) ListAvailabilitySubmissionSlotPositions(
 	ctx context.Context,
 	publicationID, userID int64,
-) ([]int64, error) {
+) ([]model.SlotPositionRef, error) {
 	if publicationID <= 0 || userID <= 0 {
 		return nil, ErrInvalidInput
 	}
 
-	shiftIDs, err := s.publicationRepo.ListSubmissionShiftIDs(ctx, publicationID, userID)
+	slotPositions, err := s.publicationRepo.ListSubmissionSlotPositions(ctx, publicationID, userID)
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
 
-	return shiftIDs, nil
+	return slotPositions, nil
 }
 
 func (s *PublicationService) CreateAvailabilitySubmission(
 	ctx context.Context,
 	input CreateAvailabilitySubmissionInput,
 ) (*model.AvailabilitySubmission, error) {
-	if input.PublicationID <= 0 || input.UserID <= 0 || input.TemplateShiftID <= 0 {
+	if input.PublicationID <= 0 || input.UserID <= 0 || input.SlotID <= 0 || input.PositionID <= 0 {
 		return nil, ErrInvalidInput
 	}
 
@@ -457,9 +459,9 @@ func (s *PublicationService) CreateAvailabilitySubmission(
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
-	shift := findPublicationShiftByEntryID(shifts, input.TemplateShiftID)
+	shift := findPublicationShiftBySlotPosition(shifts, input.SlotID, input.PositionID)
 	if shift == nil {
-		return nil, ErrTemplateShiftNotFound
+		return nil, ErrTemplateSlotPositionNotFound
 	}
 
 	qualified, err := s.publicationRepo.IsUserQualifiedForPosition(ctx, input.UserID, shift.PositionID)
@@ -473,7 +475,8 @@ func (s *PublicationService) CreateAvailabilitySubmission(
 	submission, err := s.publicationRepo.UpsertSubmission(ctx, repository.UpsertAvailabilitySubmissionParams{
 		PublicationID:    input.PublicationID,
 		UserID:           input.UserID,
-		TemplateShiftID:  input.TemplateShiftID,
+		SlotID:           input.SlotID,
+		PositionID:       input.PositionID,
 		PublicationState: stalePublicationState(publication.State, effectiveState),
 		Now:              now,
 	})
@@ -487,8 +490,9 @@ func (s *PublicationService) CreateAvailabilitySubmission(
 		TargetType: audit.TargetTypeAvailabilitySubmission,
 		TargetID:   &targetID,
 		Metadata: map[string]any{
-			"publication_id":    submission.PublicationID,
-			"template_shift_id": submission.TemplateShiftID,
+			"publication_id": submission.PublicationID,
+			"slot_id":        submission.SlotID,
+			"position_id":    submission.PositionID,
 		},
 	})
 
@@ -499,7 +503,7 @@ func (s *PublicationService) DeleteAvailabilitySubmission(
 	ctx context.Context,
 	input DeleteAvailabilitySubmissionInput,
 ) error {
-	if input.PublicationID <= 0 || input.UserID <= 0 || input.TemplateShiftID <= 0 {
+	if input.PublicationID <= 0 || input.UserID <= 0 || input.SlotID <= 0 || input.PositionID <= 0 {
 		return ErrInvalidInput
 	}
 
@@ -517,31 +521,31 @@ func (s *PublicationService) DeleteAvailabilitySubmission(
 	if err := s.publicationRepo.DeleteSubmission(ctx, repository.DeleteAvailabilitySubmissionParams{
 		PublicationID:    input.PublicationID,
 		UserID:           input.UserID,
-		TemplateShiftID:  input.TemplateShiftID,
+		SlotID:           input.SlotID,
+		PositionID:       input.PositionID,
 		PublicationState: stalePublicationState(publication.State, effectiveState),
 		Now:              now,
 	}); err != nil {
 		return mapPublicationRepositoryError(err)
 	}
 
-	targetID := input.TemplateShiftID
 	audit.Record(ctx, audit.Event{
 		Action:     audit.ActionSubmissionDelete,
 		TargetType: audit.TargetTypeAvailabilitySubmission,
-		TargetID:   &targetID,
 		Metadata: map[string]any{
-			"publication_id":    input.PublicationID,
-			"template_shift_id": input.TemplateShiftID,
+			"publication_id": input.PublicationID,
+			"slot_id":        input.SlotID,
+			"position_id":    input.PositionID,
 		},
 	})
 
 	return nil
 }
 
-func (s *PublicationService) ListQualifiedPublicationShifts(
+func (s *PublicationService) ListQualifiedPublicationSlotPositions(
 	ctx context.Context,
 	publicationID, userID int64,
-) ([]*model.TemplateShift, error) {
+) ([]*model.QualifiedShift, error) {
 	if publicationID <= 0 || userID <= 0 {
 		return nil, ErrInvalidInput
 	}
@@ -555,7 +559,7 @@ func (s *PublicationService) ListQualifiedPublicationShifts(
 		return nil, ErrPublicationNotCollecting
 	}
 
-	shifts, err := s.publicationRepo.ListQualifiedShifts(ctx, publicationID, userID)
+	shifts, err := s.publicationRepo.ListQualifiedPublicationSlotPositions(ctx, publicationID, userID)
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
@@ -567,7 +571,10 @@ func (s *PublicationService) ListQualifiedPublicationShifts(
 		if shifts[i].StartTime != shifts[j].StartTime {
 			return shifts[i].StartTime < shifts[j].StartTime
 		}
-		return shifts[i].ID < shifts[j].ID
+		if shifts[i].SlotID != shifts[j].SlotID {
+			return shifts[i].SlotID < shifts[j].SlotID
+		}
+		return shifts[i].PositionID < shifts[j].PositionID
 	})
 
 	return shifts, nil
@@ -659,8 +666,6 @@ func mapPublicationRepositoryError(err error) error {
 		return ErrTemplateSlotNotFound
 	case errors.Is(err, repository.ErrTemplateSlotPositionNotFound):
 		return ErrTemplateSlotPositionNotFound
-	case errors.Is(err, repository.ErrTemplateShiftNotFound):
-		return ErrTemplateShiftNotFound
 	case errors.Is(err, repository.ErrUserNotFound):
 		return ErrUserNotFound
 	case errors.Is(err, repository.ErrAssignmentUserAlreadyInSlot):

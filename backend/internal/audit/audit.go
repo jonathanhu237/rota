@@ -30,9 +30,9 @@ const (
 	ActionTemplateDelete = "template.delete"
 	ActionTemplateClone  = "template.clone"
 
-	ActionTemplateShiftCreate = "template.shift.create"
-	ActionTemplateShiftUpdate = "template.shift.update"
-	ActionTemplateShiftDelete = "template.shift.delete"
+	ActionSlotPositionCreate = "template.shift.create"
+	ActionSlotPositionUpdate = "template.shift.update"
+	ActionSlotPositionDelete = "template.shift.delete"
 
 	ActionPublicationCreate     = "publication.create"
 	ActionPublicationUpdate     = "publication.update"
@@ -70,7 +70,7 @@ const (
 	TargetTypeUser                   = "user"
 	TargetTypePosition               = "position"
 	TargetTypeTemplate               = "template"
-	TargetTypeTemplateShift          = "template_shift"
+	TargetTypeSlotPosition           = "slot_position"
 	TargetTypePublication            = "publication"
 	TargetTypeAvailabilitySubmission = "availability_submission"
 	TargetTypeAssignment             = "assignment"

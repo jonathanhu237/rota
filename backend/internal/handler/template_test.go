@@ -442,18 +442,14 @@ func sampleTemplate() *model.Template {
 	}
 }
 
-func sampleTemplateShift() *model.TemplateShift {
-	now := time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC)
-	return &model.TemplateShift{
-		ID:                2,
-		TemplateID:        1,
+func sampleQualifiedShift() *model.QualifiedShift {
+	return &model.QualifiedShift{
+		SlotID:            21,
+		PositionID:        101,
 		Weekday:           1,
 		StartTime:         "09:00",
 		EndTime:           "12:00",
-		PositionID:        7,
 		RequiredHeadcount: 2,
-		CreatedAt:         now,
-		UpdatedAt:         now,
 	}
 }
 

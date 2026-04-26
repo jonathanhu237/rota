@@ -1026,19 +1026,19 @@ func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
 		repo := newPublicationRepositoryStatefulMock()
 		repo.publications[1] = publishedPublication(now)
-		repo.submissions[submissionKey(1, 7, 11)] = &model.AvailabilitySubmission{
-			ID:              1,
-			PublicationID:   1,
-			UserID:          7,
-			TemplateShiftID: 11,
-			CreatedAt:       now.Add(-2 * time.Hour),
+		repo.submissions[submissionKey(1, 7, 21, 101)] = &model.AvailabilitySubmission{
+			ID:            1,
+			PublicationID: 1,
+			UserID:        7,
+			SlotID:        21, PositionID: 101,
+			CreatedAt: now.Add(-2 * time.Hour),
 		}
-		repo.submissions[submissionKey(1, 8, 11)] = &model.AvailabilitySubmission{
-			ID:              2,
-			PublicationID:   1,
-			UserID:          8,
-			TemplateShiftID: 11,
-			CreatedAt:       now.Add(-90 * time.Minute),
+		repo.submissions[submissionKey(1, 8, 21, 101)] = &model.AvailabilitySubmission{
+			ID:            2,
+			PublicationID: 1,
+			UserID:        8,
+			SlotID:        21, PositionID: 101,
+			CreatedAt: now.Add(-90 * time.Minute),
 		}
 		delete(repo.qualifiedByUser, 7)
 		repo.users[10] = &model.User{

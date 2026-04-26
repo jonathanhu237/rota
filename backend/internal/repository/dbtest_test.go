@@ -151,7 +151,6 @@ func resetIntegrationDB(ctx context.Context, db *sql.DB) error {
 		"availability_submissions",
 		"template_slot_positions",
 		"template_slots",
-		"template_shifts",
 		"user_setup_tokens",
 		"publications",
 		"user_positions",
@@ -357,7 +356,7 @@ func seedTemplate(t testing.TB, db *sql.DB, seed templateSeed) *model.Template {
 	return template
 }
 
-type templateShiftSeed struct {
+type qualifiedShiftSeed struct {
 	TemplateID        int64
 	Weekday           int
 	StartTime         string
@@ -366,7 +365,18 @@ type templateShiftSeed struct {
 	RequiredHeadcount int
 }
 
-func seedTemplateShift(t testing.TB, db *sql.DB, seed templateShiftSeed) *model.TemplateShift {
+type seededSlotPosition struct {
+	EntryID           int64
+	SlotID            int64
+	TemplateID        int64
+	Weekday           int
+	StartTime         string
+	EndTime           string
+	PositionID        int64
+	RequiredHeadcount int
+}
+
+func seedQualifiedShift(t testing.TB, db *sql.DB, seed qualifiedShiftSeed) *seededSlotPosition {
 	t.Helper()
 
 	if seed.Weekday == 0 {
@@ -385,17 +395,15 @@ func seedTemplateShift(t testing.TB, db *sql.DB, seed templateShiftSeed) *model.
 	slotID := seedTemplateSlot(t, db, seed.TemplateID, seed.Weekday, seed.StartTime, seed.EndTime)
 	entryID := seedTemplateSlotPosition(t, db, slotID, seed.PositionID, seed.RequiredHeadcount)
 
-	now := testTime()
-	return &model.TemplateShift{
-		ID:                entryID,
+	return &seededSlotPosition{
+		EntryID:           entryID,
+		SlotID:            slotID,
 		TemplateID:        seed.TemplateID,
 		Weekday:           seed.Weekday,
 		StartTime:         seed.StartTime,
 		EndTime:           seed.EndTime,
 		PositionID:        seed.PositionID,
 		RequiredHeadcount: seed.RequiredHeadcount,
-		CreatedAt:         now,
-		UpdatedAt:         now,
 	}
 }
 
@@ -526,26 +534,10 @@ func seedUserPosition(t testing.TB, db *sql.DB, userID, positionID int64) {
 func seedSubmission(
 	t testing.TB,
 	db *sql.DB,
-	publicationID, userID, templateShiftID int64,
+	publicationID, userID, slotID, positionID int64,
 	createdAt time.Time,
 ) *model.AvailabilitySubmission {
 	t.Helper()
-
-	var (
-		slotID     int64
-		positionID int64
-	)
-	if err := db.QueryRowContext(
-		context.Background(),
-		`
-			SELECT slot_id, position_id
-			FROM template_slot_positions
-			WHERE id = $1;
-		`,
-		templateShiftID,
-	).Scan(&slotID, &positionID); err != nil {
-		t.Fatalf("resolve submission slot-position: %v", err)
-	}
 
 	const query = `
 		INSERT INTO availability_submissions (
@@ -556,7 +548,7 @@ func seedSubmission(
 			created_at
 		)
 		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, publication_id, user_id, slot_id, position_id, created_at, $6;
+		RETURNING id, publication_id, user_id, slot_id, position_id, created_at;
 	`
 
 	submission := &model.AvailabilitySubmission{}
@@ -568,15 +560,13 @@ func seedSubmission(
 		slotID,
 		positionID,
 		createdAt,
-		templateShiftID,
 	).Scan(
 		&submission.ID,
 		&submission.PublicationID,
 		&submission.UserID,
-		&slotID,
-		&positionID,
+		&submission.SlotID,
+		&submission.PositionID,
 		&submission.CreatedAt,
-		&submission.TemplateShiftID,
 	); err != nil {
 		t.Fatalf("seed submission: %v", err)
 	}
@@ -587,26 +577,10 @@ func seedSubmission(
 func seedAssignment(
 	t testing.TB,
 	db *sql.DB,
-	publicationID, userID, templateShiftID int64,
+	publicationID, userID, slotID, positionID int64,
 	createdAt time.Time,
 ) *model.Assignment {
 	t.Helper()
-
-	var (
-		slotID     int64
-		positionID int64
-	)
-	if err := db.QueryRowContext(
-		context.Background(),
-		`
-			SELECT slot_id, position_id
-			FROM template_slot_positions
-			WHERE id = $1;
-		`,
-		templateShiftID,
-	).Scan(&slotID, &positionID); err != nil {
-		t.Fatalf("resolve assignment slot-position: %v", err)
-	}
 
 	const query = `
 		INSERT INTO assignments (

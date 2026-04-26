@@ -83,8 +83,8 @@ func TestAssignmentRepositoryIntegration(t *testing.T) {
 	t.Run("DeleteAssignment is idempotent", func(t *testing.T) {
 		db := openIntegrationDB(t)
 		repo := NewPublicationRepository(db)
-		publication, _, _, slotPositionID, user := seedAssignmentPrerequisites(t, db)
-		assignment := seedAssignment(t, db, publication.ID, user.ID, slotPositionID, testTime())
+		publication, slotID, positionID, _, user := seedAssignmentPrerequisites(t, db)
+		assignment := seedAssignment(t, db, publication.ID, user.ID, slotID, positionID, testTime())
 		occurrence := time.Date(2026, 4, 20, 0, 0, 0, 0, time.UTC)
 		if _, err := repo.InsertAssignmentOverride(ctx, InsertAssignmentOverrideParams{
 			AssignmentID:   assignment.ID,
@@ -135,10 +135,10 @@ func TestAssignmentRepositoryIntegration(t *testing.T) {
 	t.Run("ReplaceAssignments swaps the full set inside one transaction", func(t *testing.T) {
 		db := openIntegrationDB(t)
 		repo := NewPublicationRepository(db)
-		publication, slotID, positionID, slotPositionID, firstUser := seedAssignmentPrerequisites(t, db)
+		publication, slotID, positionID, _, firstUser := seedAssignmentPrerequisites(t, db)
 		secondUser := seedUser(t, db, userSeed{})
 		seedUserPosition(t, db, secondUser.ID, positionID)
-		oldAssignment := seedAssignment(t, db, publication.ID, firstUser.ID, slotPositionID, testTime())
+		oldAssignment := seedAssignment(t, db, publication.ID, firstUser.ID, slotID, positionID, testTime())
 
 		if err := repo.ReplaceAssignments(ctx, ReplaceAssignmentsParams{
 			PublicationID: publication.ID,
@@ -165,8 +165,8 @@ func TestAssignmentRepositoryIntegration(t *testing.T) {
 	t.Run("ReplaceAssignments rolls back when one inserted row is invalid", func(t *testing.T) {
 		db := openIntegrationDB(t)
 		repo := NewPublicationRepository(db)
-		publication, slotID, positionID, slotPositionID, user := seedAssignmentPrerequisites(t, db)
-		original := seedAssignment(t, db, publication.ID, user.ID, slotPositionID, testTime())
+		publication, slotID, positionID, _, user := seedAssignmentPrerequisites(t, db)
+		original := seedAssignment(t, db, publication.ID, user.ID, slotID, positionID, testTime())
 
 		err := repo.ReplaceAssignments(ctx, ReplaceAssignmentsParams{
 			PublicationID: publication.ID,
@@ -209,12 +209,12 @@ func TestAssignmentRepositoryIntegration(t *testing.T) {
 
 	t.Run("database rejects duplicate user assignment in the same slot", func(t *testing.T) {
 		db := openIntegrationDB(t)
-		publication, slotID, _, slotPositionID, user := seedAssignmentPrerequisites(t, db)
+		publication, slotID, positionID, _, user := seedAssignmentPrerequisites(t, db)
 		secondPosition := seedPosition(t, db, positionSeed{Name: "Second Assignment Position"})
 		seedUserPosition(t, db, user.ID, secondPosition.ID)
 		secondSlotPositionID := seedTemplateSlotPosition(t, db, slotID, secondPosition.ID, 1)
 
-		first := seedAssignment(t, db, publication.ID, user.ID, slotPositionID, testTime())
+		first := seedAssignment(t, db, publication.ID, user.ID, slotID, positionID, testTime())
 		if first == nil {
 			t.Fatal("expected initial assignment")
 		}
@@ -242,8 +242,8 @@ func TestAssignmentRepositoryIntegration(t *testing.T) {
 
 	t.Run("assignment cascades on publication delete", func(t *testing.T) {
 		db := openIntegrationDB(t)
-		publication, _, _, slotPositionID, user := seedAssignmentPrerequisites(t, db)
-		assignment := seedAssignment(t, db, publication.ID, user.ID, slotPositionID, testTime())
+		publication, slotID, positionID, _, user := seedAssignmentPrerequisites(t, db)
+		assignment := seedAssignment(t, db, publication.ID, user.ID, slotID, positionID, testTime())
 
 		if _, err := db.ExecContext(ctx, `DELETE FROM publications WHERE id = $1`, publication.ID); err != nil {
 			t.Fatalf("delete publication: %v", err)
@@ -255,8 +255,8 @@ func TestAssignmentRepositoryIntegration(t *testing.T) {
 
 	t.Run("assignment cascades on user delete", func(t *testing.T) {
 		db := openIntegrationDB(t)
-		publication, _, _, slotPositionID, user := seedAssignmentPrerequisites(t, db)
-		assignment := seedAssignment(t, db, publication.ID, user.ID, slotPositionID, testTime())
+		publication, slotID, positionID, _, user := seedAssignmentPrerequisites(t, db)
+		assignment := seedAssignment(t, db, publication.ID, user.ID, slotID, positionID, testTime())
 
 		if _, err := db.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, user.ID); err != nil {
 			t.Fatalf("delete user: %v", err)
@@ -268,8 +268,8 @@ func TestAssignmentRepositoryIntegration(t *testing.T) {
 
 	t.Run("assignment cascades on slot delete", func(t *testing.T) {
 		db := openIntegrationDB(t)
-		publication, slotID, _, slotPositionID, user := seedAssignmentPrerequisites(t, db)
-		assignment := seedAssignment(t, db, publication.ID, user.ID, slotPositionID, testTime())
+		publication, slotID, positionID, _, user := seedAssignmentPrerequisites(t, db)
+		assignment := seedAssignment(t, db, publication.ID, user.ID, slotID, positionID, testTime())
 
 		if _, err := db.ExecContext(ctx, `DELETE FROM template_slots WHERE id = $1`, slotID); err != nil {
 			t.Fatalf("delete slot: %v", err)
@@ -284,8 +284,8 @@ func TestListAssignmentCandidatesFiltered(t *testing.T) {
 	ctx := context.Background()
 	db := openIntegrationDB(t)
 	repo := NewPublicationRepository(db)
-	publication, _, positionID, slotPositionID, user := seedAssignmentPrerequisites(t, db)
-	seedSubmission(t, db, publication.ID, user.ID, slotPositionID, testTime())
+	publication, slotID, positionID, _, user := seedAssignmentPrerequisites(t, db)
+	seedSubmission(t, db, publication.ID, user.ID, slotID, positionID, testTime())
 
 	candidates, err := repo.ListAssignmentCandidates(ctx, publication.ID)
 	if err != nil {

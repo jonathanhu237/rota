@@ -275,7 +275,6 @@ func resetServiceIntegrationDB(ctx context.Context, db *sql.DB) error {
 		"availability_submissions",
 		"template_slot_positions",
 		"template_slots",
-		"template_shifts",
 		"user_setup_tokens",
 		"publications",
 		"user_positions",

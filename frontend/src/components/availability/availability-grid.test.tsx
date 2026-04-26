@@ -1,33 +1,27 @@
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
-import type { TemplateShift } from "@/lib/types"
+import type { QualifiedShift } from "@/lib/types"
 import { renderWithProviders } from "@/test-utils/render"
 
 import { AvailabilityGrid } from "./availability-grid"
 
-const shifts: TemplateShift[] = [
+const shifts: QualifiedShift[] = [
   {
-    id: 1,
-    template_id: 3,
+    slot_id: 21,
+    position_id: 101,
     weekday: 1,
     start_time: "09:00",
     end_time: "11:00",
-    position_id: 101,
     required_headcount: 2,
-    created_at: "2026-04-01T00:00:00Z",
-    updated_at: "2026-04-01T00:00:00Z",
   },
   {
-    id: 2,
-    template_id: 3,
+    slot_id: 22,
+    position_id: 102,
     weekday: 2,
     start_time: "12:00",
     end_time: "14:00",
-    position_id: 102,
     required_headcount: 1,
-    created_at: "2026-04-01T00:00:00Z",
-    updated_at: "2026-04-01T00:00:00Z",
   },
 ]
 
@@ -40,7 +34,7 @@ describe("AvailabilityGrid", () => {
       <AvailabilityGrid
         isPending={false}
         onToggle={onToggle}
-        selectedShiftIDs={[2]}
+        selectedSlotPositions={[{ slot_id: 22, position_id: 102 }]}
         shifts={shifts}
       />,
     )
@@ -53,8 +47,8 @@ describe("AvailabilityGrid", () => {
     await user.click(getAllByRole("checkbox")[0])
     await user.click(getAllByRole("checkbox")[1])
 
-    expect(onToggle).toHaveBeenNthCalledWith(1, 1, true)
-    expect(onToggle).toHaveBeenNthCalledWith(2, 2, false)
+    expect(onToggle).toHaveBeenNthCalledWith(1, 21, 101, true)
+    expect(onToggle).toHaveBeenNthCalledWith(2, 22, 102, false)
   })
 
   it("disables checkboxes while pending", () => {
@@ -62,7 +56,7 @@ describe("AvailabilityGrid", () => {
       <AvailabilityGrid
         isPending
         onToggle={vi.fn()}
-        selectedShiftIDs={[]}
+        selectedSlotPositions={[]}
         shifts={shifts}
       />,
     )

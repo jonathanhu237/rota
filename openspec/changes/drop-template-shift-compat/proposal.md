@@ -22,12 +22,11 @@ The cleanup is pure refactoring: no user-visible behavior change, no schema migr
   - `service.publicationService.ListQualifiedPublicationShifts` (and any related signatures) are renamed to use `SlotPosition` language consistently.
 - **Backend response shape:** the JSON returned by `GET /publications/{id}/shifts/me` no longer includes the legacy single `id` (which mapped to `template_slot_positions.id`); instead it surfaces `slot_id` + `position_id` as the identifying pair. The Go response type is renamed from `templateShiftResponse` to `qualifiedShiftResponse`.
 - **Backend tests:** every test that constructed `TemplateShiftID` or referenced `model.TemplateShift` is updated to the new shape. Tests are exhaustive enough that compilation failure points to all required edits.
-- **Frontend code rename:**
+- **Frontend code rename / cleanup:**
   - `TemplateShift` type in `lib/types.ts` → `QualifiedShift`.
-  - `TemplateShiftDialog` component → `SlotPositionDialog` (or equivalent slot-positioned name; see design).
-  - `delete-template-shift-dialog.tsx` → renamed.
-  - `groupTemplateShiftsByWeekday` helper → renamed.
-  - `TemplateShiftFormValues` schema type → renamed.
+  - `TemplateShiftDialog` and `delete-template-shift-dialog.tsx` are **deleted**, not renamed — both are dead code superseded by the existing `template-slot-dialog.tsx` and `template-slot-position-dialog.tsx` (from the earlier slot-position refactor). No route mounts the `TemplateShift*` versions today.
+  - `groupTemplateShiftsByWeekday` helper → renamed to `groupQualifiedShiftsByWeekday`.
+  - `TemplateShiftFormValues` schema type → renamed to `SlotPositionFormValues`.
   - All call sites and tests follow.
 - **Spec text:** requirements that mention "template_shift" in scenario WHEN/THEN clauses (e.g., *Qualification gates employee actions*, *Employee availability endpoints*) are reworded to refer to `(slot, position)` pairs instead.
 - **API path `/publications/{id}/shifts/me` is kept.** "Shift" remains the user-facing word for "a row a user can sign up for"; only the wire shape and internal types change.

@@ -168,7 +168,7 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 			PlannedActiveFrom: testTime().Add(3 * time.Hour),
 			CreatedAt:         testTime(),
 		})
-		assignment := seedAssignment(t, db, publication.ID, requester.ID, shift.ID, testTime())
+		assignment := seedAssignment(t, db, publication.ID, requester.ID, shift.SlotID, shift.PositionID, testTime())
 		regular := seedShiftChangeRequest(
 			t,
 			db,
@@ -289,7 +289,8 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		first, err := repo.UpsertSubmission(ctx, UpsertAvailabilitySubmissionParams{
 			PublicationID:    publication.ID,
 			UserID:           user.ID,
-			TemplateShiftID:  shift.ID,
+			SlotID:           shift.SlotID,
+			PositionID:       shift.PositionID,
 			PublicationState: &newState,
 			Now:              testTime(),
 		})
@@ -298,10 +299,11 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		}
 
 		second, err := repo.UpsertSubmission(ctx, UpsertAvailabilitySubmissionParams{
-			PublicationID:   publication.ID,
-			UserID:          user.ID,
-			TemplateShiftID: shift.ID,
-			Now:             testTime().Add(5 * time.Minute),
+			PublicationID: publication.ID,
+			UserID:        user.ID,
+			SlotID:        shift.SlotID,
+			PositionID:    shift.PositionID,
+			Now:           testTime().Add(5 * time.Minute),
 		})
 		if err != nil {
 			t.Fatalf("second upsert submission: %v", err)
@@ -319,13 +321,13 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		}
 	})
 
-	t.Run("ListAssignmentCandidates and ListQualifiedShifts join related data correctly", func(t *testing.T) {
+	t.Run("ListAssignmentCandidates and ListQualifiedPublicationSlotPositions join related data correctly", func(t *testing.T) {
 		db := openIntegrationDB(t)
 		repo := NewPublicationRepository(db)
 		template := seedTemplate(t, db, templateSeed{})
 		matchingPosition := seedPosition(t, db, positionSeed{Name: "Front Desk"})
 		otherPosition := seedPosition(t, db, positionSeed{Name: "Kitchen"})
-		firstShift := seedTemplateShift(t, db, templateShiftSeed{
+		firstShift := seedQualifiedShift(t, db, qualifiedShiftSeed{
 			TemplateID:        template.ID,
 			Weekday:           1,
 			StartTime:         "09:00",
@@ -333,7 +335,7 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 			PositionID:        matchingPosition.ID,
 			RequiredHeadcount: 2,
 		})
-		secondShift := seedTemplateShift(t, db, templateShiftSeed{
+		secondShift := seedQualifiedShift(t, db, qualifiedShiftSeed{
 			TemplateID:        template.ID,
 			Weekday:           2,
 			StartTime:         "13:00",
@@ -353,10 +355,10 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		secondUser := seedUser(t, db, userSeed{Name: "Bob", Email: "bob@example.com"})
 		seedUserPosition(t, db, firstUser.ID, matchingPosition.ID)
 		seedUserPosition(t, db, secondUser.ID, otherPosition.ID)
-		seedSubmission(t, db, publication.ID, firstUser.ID, firstShift.ID, testTime())
-		seedSubmission(t, db, publication.ID, secondUser.ID, secondShift.ID, testTime().Add(1*time.Minute))
-		firstSlotID := slotIDForEntry(t, db, firstShift.ID)
-		secondSlotID := slotIDForEntry(t, db, secondShift.ID)
+		seedSubmission(t, db, publication.ID, firstUser.ID, firstShift.SlotID, firstShift.PositionID, testTime())
+		seedSubmission(t, db, publication.ID, secondUser.ID, secondShift.SlotID, secondShift.PositionID, testTime().Add(1*time.Minute))
+		firstSlotID := firstShift.SlotID
+		secondSlotID := secondShift.SlotID
 
 		candidates, err := repo.ListAssignmentCandidates(ctx, publication.ID)
 		if err != nil {
@@ -372,15 +374,15 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 			t.Fatalf("unexpected second candidate: %+v", candidates[1])
 		}
 
-		qualified, err := repo.ListQualifiedShifts(ctx, publication.ID, firstUser.ID)
+		qualified, err := repo.ListQualifiedPublicationSlotPositions(ctx, publication.ID, firstUser.ID)
 		if err != nil {
 			t.Fatalf("list qualified shifts: %v", err)
 		}
 		if len(qualified) != 1 {
 			t.Fatalf("expected 1 qualified shift, got %d", len(qualified))
 		}
-		if qualified[0].ID != firstShift.ID {
-			t.Fatalf("expected qualified shift ID %d, got %d", firstShift.ID, qualified[0].ID)
+		if qualified[0].SlotID != firstShift.SlotID || qualified[0].PositionID != firstShift.PositionID {
+			t.Fatalf("expected qualified slot-position %d/%d, got %+v", firstShift.SlotID, firstShift.PositionID, qualified[0])
 		}
 		if qualified[0].StartTime != "09:00" || qualified[0].EndTime != "12:00" {
 			t.Fatalf("expected time formatting 09:00-12:00, got %s-%s", qualified[0].StartTime, qualified[0].EndTime)
@@ -395,7 +397,7 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		secondPosition := seedPosition(t, db, positionSeed{Name: "Cashier"})
 		firstSlotID := seedTemplateSlot(t, db, template.ID, 1, "09:00", "12:00")
 		secondSlotID := seedTemplateSlot(t, db, template.ID, 2, "13:00", "16:00")
-		firstEntryID := seedTemplateSlotPosition(t, db, firstSlotID, firstPosition.ID, 2)
+		seedTemplateSlotPosition(t, db, firstSlotID, firstPosition.ID, 2)
 		seedTemplateSlotPosition(t, db, secondSlotID, secondPosition.ID, 1)
 		publication := seedPublication(t, db, publicationSeed{
 			TemplateID:        template.ID,
@@ -423,9 +425,9 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 			seedUserPosition(t, db, userID, firstPosition.ID)
 		}
 
-		seedSubmission(t, db, publication.ID, firstCandidate.ID, firstEntryID, testTime())
-		seedSubmission(t, db, publication.ID, secondCandidate.ID, firstEntryID, testTime().Add(1*time.Minute))
-		seedAssignment(t, db, publication.ID, secondCandidate.ID, firstEntryID, testTime().Add(2*time.Minute))
+		seedSubmission(t, db, publication.ID, firstCandidate.ID, firstSlotID, firstPosition.ID, testTime())
+		seedSubmission(t, db, publication.ID, secondCandidate.ID, firstSlotID, firstPosition.ID, testTime().Add(1*time.Minute))
+		seedAssignment(t, db, publication.ID, secondCandidate.ID, firstSlotID, firstPosition.ID, testTime().Add(2*time.Minute))
 
 		board, err := repo.GetAssignmentBoardView(ctx, publication.ID)
 		if err != nil {
@@ -527,12 +529,12 @@ func slotIDForEntry(t testing.TB, db *sql.DB, entryID int64) int64 {
 func seedPublicationPrerequisites(
 	t testing.TB,
 	db *sql.DB,
-) (*model.Template, *model.TemplateShift, *model.Position) {
+) (*model.Template, *seededSlotPosition, *model.Position) {
 	t.Helper()
 
 	position := seedPosition(t, db, positionSeed{})
 	template := seedTemplate(t, db, templateSeed{})
-	shift := seedTemplateShift(t, db, templateShiftSeed{
+	shift := seedQualifiedShift(t, db, qualifiedShiftSeed{
 		TemplateID:        template.ID,
 		PositionID:        position.ID,
 		RequiredHeadcount: 2,

@@ -50,11 +50,17 @@ type Publication struct {
 }
 
 type AvailabilitySubmission struct {
-	ID              int64
-	PublicationID   int64
-	UserID          int64
-	TemplateShiftID int64
-	CreatedAt       time.Time
+	ID            int64
+	PublicationID int64
+	UserID        int64
+	SlotID        int64
+	PositionID    int64
+	CreatedAt     time.Time
+}
+
+type SlotPositionRef struct {
+	SlotID     int64
+	PositionID int64
 }
 
 func ResolvePublicationState(publication *Publication, now time.Time) PublicationState {

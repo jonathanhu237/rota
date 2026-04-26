@@ -158,7 +158,7 @@ func TestShiftChangeRepositoryClaimRace(t *testing.T) {
 	admin := seedUser(t, db, userSeed{IsAdmin: true})
 	position := seedPosition(t, db, positionSeed{})
 	template := seedTemplate(t, db, templateSeed{})
-	shift := seedTemplateShift(t, db, templateShiftSeed{
+	shift := seedQualifiedShift(t, db, qualifiedShiftSeed{
 		TemplateID: template.ID,
 		PositionID: position.ID,
 	})
@@ -175,7 +175,7 @@ func TestShiftChangeRepositoryClaimRace(t *testing.T) {
 	seedUserPosition(t, db, claimerB.ID, position.ID)
 	seedUserPosition(t, db, claimerC.ID, position.ID)
 
-	assignment := seedAssignment(t, db, publication.ID, requester.ID, shift.ID, testTime())
+	assignment := seedAssignment(t, db, publication.ID, requester.ID, shift.SlotID, shift.PositionID, testTime())
 
 	request := seedShiftChangeRequest(
 		t,
@@ -272,14 +272,14 @@ func TestShiftChangeRepositoryCreateAndLoad(t *testing.T) {
 
 	position := seedPosition(t, db, positionSeed{})
 	template := seedTemplate(t, db, templateSeed{})
-	shiftA := seedTemplateShift(t, db, templateShiftSeed{
+	shiftA := seedQualifiedShift(t, db, qualifiedShiftSeed{
 		TemplateID: template.ID,
 		PositionID: position.ID,
 		Weekday:    1,
 		StartTime:  "09:00",
 		EndTime:    "12:00",
 	})
-	shiftB := seedTemplateShift(t, db, templateShiftSeed{
+	shiftB := seedQualifiedShift(t, db, qualifiedShiftSeed{
 		TemplateID: template.ID,
 		PositionID: position.ID,
 		Weekday:    2,
@@ -295,8 +295,8 @@ func TestShiftChangeRepositoryCreateAndLoad(t *testing.T) {
 	requester := seedUser(t, db, userSeed{})
 	counterpart := seedUser(t, db, userSeed{})
 
-	requesterAssignment := seedAssignment(t, db, publication.ID, requester.ID, shiftA.ID, testTime())
-	counterpartAssignment := seedAssignment(t, db, publication.ID, counterpart.ID, shiftB.ID, testTime())
+	requesterAssignment := seedAssignment(t, db, publication.ID, requester.ID, shiftA.SlotID, shiftA.PositionID, testTime())
+	counterpartAssignment := seedAssignment(t, db, publication.ID, counterpart.ID, shiftB.SlotID, shiftB.PositionID, testTime())
 
 	base := testTime()
 	expires := base.Add(24 * time.Hour)
@@ -428,14 +428,14 @@ func TestShiftChangeRepositoryApplySwap(t *testing.T) {
 	admin := seedUser(t, db, userSeed{IsAdmin: true})
 	position := seedPosition(t, db, positionSeed{})
 	template := seedTemplate(t, db, templateSeed{})
-	shiftA := seedTemplateShift(t, db, templateShiftSeed{
+	shiftA := seedQualifiedShift(t, db, qualifiedShiftSeed{
 		TemplateID: template.ID,
 		PositionID: position.ID,
 		Weekday:    1,
 		StartTime:  "09:00",
 		EndTime:    "12:00",
 	})
-	shiftB := seedTemplateShift(t, db, templateShiftSeed{
+	shiftB := seedQualifiedShift(t, db, qualifiedShiftSeed{
 		TemplateID: template.ID,
 		PositionID: position.ID,
 		Weekday:    2,
@@ -451,8 +451,8 @@ func TestShiftChangeRepositoryApplySwap(t *testing.T) {
 	userX := seedUser(t, db, userSeed{})
 	userY := seedUser(t, db, userSeed{})
 
-	assignmentX := seedAssignment(t, db, publication.ID, userX.ID, shiftA.ID, testTime())
-	assignmentY := seedAssignment(t, db, publication.ID, userY.ID, shiftB.ID, testTime())
+	assignmentX := seedAssignment(t, db, publication.ID, userX.ID, shiftA.SlotID, shiftA.PositionID, testTime())
+	assignmentY := seedAssignment(t, db, publication.ID, userY.ID, shiftB.SlotID, shiftB.PositionID, testTime())
 
 	request := seedShiftChangeRequest(
 		t,
@@ -519,14 +519,14 @@ func TestShiftChangeRepositoryApplySwapInvalidated(t *testing.T) {
 	admin := seedUser(t, db, userSeed{IsAdmin: true})
 	position := seedPosition(t, db, positionSeed{})
 	template := seedTemplate(t, db, templateSeed{})
-	shiftA := seedTemplateShift(t, db, templateShiftSeed{
+	shiftA := seedQualifiedShift(t, db, qualifiedShiftSeed{
 		TemplateID: template.ID,
 		PositionID: position.ID,
 		Weekday:    1,
 		StartTime:  "09:00",
 		EndTime:    "12:00",
 	})
-	shiftB := seedTemplateShift(t, db, templateShiftSeed{
+	shiftB := seedQualifiedShift(t, db, qualifiedShiftSeed{
 		TemplateID: template.ID,
 		PositionID: position.ID,
 		Weekday:    2,
@@ -543,8 +543,8 @@ func TestShiftChangeRepositoryApplySwapInvalidated(t *testing.T) {
 	userY := seedUser(t, db, userSeed{})
 	intruder := seedUser(t, db, userSeed{})
 
-	assignmentX := seedAssignment(t, db, publication.ID, userX.ID, shiftA.ID, testTime())
-	assignmentY := seedAssignment(t, db, publication.ID, userY.ID, shiftB.ID, testTime())
+	assignmentX := seedAssignment(t, db, publication.ID, userX.ID, shiftA.SlotID, shiftA.PositionID, testTime())
+	assignmentY := seedAssignment(t, db, publication.ID, userY.ID, shiftB.SlotID, shiftB.PositionID, testTime())
 
 	request := seedShiftChangeRequest(
 		t,
@@ -605,7 +605,7 @@ func TestShiftChangeRepositoryMarkExpiredAndInvalidated(t *testing.T) {
 
 	position := seedPosition(t, db, positionSeed{})
 	template := seedTemplate(t, db, templateSeed{})
-	shift := seedTemplateShift(t, db, templateShiftSeed{
+	shift := seedQualifiedShift(t, db, qualifiedShiftSeed{
 		TemplateID: template.ID,
 		PositionID: position.ID,
 	})
@@ -615,7 +615,7 @@ func TestShiftChangeRepositoryMarkExpiredAndInvalidated(t *testing.T) {
 		CreatedAt:  testTime(),
 	})
 	requester := seedUser(t, db, userSeed{})
-	assignment := seedAssignment(t, db, publication.ID, requester.ID, shift.ID, testTime())
+	assignment := seedAssignment(t, db, publication.ID, requester.ID, shift.SlotID, shift.PositionID, testTime())
 
 	expireReq := seedShiftChangeRequest(
 		t,
@@ -667,12 +667,12 @@ func TestShiftChangeRepositoryInvalidateRequestsForAssignment(t *testing.T) {
 
 	position := seedPosition(t, db, positionSeed{})
 	template := seedTemplate(t, db, templateSeed{})
-	shiftA := seedTemplateShift(t, db, templateShiftSeed{
+	shiftA := seedQualifiedShift(t, db, qualifiedShiftSeed{
 		TemplateID: template.ID,
 		PositionID: position.ID,
 		Weekday:    1,
 	})
-	shiftB := seedTemplateShift(t, db, templateShiftSeed{
+	shiftB := seedQualifiedShift(t, db, qualifiedShiftSeed{
 		TemplateID: template.ID,
 		PositionID: position.ID,
 		Weekday:    2,
@@ -689,9 +689,9 @@ func TestShiftChangeRepositoryInvalidateRequestsForAssignment(t *testing.T) {
 	counterpart := seedUser(t, db, userSeed{})
 	otherUser := seedUser(t, db, userSeed{})
 
-	requesterAssignment := seedAssignment(t, db, publication.ID, requester.ID, shiftA.ID, testTime())
-	counterpartAssignment := seedAssignment(t, db, publication.ID, counterpart.ID, shiftB.ID, testTime())
-	otherAssignment := seedAssignment(t, db, publication.ID, otherUser.ID, shiftA.ID, testTime().Add(time.Minute))
+	requesterAssignment := seedAssignment(t, db, publication.ID, requester.ID, shiftA.SlotID, shiftA.PositionID, testTime())
+	counterpartAssignment := seedAssignment(t, db, publication.ID, counterpart.ID, shiftB.SlotID, shiftB.PositionID, testTime())
+	otherAssignment := seedAssignment(t, db, publication.ID, otherUser.ID, shiftA.SlotID, shiftA.PositionID, testTime().Add(time.Minute))
 
 	counterpartUserID := counterpart.ID
 	counterpartAssignmentID := counterpartAssignment.ID

@@ -73,7 +73,7 @@ func TestPositionRepositoryIntegration(t *testing.T) {
 
 		position := seedPosition(t, db, positionSeed{})
 		template := seedTemplate(t, db, templateSeed{})
-		seedTemplateShift(t, db, templateShiftSeed{
+		seedQualifiedShift(t, db, qualifiedShiftSeed{
 			TemplateID:        template.ID,
 			PositionID:        position.ID,
 			RequiredHeadcount: 2,

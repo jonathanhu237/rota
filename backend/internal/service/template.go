@@ -27,7 +27,6 @@ var (
 	ErrTemplateLocked               = model.ErrTemplateLocked
 	ErrTemplateNotFound             = model.ErrTemplateNotFound
 	ErrTemplateSlotOverlap          = model.ErrTemplateSlotOverlap
-	ErrTemplateShiftNotFound        = model.ErrTemplateShiftNotFound
 	ErrTemplateSlotNotFound         = model.ErrTemplateSlotNotFound
 	ErrTemplateSlotPositionNotFound = model.ErrTemplateSlotPositionNotFound
 )
@@ -387,8 +386,8 @@ func (s *TemplateService) CreateTemplateSlotPosition(
 
 	targetID := slotPosition.ID
 	audit.Record(ctx, audit.Event{
-		Action:     audit.ActionTemplateShiftCreate,
-		TargetType: audit.TargetTypeTemplateShift,
+		Action:     audit.ActionSlotPositionCreate,
+		TargetType: audit.TargetTypeSlotPosition,
 		TargetID:   &targetID,
 		Metadata: map[string]any{
 			"template_id":        input.TemplateID,
@@ -462,8 +461,8 @@ func (s *TemplateService) UpdateTemplateSlotPosition(
 
 	targetID := slotPosition.ID
 	audit.Record(ctx, audit.Event{
-		Action:     audit.ActionTemplateShiftUpdate,
-		TargetType: audit.TargetTypeTemplateShift,
+		Action:     audit.ActionSlotPositionUpdate,
+		TargetType: audit.TargetTypeSlotPosition,
 		TargetID:   &targetID,
 		Metadata:   changes,
 	})
@@ -485,8 +484,8 @@ func (s *TemplateService) DeleteTemplateSlotPosition(
 
 	targetID := slotPositionID
 	audit.Record(ctx, audit.Event{
-		Action:     audit.ActionTemplateShiftDelete,
-		TargetType: audit.TargetTypeTemplateShift,
+		Action:     audit.ActionSlotPositionDelete,
+		TargetType: audit.TargetTypeSlotPosition,
 		TargetID:   &targetID,
 		Metadata: map[string]any{
 			"template_id": templateID,
@@ -600,8 +599,6 @@ func mapTemplateRepositoryError(err error) error {
 		return ErrTemplateSlotNotFound
 	case errors.Is(err, repository.ErrTemplateSlotPositionNotFound):
 		return ErrTemplateSlotPositionNotFound
-	case errors.Is(err, repository.ErrTemplateShiftNotFound):
-		return ErrTemplateShiftNotFound
 	default:
 		return err
 	}

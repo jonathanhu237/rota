@@ -11,13 +11,14 @@ import type {
   Position,
   Publication,
   PublicationMember,
+  QualifiedShift,
   ShiftChangeRequest,
   ShiftChangeType,
+  SlotPositionRef,
   Template,
   TemplateDetail,
   TemplateSlot,
   TemplateSlotPosition,
-  TemplateShift,
   Roster,
   SetupTokenPreview,
   User,
@@ -61,10 +62,6 @@ export type TemplateResponse = {
   template: TemplateDetail
 }
 
-export type TemplateShiftResponse = {
-  shift: TemplateShift
-}
-
 export type TemplateSlotResponse = {
   slot: TemplateSlot
 }
@@ -83,11 +80,11 @@ export type PublicationResponse = {
 }
 
 export type PublicationShiftsResponse = {
-  shifts: TemplateShift[]
+  shifts: QualifiedShift[]
 }
 
 export type MyPublicationSubmissionsResponse = {
-  shift_ids: number[]
+  submissions: SlotPositionRef[]
 }
 
 export type AssignmentBoardResponse = AssignmentBoard
@@ -140,16 +137,6 @@ export type UpdateTemplateInput = {
   name: string
   description: string
 }
-
-export type CreateTemplateShiftInput = {
-  weekday: number
-  start_time: string
-  end_time: string
-  position_id: number
-  required_headcount: number
-}
-
-export type UpdateTemplateShiftInput = CreateTemplateShiftInput
 
 export type CreateTemplateSlotInput = {
   weekday: number
@@ -404,7 +391,7 @@ export const myPublicationSubmissionsQueryOptions = (publicationID: number) =>
       const res = await api.get<MyPublicationSubmissionsResponse>(
         `/publications/${publicationID}/submissions/me`,
       )
-      return res.data.shift_ids
+      return res.data.submissions
     },
     enabled: publicationID > 0,
   })
@@ -562,33 +549,6 @@ export async function deleteTemplateSlotPosition(
   )
 }
 
-export async function createTemplateShift(
-  templateID: number,
-  input: CreateTemplateShiftInput,
-) {
-  const res = await api.post<TemplateShiftResponse>(
-    `/templates/${templateID}/shifts`,
-    input,
-  )
-  return res.data.shift
-}
-
-export async function updateTemplateShift(
-  templateID: number,
-  shiftID: number,
-  input: UpdateTemplateShiftInput,
-) {
-  const res = await api.patch<TemplateShiftResponse>(
-    `/templates/${templateID}/shifts/${shiftID}`,
-    input,
-  )
-  return res.data.shift
-}
-
-export async function deleteTemplateShift(templateID: number, shiftID: number) {
-  await api.delete(`/templates/${templateID}/shifts/${shiftID}`)
-}
-
 export async function createPublication(input: CreatePublicationInput) {
   const res = await api.post<PublicationResponse>("/publications", {
     ...input,
@@ -654,18 +614,23 @@ export async function deleteAssignment(
 
 export async function createAvailabilitySubmission(
   publicationID: number,
-  shiftID: number,
+  slotID: number,
+  positionID: number,
 ) {
   await api.post(`/publications/${publicationID}/submissions`, {
-    template_shift_id: shiftID,
+    slot_id: slotID,
+    position_id: positionID,
   })
 }
 
 export async function deleteAvailabilitySubmission(
   publicationID: number,
-  shiftID: number,
+  slotID: number,
+  positionID: number,
 ) {
-  await api.delete(`/publications/${publicationID}/submissions/${shiftID}`)
+  await api.delete(
+    `/publications/${publicationID}/submissions/${slotID}/${positionID}`,
+  )
 }
 
 export type ShiftChangeRequestResponse = {

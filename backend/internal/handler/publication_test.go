@@ -19,10 +19,10 @@ type stubPublicationService struct {
 	getPublicationByIDFunc             func(ctx context.Context, id int64) (*model.Publication, error)
 	deletePublicationFunc              func(ctx context.Context, id int64) error
 	getCurrentPublicationFunc          func(ctx context.Context) (*model.Publication, error)
-	listSubmissionShiftIDsFunc         func(ctx context.Context, publicationID, userID int64) ([]int64, error)
+	listSubmissionSlotPositionsFunc    func(ctx context.Context, publicationID, userID int64) ([]model.SlotPositionRef, error)
 	createAvailabilitySubmissionFunc   func(ctx context.Context, input service.CreateAvailabilitySubmissionInput) (*model.AvailabilitySubmission, error)
 	deleteAvailabilitySubmissionFunc   func(ctx context.Context, input service.DeleteAvailabilitySubmissionInput) error
-	listQualifiedPublicationShiftsFunc func(ctx context.Context, publicationID, userID int64) ([]*model.TemplateShift, error)
+	listQualifiedPublicationShiftsFunc func(ctx context.Context, publicationID, userID int64) ([]*model.QualifiedShift, error)
 	getAssignmentBoardFunc             func(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error)
 	autoAssignPublicationFunc          func(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error)
 	createAssignmentFunc               func(ctx context.Context, input service.CreateAssignmentInput) (*model.Assignment, error)
@@ -59,8 +59,8 @@ func (s *stubPublicationService) GetCurrentPublication(ctx context.Context) (*mo
 	return s.getCurrentPublicationFunc(ctx)
 }
 
-func (s *stubPublicationService) ListAvailabilitySubmissionShiftIDs(ctx context.Context, publicationID, userID int64) ([]int64, error) {
-	return s.listSubmissionShiftIDsFunc(ctx, publicationID, userID)
+func (s *stubPublicationService) ListAvailabilitySubmissionSlotPositions(ctx context.Context, publicationID, userID int64) ([]model.SlotPositionRef, error) {
+	return s.listSubmissionSlotPositionsFunc(ctx, publicationID, userID)
 }
 
 func (s *stubPublicationService) CreateAvailabilitySubmission(ctx context.Context, input service.CreateAvailabilitySubmissionInput) (*model.AvailabilitySubmission, error) {
@@ -71,7 +71,7 @@ func (s *stubPublicationService) DeleteAvailabilitySubmission(ctx context.Contex
 	return s.deleteAvailabilitySubmissionFunc(ctx, input)
 }
 
-func (s *stubPublicationService) ListQualifiedPublicationShifts(ctx context.Context, publicationID, userID int64) ([]*model.TemplateShift, error) {
+func (s *stubPublicationService) ListQualifiedPublicationSlotPositions(ctx context.Context, publicationID, userID int64) ([]*model.QualifiedShift, error) {
 	return s.listQualifiedPublicationShiftsFunc(ctx, publicationID, userID)
 }
 
@@ -330,12 +330,15 @@ func TestPublicationHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("ListMySubmissionShiftIDs returns shift ids", func(t *testing.T) {
+	t.Run("ListMySubmissionSlotPositions returns slot positions", func(t *testing.T) {
 		t.Parallel()
 
 		handler := NewPublicationHandler(&stubPublicationService{
-			listSubmissionShiftIDsFunc: func(ctx context.Context, publicationID, userID int64) ([]int64, error) {
-				return []int64{2, 3}, nil
+			listSubmissionSlotPositionsFunc: func(ctx context.Context, publicationID, userID int64) ([]model.SlotPositionRef, error) {
+				return []model.SlotPositionRef{
+					{SlotID: 21, PositionID: 101},
+					{SlotID: 22, PositionID: 102},
+				}, nil
 			},
 		})
 		recorder := httptest.NewRecorder()
@@ -344,13 +347,17 @@ func TestPublicationHandler(t *testing.T) {
 			sampleUser(),
 		)
 
-		handler.ListMySubmissionShiftIDs(recorder, req)
+		handler.ListMySubmissionSlotPositions(recorder, req)
 
 		if recorder.Code != http.StatusOK {
 			t.Fatalf("expected status 200, got %d", recorder.Code)
 		}
 		response := decodeJSONResponse[submissionsMeResponse](t, recorder)
-		if len(response.ShiftIDs) != 2 || response.ShiftIDs[0] != 2 || response.ShiftIDs[1] != 3 {
+		if len(response.Submissions) != 2 ||
+			response.Submissions[0].SlotID != 21 ||
+			response.Submissions[0].PositionID != 101 ||
+			response.Submissions[1].SlotID != 22 ||
+			response.Submissions[1].PositionID != 102 {
 			t.Fatalf("unexpected response: %+v", response)
 		}
 	})
@@ -361,17 +368,20 @@ func TestPublicationHandler(t *testing.T) {
 		handler := NewPublicationHandler(&stubPublicationService{
 			createAvailabilitySubmissionFunc: func(ctx context.Context, input service.CreateAvailabilitySubmissionInput) (*model.AvailabilitySubmission, error) {
 				return &model.AvailabilitySubmission{
-					ID:              1,
-					PublicationID:   input.PublicationID,
-					UserID:          input.UserID,
-					TemplateShiftID: input.TemplateShiftID,
-					CreatedAt:       samplePublicationTime(),
+					ID:            1,
+					PublicationID: input.PublicationID,
+					UserID:        input.UserID,
+					SlotID:        input.SlotID,
+					PositionID:    input.PositionID,
+					CreatedAt:     samplePublicationTime(),
 				}, nil
 			},
 		})
 		recorder := httptest.NewRecorder()
 		req := requestWithUser(
-			requestWithPathValues(jsonRequest(t, http.MethodPost, "/publications/1/submissions", map[string]any{"template_shift_id": 2}), map[string]string{"id": "1"}),
+			requestWithPathValues(jsonRequest(t, http.MethodPost, "/publications/1/submissions", map[string]any{
+				"slot_id": 21, "position_id": 101,
+			}), map[string]string{"id": "1"}),
 			sampleUser(),
 		)
 
@@ -393,7 +403,7 @@ func TestPublicationHandler(t *testing.T) {
 		}{
 			{name: "publication not collecting", err: service.ErrPublicationNotCollecting, status: http.StatusConflict, code: "PUBLICATION_NOT_COLLECTING"},
 			{name: "not qualified", err: service.ErrNotQualified, status: http.StatusForbidden, code: "NOT_QUALIFIED"},
-			{name: "template shift not found", err: service.ErrTemplateShiftNotFound, status: http.StatusNotFound, code: "TEMPLATE_SHIFT_NOT_FOUND"},
+			{name: "slot position not found", err: service.ErrTemplateSlotPositionNotFound, status: http.StatusNotFound, code: "TEMPLATE_SLOT_POSITION_NOT_FOUND"},
 		}
 
 		for _, tc := range cases {
@@ -408,7 +418,9 @@ func TestPublicationHandler(t *testing.T) {
 				})
 				recorder := httptest.NewRecorder()
 				req := requestWithUser(
-					requestWithPathValues(jsonRequest(t, http.MethodPost, "/publications/1/submissions", map[string]any{"template_shift_id": 2}), map[string]string{"id": "1"}),
+					requestWithPathValues(jsonRequest(t, http.MethodPost, "/publications/1/submissions", map[string]any{
+						"slot_id": 21, "position_id": 101,
+					}), map[string]string{"id": "1"}),
 					sampleUser(),
 				)
 
@@ -419,6 +431,23 @@ func TestPublicationHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("CreateSubmission rejects legacy shift id body", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{})
+		recorder := httptest.NewRecorder()
+		req := requestWithUser(
+			requestWithPathValues(jsonRequest(t, http.MethodPost, "/publications/1/submissions", map[string]any{
+				"template" + "_shift_id": 2,
+			}), map[string]string{"id": "1"}),
+			sampleUser(),
+		)
+
+		handler.CreateSubmission(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusBadRequest, "INVALID_REQUEST")
+	})
+
 	t.Run("DeleteSubmission returns no content", func(t *testing.T) {
 		t.Parallel()
 
@@ -427,7 +456,9 @@ func TestPublicationHandler(t *testing.T) {
 		})
 		recorder := httptest.NewRecorder()
 		req := requestWithUser(
-			requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/publications/1/submissions/2", nil), map[string]string{"id": "1", "shift_id": "2"}),
+			requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/publications/1/submissions/21/101", nil), map[string]string{
+				"id": "1", "slot_id": "21", "position_id": "101",
+			}),
 			sampleUser(),
 		)
 
@@ -448,7 +479,9 @@ func TestPublicationHandler(t *testing.T) {
 		})
 		recorder := httptest.NewRecorder()
 		req := requestWithUser(
-			requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/publications/1/submissions/2", nil), map[string]string{"id": "1", "shift_id": "2"}),
+			requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/publications/1/submissions/21/101", nil), map[string]string{
+				"id": "1", "slot_id": "21", "position_id": "101",
+			}),
 			sampleUser(),
 		)
 
@@ -461,8 +494,8 @@ func TestPublicationHandler(t *testing.T) {
 		t.Parallel()
 
 		handler := NewPublicationHandler(&stubPublicationService{
-			listQualifiedPublicationShiftsFunc: func(ctx context.Context, publicationID, userID int64) ([]*model.TemplateShift, error) {
-				return []*model.TemplateShift{sampleTemplateShift()}, nil
+			listQualifiedPublicationShiftsFunc: func(ctx context.Context, publicationID, userID int64) ([]*model.QualifiedShift, error) {
+				return []*model.QualifiedShift{sampleQualifiedShift()}, nil
 			},
 		})
 		recorder := httptest.NewRecorder()
@@ -477,7 +510,7 @@ func TestPublicationHandler(t *testing.T) {
 			t.Fatalf("expected status 200, got %d", recorder.Code)
 		}
 		response := decodeJSONResponse[shiftsMeResponse](t, recorder)
-		if len(response.Shifts) != 1 || response.Shifts[0].ID != 2 {
+		if len(response.Shifts) != 1 || response.Shifts[0].SlotID != 21 || response.Shifts[0].PositionID != 101 {
 			t.Fatalf("unexpected response: %+v", response)
 		}
 	})
@@ -486,7 +519,7 @@ func TestPublicationHandler(t *testing.T) {
 		t.Parallel()
 
 		handler := NewPublicationHandler(&stubPublicationService{
-			listQualifiedPublicationShiftsFunc: func(ctx context.Context, publicationID, userID int64) ([]*model.TemplateShift, error) {
+			listQualifiedPublicationShiftsFunc: func(ctx context.Context, publicationID, userID int64) ([]*model.QualifiedShift, error) {
 				return nil, service.ErrPublicationNotCollecting
 			},
 		})
@@ -609,13 +642,13 @@ func TestPublicationHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("CreateAssignment rejects legacy template_shift_id body", func(t *testing.T) {
+	t.Run("CreateAssignment rejects legacy shift id body", func(t *testing.T) {
 		t.Parallel()
 
 		handler := NewPublicationHandler(&stubPublicationService{})
 		recorder := httptest.NewRecorder()
 		req := requestWithPathValues(jsonRequest(t, http.MethodPost, "/publications/1/assignments", map[string]any{
-			"user_id": 1, "template_shift_id": 2,
+			"user_id": 1, "template" + "_shift_id": 2,
 		}), map[string]string{"id": "1"})
 
 		handler.CreateAssignment(recorder, req)

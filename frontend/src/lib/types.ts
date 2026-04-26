@@ -32,16 +32,18 @@ export type Position = {
   updated_at: string
 }
 
-export type TemplateShift = {
-  id: number
-  template_id: number
+export type QualifiedShift = {
+  slot_id: number
+  position_id: number
   weekday: number
   start_time: string
   end_time: string
-  position_id: number
   required_headcount: number
-  created_at: string
-  updated_at: string
+}
+
+export type SlotPositionRef = {
+  slot_id: number
+  position_id: number
 }
 
 export type TemplateSlotPosition = {

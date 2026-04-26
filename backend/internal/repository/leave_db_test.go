@@ -172,7 +172,7 @@ func seedLeavePrerequisites(
 		PlannedActiveUntil: testTime().AddDate(0, 2, 0),
 		CreatedAt:          testTime().Add(-6 * time.Hour),
 	})
-	assignment := seedAssignment(t, db, publication.ID, user.ID, shift.ID, testTime())
+	assignment := seedAssignment(t, db, publication.ID, user.ID, shift.SlotID, shift.PositionID, testTime())
 	return publication, user, assignment
 }
 

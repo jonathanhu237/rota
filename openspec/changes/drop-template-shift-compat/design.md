@@ -73,8 +73,7 @@ The handler that powers `/publications/{id}/shifts/me` stays under that route; i
 **Decision:**
 
 - `TemplateShift` type in `frontend/src/lib/types.ts` → `QualifiedShift` with the new shape (no `id`, no `template_id`, no timestamps; uses `slot_id + position_id`).
-- `TemplateShiftDialog` component (admin template editor) is currently the dialog for editing one row of the template's slot/position grid. Rename to `SlotPositionDialog`.
-- `delete-template-shift-dialog.tsx` → `delete-slot-position-dialog.tsx`.
+- `TemplateShiftDialog` and `delete-template-shift-dialog.tsx` are deleted, not renamed. Inspection during apply revealed both are dead code: the templates directory already contains `template-slot-dialog.tsx` and `template-slot-position-dialog.tsx` (introduced by the earlier `refactor-to-slot-position-model` change) which cover the user-facing template-edit flow. The `TemplateShift*` dialogs were leftover surface that no route currently mounts. Cutting them is cleaner than renaming-then-leaving-unused.
 - `groupTemplateShiftsByWeekday` helper → `groupQualifiedShiftsByWeekday` (keeps the user-facing "shifts" wording).
 - `TemplateShiftFormValues` schema type → `SlotPositionFormValues`.
 - `availability-grid.tsx` import sites and types updated to use `QualifiedShift`.

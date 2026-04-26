@@ -850,9 +850,9 @@ func TestTemplateServiceCreateTemplateSlotPosition(t *testing.T) {
 			t.Fatalf("unexpected slot position: %+v", slotPosition)
 		}
 
-		event := stub.FindByAction(audit.ActionTemplateShiftCreate)
+		event := stub.FindByAction(audit.ActionSlotPositionCreate)
 		if event == nil {
-			t.Fatalf("expected %q audit event, got %v", audit.ActionTemplateShiftCreate, stub.Actions())
+			t.Fatalf("expected %q audit event, got %v", audit.ActionSlotPositionCreate, stub.Actions())
 		}
 		if event.Metadata["slot_id"] != int64(9) || event.Metadata["position_id"] != int64(7) {
 			t.Fatalf("unexpected audit metadata: %+v", event.Metadata)
@@ -931,9 +931,9 @@ func TestTemplateServiceUpdateTemplateSlotPosition(t *testing.T) {
 			t.Fatalf("unexpected slot position: %+v", slotPosition)
 		}
 
-		event := stub.FindByAction(audit.ActionTemplateShiftUpdate)
+		event := stub.FindByAction(audit.ActionSlotPositionUpdate)
 		if event == nil {
-			t.Fatalf("expected %q audit event, got %v", audit.ActionTemplateShiftUpdate, stub.Actions())
+			t.Fatalf("expected %q audit event, got %v", audit.ActionSlotPositionUpdate, stub.Actions())
 		}
 		if event.Metadata["slot_id"] != int64(4) {
 			t.Fatalf("unexpected audit metadata: %+v", event.Metadata)
@@ -992,9 +992,9 @@ func TestTemplateServiceDeleteTemplateSlotPosition(t *testing.T) {
 			t.Fatalf("DeleteTemplateSlotPosition returned error: %v", err)
 		}
 
-		event := stub.FindByAction(audit.ActionTemplateShiftDelete)
+		event := stub.FindByAction(audit.ActionSlotPositionDelete)
 		if event == nil {
-			t.Fatalf("expected %q audit event, got %v", audit.ActionTemplateShiftDelete, stub.Actions())
+			t.Fatalf("expected %q audit event, got %v", audit.ActionSlotPositionDelete, stub.Actions())
 		}
 		if event.Metadata["slot_id"] != int64(4) {
 			t.Fatalf("unexpected audit metadata: %+v", event.Metadata)

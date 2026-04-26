@@ -1,7 +1,7 @@
-import type { TemplateShift } from "@/lib/types"
+import type { QualifiedShift } from "@/lib/types"
 
-export function groupTemplateShiftsByWeekday(shifts: TemplateShift[]) {
-  const grouped: Record<number, TemplateShift[]> = {
+export function groupQualifiedShiftsByWeekday(shifts: QualifiedShift[]) {
+  const grouped: Record<number, QualifiedShift[]> = {
     1: [],
     2: [],
     3: [],
@@ -25,7 +25,11 @@ export function groupTemplateShiftsByWeekday(shifts: TemplateShift[]) {
         return left.start_time.localeCompare(right.start_time)
       }
 
-      return left.id - right.id
+      if (left.slot_id !== right.slot_id) {
+        return left.slot_id - right.slot_id
+      }
+
+      return left.position_id - right.position_id
     })
   }
 

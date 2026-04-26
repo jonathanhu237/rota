@@ -192,22 +192,25 @@ describe("availability submissions", () => {
     putMock.mockReset()
   })
 
-  it("creates a submission using the shift id payload", async () => {
+  it("creates a submission using the slot position payload", async () => {
     postMock.mockResolvedValue({ data: undefined })
 
-    await createAvailabilitySubmission(7, 11)
+    await createAvailabilitySubmission(7, 21, 101)
 
     expect(postMock).toHaveBeenCalledWith("/publications/7/submissions", {
-      template_shift_id: 11,
+      slot_id: 21,
+      position_id: 101,
     })
   })
 
-  it("deletes a submission using the shift id path param", async () => {
+  it("deletes a submission using the slot position path params", async () => {
     deleteMock.mockResolvedValue({ data: undefined })
 
-    await deleteAvailabilitySubmission(7, 11)
+    await deleteAvailabilitySubmission(7, 21, 101)
 
-    expect(deleteMock).toHaveBeenCalledWith("/publications/7/submissions/11")
+    expect(deleteMock).toHaveBeenCalledWith(
+      "/publications/7/submissions/21/101",
+    )
   })
 })
 

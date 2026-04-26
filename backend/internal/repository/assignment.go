@@ -22,12 +22,11 @@ var (
 )
 
 type CreateAssignmentParams struct {
-	PublicationID   int64
-	UserID          int64
-	SlotID          int64
-	PositionID      int64
-	TemplateShiftID int64
-	CreatedAt       time.Time
+	PublicationID int64
+	UserID        int64
+	SlotID        int64
+	PositionID    int64
+	CreatedAt     time.Time
 }
 
 type DeleteAssignmentParams struct {
@@ -36,10 +35,9 @@ type DeleteAssignmentParams struct {
 }
 
 type ReplaceAssignmentParams struct {
-	UserID          int64
-	SlotID          int64
-	PositionID      int64
-	TemplateShiftID int64
+	UserID     int64
+	SlotID     int64
+	PositionID int64
 }
 
 type ReplaceAssignmentsParams struct {
@@ -141,7 +139,6 @@ func createAssignmentWithScheduleCheck(
 		tx,
 		params.SlotID,
 		params.PositionID,
-		params.TemplateShiftID,
 	)
 	if err != nil {
 		return nil, err
@@ -243,7 +240,6 @@ func (r *PublicationRepository) ReplaceAssignments(
 			tx,
 			assignment.SlotID,
 			assignment.PositionID,
-			assignment.TemplateShiftID,
 		)
 		if err != nil {
 			return err
@@ -1035,24 +1031,17 @@ func getAssignmentByKey(
 func resolveAssignmentRef(
 	ctx context.Context,
 	db dbtx,
-	slotID, positionID, templateShiftID int64,
+	slotID, positionID int64,
 ) (int64, int64, int64, error) {
-	switch {
-	case slotID > 0 && positionID > 0:
-		entryID, err := getTemplateSlotPositionEntryID(ctx, db, slotID, positionID)
-		if err != nil {
-			return 0, 0, 0, err
-		}
-		return slotID, positionID, entryID, nil
-	case templateShiftID > 0:
-		resolvedSlotID, resolvedPositionID, err := getTemplateSlotPositionPairByEntryID(ctx, db, templateShiftID)
-		if err != nil {
-			return 0, 0, 0, err
-		}
-		return resolvedSlotID, resolvedPositionID, templateShiftID, nil
-	default:
+	if slotID <= 0 || positionID <= 0 {
 		return 0, 0, 0, ErrTemplateSlotPositionNotFound
 	}
+
+	entryID, err := getTemplateSlotPositionEntryID(ctx, db, slotID, positionID)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return slotID, positionID, entryID, nil
 }
 
 func getTemplateSlotPositionEntryID(
@@ -1076,32 +1065,6 @@ func getTemplateSlotPositionEntryID(
 	}
 
 	return entryID, nil
-}
-
-func getTemplateSlotPositionPairByEntryID(
-	ctx context.Context,
-	db dbtx,
-	entryID int64,
-) (int64, int64, error) {
-	const query = `
-		SELECT slot_id, position_id
-		FROM template_slot_positions
-		WHERE id = $1;
-	`
-
-	var (
-		slotID     int64
-		positionID int64
-	)
-	err := db.QueryRowContext(ctx, query, entryID).Scan(&slotID, &positionID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, 0, ErrTemplateShiftNotFound
-	}
-	if err != nil {
-		return 0, 0, err
-	}
-
-	return slotID, positionID, nil
 }
 
 func mapAssignmentWriteError(err error) error {

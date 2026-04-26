@@ -17,10 +17,10 @@ type publicationService interface {
 	GetPublicationByID(ctx context.Context, id int64) (*model.Publication, error)
 	DeletePublication(ctx context.Context, id int64) error
 	GetCurrentPublication(ctx context.Context) (*model.Publication, error)
-	ListAvailabilitySubmissionShiftIDs(ctx context.Context, publicationID, userID int64) ([]int64, error)
+	ListAvailabilitySubmissionSlotPositions(ctx context.Context, publicationID, userID int64) ([]model.SlotPositionRef, error)
 	CreateAvailabilitySubmission(ctx context.Context, input service.CreateAvailabilitySubmissionInput) (*model.AvailabilitySubmission, error)
 	DeleteAvailabilitySubmission(ctx context.Context, input service.DeleteAvailabilitySubmissionInput) error
-	ListQualifiedPublicationShifts(ctx context.Context, publicationID, userID int64) ([]*model.TemplateShift, error)
+	ListQualifiedPublicationSlotPositions(ctx context.Context, publicationID, userID int64) ([]*model.QualifiedShift, error)
 	GetAssignmentBoard(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error)
 	AutoAssignPublication(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error)
 	CreateAssignment(ctx context.Context, input service.CreateAssignmentInput) (*model.Assignment, error)
@@ -50,11 +50,16 @@ type currentPublicationResponse struct {
 }
 
 type submissionsMeResponse struct {
-	ShiftIDs []int64 `json:"shift_ids"`
+	Submissions []slotPositionRefResponse `json:"submissions"`
+}
+
+type slotPositionRefResponse struct {
+	SlotID     int64 `json:"slot_id"`
+	PositionID int64 `json:"position_id"`
 }
 
 type shiftsMeResponse struct {
-	Shifts []templateShiftResponse `json:"shifts"`
+	Shifts []qualifiedShiftResponse `json:"shifts"`
 }
 
 type createPublicationRequest struct {
@@ -74,14 +79,14 @@ type updatePublicationRequest struct {
 }
 
 type createSubmissionRequest struct {
-	TemplateShiftID int64 `json:"template_shift_id"`
+	SlotID     int64 `json:"slot_id"`
+	PositionID int64 `json:"position_id"`
 }
 
 type createAssignmentRequest struct {
-	UserID          int64  `json:"user_id"`
-	SlotID          int64  `json:"slot_id"`
-	PositionID      int64  `json:"position_id"`
-	TemplateShiftID *int64 `json:"template_shift_id"`
+	UserID     int64 `json:"user_id"`
+	SlotID     int64 `json:"slot_id"`
+	PositionID int64 `json:"position_id"`
 }
 
 func NewPublicationHandler(publicationService publicationService) *PublicationHandler {
@@ -235,7 +240,7 @@ func (h *PublicationHandler) GetCurrent(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-func (h *PublicationHandler) ListMySubmissionShiftIDs(w http.ResponseWriter, r *http.Request) {
+func (h *PublicationHandler) ListMySubmissionSlotPositions(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUserFromRequest(r)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
@@ -248,14 +253,22 @@ func (h *PublicationHandler) ListMySubmissionShiftIDs(w http.ResponseWriter, r *
 		return
 	}
 
-	shiftIDs, err := h.publicationService.ListAvailabilitySubmissionShiftIDs(r.Context(), publicationID, user.ID)
+	slotPositions, err := h.publicationService.ListAvailabilitySubmissionSlotPositions(r.Context(), publicationID, user.ID)
 	if err != nil {
 		h.writePublicationServiceError(w, err)
 		return
 	}
 
+	responseSlotPositions := make([]slotPositionRefResponse, 0, len(slotPositions))
+	for _, slotPosition := range slotPositions {
+		responseSlotPositions = append(responseSlotPositions, slotPositionRefResponse{
+			SlotID:     slotPosition.SlotID,
+			PositionID: slotPosition.PositionID,
+		})
+	}
+
 	writeData(w, http.StatusOK, submissionsMeResponse{
-		ShiftIDs: append([]int64{}, shiftIDs...),
+		Submissions: responseSlotPositions,
 	})
 }
 
@@ -279,9 +292,10 @@ func (h *PublicationHandler) CreateSubmission(w http.ResponseWriter, r *http.Req
 	}
 
 	if _, err := h.publicationService.CreateAvailabilitySubmission(r.Context(), service.CreateAvailabilitySubmissionInput{
-		PublicationID:   publicationID,
-		UserID:          user.ID,
-		TemplateShiftID: req.TemplateShiftID,
+		PublicationID: publicationID,
+		UserID:        user.ID,
+		SlotID:        req.SlotID,
+		PositionID:    req.PositionID,
 	}); err != nil {
 		h.writePublicationServiceError(w, err)
 		return
@@ -303,16 +317,22 @@ func (h *PublicationHandler) DeleteSubmission(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	shiftID, err := parsePathID(r, "shift_id")
+	slotID, err := parsePathID(r, "slot_id")
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid template shift id")
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid slot id")
+		return
+	}
+	positionID, err := parsePathID(r, "position_id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid position id")
 		return
 	}
 
 	if err := h.publicationService.DeleteAvailabilitySubmission(r.Context(), service.DeleteAvailabilitySubmissionInput{
-		PublicationID:   publicationID,
-		UserID:          user.ID,
-		TemplateShiftID: shiftID,
+		PublicationID: publicationID,
+		UserID:        user.ID,
+		SlotID:        slotID,
+		PositionID:    positionID,
 	}); err != nil {
 		h.writePublicationServiceError(w, err)
 		return
@@ -334,15 +354,15 @@ func (h *PublicationHandler) ListMyQualifiedShifts(w http.ResponseWriter, r *htt
 		return
 	}
 
-	shifts, err := h.publicationService.ListQualifiedPublicationShifts(r.Context(), publicationID, user.ID)
+	shifts, err := h.publicationService.ListQualifiedPublicationSlotPositions(r.Context(), publicationID, user.ID)
 	if err != nil {
 		h.writePublicationServiceError(w, err)
 		return
 	}
 
-	responseShifts := make([]templateShiftResponse, 0, len(shifts))
+	responseShifts := make([]qualifiedShiftResponse, 0, len(shifts))
 	for _, shift := range shifts {
-		responseShifts = append(responseShifts, newTemplateShiftResponse(shift))
+		responseShifts = append(responseShifts, newQualifiedShiftResponse(shift))
 	}
 
 	writeData(w, http.StatusOK, shiftsMeResponse{
@@ -394,7 +414,7 @@ func (h *PublicationHandler) CreateAssignment(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
 		return
 	}
-	if req.TemplateShiftID != nil || req.UserID <= 0 || req.SlotID <= 0 || req.PositionID <= 0 {
+	if req.UserID <= 0 || req.SlotID <= 0 || req.PositionID <= 0 {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
 		return
 	}
@@ -663,8 +683,6 @@ func (h *PublicationHandler) writePublicationServiceError(w http.ResponseWriter,
 		writeError(w, http.StatusConflict, "PUBLICATION_NOT_ACTIVE", "Publication is not active")
 	case errors.Is(err, service.ErrTemplateNotFound):
 		writeError(w, http.StatusNotFound, "TEMPLATE_NOT_FOUND", "Template not found")
-	case errors.Is(err, service.ErrTemplateShiftNotFound):
-		writeError(w, http.StatusNotFound, "TEMPLATE_SHIFT_NOT_FOUND", "Template shift not found")
 	case errors.Is(err, service.ErrTemplateSlotNotFound):
 		writeError(w, http.StatusNotFound, "TEMPLATE_SLOT_NOT_FOUND", "Template slot not found")
 	case errors.Is(err, service.ErrTemplateSlotPositionNotFound):
