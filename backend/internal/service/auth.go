@@ -8,7 +8,6 @@ import (
 	"github.com/jonathanhu237/rota/backend/internal/audit"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
-	"github.com/jonathanhu237/rota/backend/internal/session"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -262,7 +261,7 @@ type AuthenticateResult struct {
 
 func (s *AuthService) Authenticate(ctx context.Context, sessionID string) (*AuthenticateResult, error) {
 	userID, err := s.sessionStore.Get(ctx, sessionID)
-	if errors.Is(err, session.ErrSessionNotFound) {
+	if errors.Is(err, repository.ErrSessionNotFound) {
 		return nil, ErrUnauthorized
 	}
 	if err != nil {
@@ -270,7 +269,7 @@ func (s *AuthService) Authenticate(ctx context.Context, sessionID string) (*Auth
 	}
 
 	expiresIn, err := s.sessionStore.Refresh(ctx, sessionID)
-	if errors.Is(err, session.ErrSessionNotFound) {
+	if errors.Is(err, repository.ErrSessionNotFound) {
 		return nil, ErrUnauthorized
 	}
 	if err != nil {

@@ -16,10 +16,6 @@ type Config struct {
 	PostgresUser           string        `env:"POSTGRES_USER,required"`
 	PostgresPassword       string        `env:"POSTGRES_PASSWORD,required"`
 	PostgresDB             string        `env:"POSTGRES_DB,required"`
-	RedisHost              string        `env:"REDIS_HOST,required"`
-	RedisPort              int           `env:"REDIS_PORT,required"`
-	RedisPassword          string        `env:"REDIS_PASSWORD,required"`
-	RedisDB                int           `env:"REDIS_DB,required"`
 	SessionExpiresHours    int           `env:"SESSION_EXPIRES_HOURS,required"`
 	EmailMode              string        `env:"EMAIL_MODE" envDefault:"log"`
 	SMTPHost               string        `env:"SMTP_HOST"`

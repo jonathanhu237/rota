@@ -10,7 +10,6 @@ import (
 	"github.com/jonathanhu237/rota/backend/internal/audit/audittest"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
-	"github.com/jonathanhu237/rota/backend/internal/session"
 )
 
 type authUserRepositoryMock struct {
@@ -397,7 +396,7 @@ func TestAuthServiceAuthenticate(t *testing.T) {
 			&authUserRepositoryMock{},
 			&authSessionStoreMock{
 				getFunc: func(ctx context.Context, sessionID string) (int64, error) {
-					return 0, session.ErrSessionNotFound
+					return 0, repository.ErrSessionNotFound
 				},
 			},
 		)
@@ -418,7 +417,7 @@ func TestAuthServiceAuthenticate(t *testing.T) {
 					return 12, nil
 				},
 				refreshFunc: func(ctx context.Context, sessionID string) (int64, error) {
-					return 0, session.ErrSessionNotFound
+					return 0, repository.ErrSessionNotFound
 				},
 			},
 		)

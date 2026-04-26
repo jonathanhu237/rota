@@ -12,8 +12,8 @@ A shift scheduling system for departments.
 ## Development Setup
 
 1. Copy `.env.example` to `.env`.
-2. Set local values for Postgres, Redis, bootstrap admin, and any SMTP settings you want to test.
-3. Start Postgres and Redis:
+2. Set local values for Postgres, bootstrap admin, and any SMTP settings you want to test.
+3. Start Postgres:
    ```bash
    docker compose up -d
    ```
@@ -64,7 +64,7 @@ Integration tests expect Postgres to be reachable with the configured `POSTGRES_
 ## Production Deployment
 
 1. Copy `.env.example` to `.env`.
-2. Fill in the production values, especially `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `BOOTSTRAP_ADMIN_PASSWORD`, `SMTP_*`, `APP_BASE_URL`, and `CADDY_SITE_ADDRESS`.
+2. Fill in the production values, especially `POSTGRES_PASSWORD`, `BOOTSTRAP_ADMIN_PASSWORD`, `SMTP_*`, `APP_BASE_URL`, and `CADDY_SITE_ADDRESS`.
 3. Bring up the full stack:
    ```bash
    make prod-up
@@ -72,7 +72,7 @@ Integration tests expect Postgres to be reachable with the configured `POSTGRES_
 4. Open the URL served by Caddy.
 5. Log in with the bootstrap admin user from `.env`.
 
-The production stack includes Postgres, Redis, a one-shot migration runner, the Go backend, and Caddy serving the SPA plus reverse proxying `/api/*` to the backend.
+The production stack includes Postgres, a one-shot migration runner, the Go backend, and Caddy serving the SPA plus reverse proxying `/api/*` to the backend.
 
 ### HTTPS
 
@@ -100,10 +100,6 @@ make prod-pull
 | `POSTGRES_USER` | `rota` | Database user. |
 | `POSTGRES_PASSWORD` | empty | Database password. Set a real value before deploy. |
 | `POSTGRES_DB` | `rota` | Database name. |
-| `REDIS_HOST` | `localhost` | Redis host for local development. Production Compose overrides this to `redis`. |
-| `REDIS_PORT` | `6379` | Redis port. |
-| `REDIS_PASSWORD` | empty | Redis password. Set a real value before deploy. |
-| `REDIS_DB` | `0` | Redis database index. |
 | `SESSION_EXPIRES_HOURS` | `336` | Session TTL in hours. |
 | `EMAIL_MODE` | `log` | Selects the logger or SMTP emailer. |
 | `SMTP_HOST` | empty | SMTP server host. Must be set for production email delivery. |

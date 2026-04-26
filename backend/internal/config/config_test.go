@@ -83,10 +83,6 @@ func setTestConfigEnv(t *testing.T) {
 	t.Setenv("POSTGRES_USER", "rota")
 	t.Setenv("POSTGRES_PASSWORD", "pa55word")
 	t.Setenv("POSTGRES_DB", "rota")
-	t.Setenv("REDIS_HOST", "localhost")
-	t.Setenv("REDIS_PORT", "6379")
-	t.Setenv("REDIS_PASSWORD", "pa55word")
-	t.Setenv("REDIS_DB", "0")
 	t.Setenv("SESSION_EXPIRES_HOURS", "336")
 	t.Setenv("APP_BASE_URL", "http://localhost:5173")
 }

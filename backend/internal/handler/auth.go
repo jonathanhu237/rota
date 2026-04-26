@@ -212,7 +212,7 @@ func (h *AuthHandler) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		// Refresh the cookie so the browser expiry stays in sync with the Redis TTL.
+		// Refresh the cookie so the browser expiry stays in sync with the session row.
 		setSessionCookie(w, r, cookie.Value, result.ExpiresIn)
 
 		ctx := context.WithValue(r.Context(), currentUserContextKey{}, result.User)

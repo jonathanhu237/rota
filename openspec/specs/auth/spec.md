@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Rota is an internal tool with no public signup. Administrators create accounts, invitees activate them by setting a password, and thereafter users authenticate with email and password against a Redis-backed session conveyed through an `HttpOnly` cookie. This capability covers identity, sessions, invitation, password reset, rate limiting, and the authorization middleware shared by the rest of the API. Scheduling is covered by the scheduling capability; audit log mechanics and retention are covered by the audit capability.
+Rota is an internal tool with no public signup. Administrators create accounts, invitees activate them by setting a password, and thereafter users authenticate with email and password against a Postgres-backed session conveyed through an `HttpOnly` cookie. This capability covers identity, sessions, invitation, password reset, rate limiting, and the authorization middleware shared by the rest of the API. Scheduling is covered by the scheduling capability; audit log mechanics and retention are covered by the audit capability.
 
 ## Requirements
 
@@ -100,13 +100,15 @@ On startup the server SHALL invoke `EnsureBootstrapAdmin`, which MUST return wit
 
 ### Requirement: Session storage and cookie
 
-Sessions SHALL be stored in Redis under keys of the form `session:<session_id>`, where `session_id` is 32 bytes of `crypto/rand` rendered as lowercase hex, and the value SHALL be the user's `id` as a decimal string. The session TTL SHALL be `SESSION_EXPIRES_HOURS` hours, applied on `SET` and refreshed on every `Authenticate` call via `EXPIRE` (sliding window). The session cookie SHALL be named `session_id` with `Path=/`, `HttpOnly`, `SameSite=Lax`, and `Secure` whenever the request was received over TLS (`r.TLS != nil`). The cookie `MaxAge` and `Expires` SHALL match the Redis TTL.
+Sessions SHALL be stored in a Postgres `sessions` table with columns `id TEXT PRIMARY KEY` (the 32-byte `crypto/rand` random rendered as lowercase hex), `user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE`, `expires_at TIMESTAMPTZ NOT NULL`, and `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`. The table SHALL have indexes on `user_id` (to support `DeleteUserSessions(userID)`) and on `expires_at` (to support periodic cleanup of expired rows).
+
+`expires_at` SHALL be set to `NOW() + SESSION_EXPIRES_HOURS` on row insert (login) and SHALL be refreshed to `NOW() + SESSION_EXPIRES_HOURS` on every `Authenticate` call (sliding-window semantics). The session cookie SHALL be named `session_id` with `Path=/`, `HttpOnly`, `SameSite=Lax`, and `Secure` whenever the request was received over TLS (`r.TLS != nil`). The cookie `MaxAge` and `Expires` SHALL match the remaining seconds until `expires_at`.
 
 #### Scenario: Session TTL refreshed on authenticated request
 
 - **GIVEN** an authenticated request carrying a valid `session_id` cookie
 - **WHEN** the middleware calls `Authenticate`
-- **THEN** the Redis key's TTL is reset to `SESSION_EXPIRES_HOURS` via `EXPIRE`
+- **THEN** the row's `expires_at` is set to `NOW() + SESSION_EXPIRES_HOURS`
 - **AND** the response rewrites the cookie with a matching `MaxAge` / `Expires`
 
 #### Scenario: Secure flag tracks request TLS
@@ -128,20 +130,20 @@ The system SHALL create sessions exclusively on successful `Login`. Each login S
 
 ### Requirement: Session invalidation
 
-`Logout` SHALL delete the Redis key and clear the cookie. Admin disable of a user SHALL trigger `DeleteUserSessions(userID)`, which scans the session keyspace and drops every session whose value equals that user id. Successful `SetupPassword` whose token `purpose = 'password_reset'` SHALL likewise trigger `DeleteUserSessions(userID)` after the password update commits, so any session active at the moment of reset is terminated; `SetupPassword` for `purpose = 'invitation'` SHALL NOT, because pending users have no live sessions to invalidate.
+`Logout` SHALL `DELETE FROM sessions WHERE id = $1` and clear the cookie. Admin disable of a user SHALL trigger `DeleteUserSessions(userID)`, which executes `DELETE FROM sessions WHERE user_id = $1` and removes every active session for that user. Successful `SetupPassword` whose token `purpose = 'password_reset'` SHALL likewise trigger `DeleteUserSessions(userID)` after the password update commits, so any session active at the moment of reset is terminated; `SetupPassword` for `purpose = 'invitation'` SHALL NOT, because pending users have no live sessions to invalidate.
 
 #### Scenario: Admin disable terminates live sessions
 
-- **GIVEN** a user with multiple live session keys in Redis
+- **GIVEN** a user with multiple `sessions` rows
 - **WHEN** an admin disables the user
-- **THEN** `DeleteUserSessions(userID)` deletes every Redis key whose value is the user's id
+- **THEN** `DeleteUserSessions(userID)` deletes every `sessions` row whose `user_id` equals that user's id
 
 #### Scenario: Password reset terminates live sessions
 
-- **GIVEN** an `active` user with one or more live session keys in Redis
+- **GIVEN** an `active` user with one or more `sessions` rows
 - **WHEN** the user successfully calls `SetupPassword` using a `password_reset` token
 - **THEN** the password change commits
-- **AND** `DeleteUserSessions(userID)` deletes every Redis key whose value is the user's id
+- **AND** `DeleteUserSessions(userID)` deletes every `sessions` row whose `user_id` equals that user's id
 - **AND** `auth.password.set` is emitted with metadata `purpose = "password_reset"`
 
 #### Scenario: Invitation activation does not call DeleteUserSessions
@@ -153,14 +155,36 @@ The system SHALL create sessions exclusively on successful `Login`. Each login S
 
 #### Scenario: Authenticate does not revive an expired session
 
-- **GIVEN** a browser still holds a `session_id` cookie whose Redis key has been deleted or expired
+- **GIVEN** a browser still holds a `session_id` cookie whose `sessions` row has been deleted or whose `expires_at` is now in the past
 - **WHEN** the next authenticated request is made
 - **THEN** `Authenticate` returns an error
 - **AND** the middleware clears the cookie and responds `UNAUTHORIZED` (401)
 
+### Requirement: Periodic cleanup of expired sessions
+
+The backend process SHALL run a background goroutine that periodically deletes long-expired session rows. The goroutine SHALL execute `DELETE FROM sessions WHERE expires_at < NOW() - INTERVAL '1 day'` every six hours. Errors from the cleanup SHALL be logged but SHALL NOT cause the goroutine to exit; the goroutine continues until the process shuts down. The cleanup is best-effort hygiene: lazy filtering on read (the `Authenticate` queries always filter `expires_at > NOW()`) is the correctness guarantee. No background cron, no external scheduler.
+
+#### Scenario: Sweep removes long-expired rows
+
+- **GIVEN** a `sessions` row whose `expires_at` is more than one day in the past
+- **WHEN** the periodic sweep runs
+- **THEN** the row is deleted
+
+#### Scenario: Sweep does not remove still-valid sessions
+
+- **GIVEN** a `sessions` row whose `expires_at` is in the future
+- **WHEN** the periodic sweep runs
+- **THEN** the row remains
+
+#### Scenario: Sweep error does not exit the goroutine
+
+- **WHEN** the sweep `DELETE` returns an error (e.g., transient DB issue)
+- **THEN** the error is logged
+- **AND** the goroutine continues, attempting the next sweep on the next tick
+
 ### Requirement: Login resolution order
 
-`POST /auth/login` SHALL accept `{email, password}` and resolve in this order: (1) `GetByEmail` — return `INVALID_CREDENTIALS` (401) if not found; (2) return `USER_DISABLED` (403) if `status = 'disabled'`; (3) return `USER_PENDING` (403) if `status = 'pending'`; (4) `bcrypt.CompareHashAndPassword` — return `INVALID_CREDENTIALS` (401) on mismatch; (5) on success, create a new session, set the cookie, and return `{user: {...}}`. Unknown emails SHALL always resolve to `INVALID_CREDENTIALS`. Each failure branch SHALL emit `auth.login.failure` with the corresponding `reason` (`invalid_credentials`, `user_disabled`, `user_pending`); success SHALL emit `auth.login.success`.
+`POST /auth/login` SHALL accept `{email, password}` and resolve in this order: (1) `GetByEmail` — return `INVALID_CREDENTIALS` (401) if not found; (2) return `USER_DISABLED` (403) if `status = 'disabled'`; (3) return `USER_PENDING` (403) if `status = 'pending'`; (4) `bcrypt.CompareHashAndPassword` — return `INVALID_CREDENTIALS` (401) on mismatch; (5) on success, insert a new `sessions` row, set the cookie, and return `{user: {...}}`. Unknown emails SHALL always resolve to `INVALID_CREDENTIALS`. Each failure branch SHALL emit `auth.login.failure` with the corresponding `reason` (`invalid_credentials`, `user_disabled`, `user_pending`); success SHALL emit `auth.login.success`.
 
 #### Scenario: Unknown email returns generic INVALID_CREDENTIALS
 
@@ -194,14 +218,14 @@ The system SHALL create sessions exclusively on successful `Login`. Each login S
 
 - **GIVEN** an active user with a matching password
 - **WHEN** `/auth/login` is called with correct credentials
-- **THEN** a new Redis session is created
+- **THEN** a new row is inserted into `sessions`
 - **AND** the `session_id` cookie is set
 - **AND** the response body is `{user: {...}}`
 - **AND** `auth.login.success` is emitted
 
 ### Requirement: Idempotent logout
 
-`POST /auth/logout` SHALL read the `session_id` cookie, delete the Redis key when present, and always write a cleared cookie (`MaxAge=-1`, empty value). The endpoint SHALL return `204 No Content` regardless of whether a session was present. It SHALL emit `auth.logout`, attaching the target user id when the logger had an authenticated actor on the request context.
+`POST /auth/logout` SHALL read the `session_id` cookie, execute `DELETE FROM sessions WHERE id = $1` when present, and always write a cleared cookie (`MaxAge=-1`, empty value). The endpoint SHALL return `204 No Content` regardless of whether a session was present. It SHALL emit `auth.logout`, attaching the target user id when the logger had an authenticated actor on the request context.
 
 #### Scenario: Logout without a session still succeeds
 
@@ -209,11 +233,11 @@ The system SHALL create sessions exclusively on successful `Login`. Each login S
 - **THEN** the response is `204 No Content`
 - **AND** a cleared cookie is written
 
-#### Scenario: Logout with a live session deletes Redis key
+#### Scenario: Logout with a live session deletes the row
 
-- **GIVEN** a live session in Redis matching the request cookie
+- **GIVEN** a `sessions` row whose `id` matches the request cookie
 - **WHEN** `/auth/logout` is called
-- **THEN** the Redis key is deleted
+- **THEN** the row is deleted
 - **AND** the response is `204 No Content`
 - **AND** `auth.logout` is emitted
 
@@ -429,7 +453,7 @@ The rate limiter store SHALL keep up to 4096 live keys in an LRU with 30-minute 
 
 ### Requirement: RequireAuth middleware
 
-The `RequireAuth` middleware SHALL read the `session_id` cookie, call `Authenticate`, and on success: (a) refresh the cookie expiry to match the new Redis TTL; (b) attach the resolved `*model.User` to the request context; (c) attach the actor id for audit. On `session.ErrSessionNotFound`, on an unknown user id, or on a user whose status has since flipped to `disabled`, it SHALL clear the cookie and return `UNAUTHORIZED` (401).
+The `RequireAuth` middleware SHALL read the `session_id` cookie, call `Authenticate`, and on success: (a) refresh the cookie expiry to match the new `expires_at`; (b) attach the resolved `*model.User` to the request context; (c) attach the actor id for audit. On `repository.ErrSessionNotFound`, on an unknown user id, or on a user whose status has since flipped to `disabled`, it SHALL clear the cookie and return `UNAUTHORIZED` (401).
 
 #### Scenario: Missing session cookie rejected
 
@@ -449,7 +473,7 @@ The `RequireAuth` middleware SHALL read the `session_id` cookie, call `Authentic
 - **WHEN** the request reaches a `RequireAuth`-protected handler
 - **THEN** `*model.User` is attached to the request context
 - **AND** the actor id is attached for audit logging
-- **AND** the cookie expiry is refreshed to the new Redis TTL
+- **AND** the cookie expiry is refreshed to match the new `expires_at`
 
 ### Requirement: RequireAdmin middleware
 

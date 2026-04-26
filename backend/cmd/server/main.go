@@ -16,9 +16,7 @@ import (
 	"github.com/jonathanhu237/rota/backend/internal/handler"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 	"github.com/jonathanhu237/rota/backend/internal/service"
-	"github.com/jonathanhu237/rota/backend/internal/session"
 	_ "github.com/lib/pq"
-	"github.com/redis/go-redis/v9"
 	"golang.org/x/time/rate"
 )
 
@@ -65,19 +63,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize Redis
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%d", cfg.RedisHost, cfg.RedisPort),
-		Password: cfg.RedisPassword,
-		DB:       cfg.RedisDB,
-	})
-	defer redisClient.Close()
-
-	if err := redisClient.Ping(ctx).Err(); err != nil {
-		slog.Error("Failed to connect Redis", "error", err)
-		os.Exit(1)
-	}
-
 	var emailer email.Emailer
 	switch cfg.EmailMode {
 	case "", "log":
@@ -101,10 +86,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	sessionStore := session.NewStore(
-		redisClient,
-		time.Duration(cfg.SessionExpiresHours)*time.Hour,
-	)
+	sessionExpires := time.Duration(cfg.SessionExpiresHours) * time.Hour
+	sessionStore := repository.NewSessionRepository(db, sessionExpires)
+	cleanupCtx, stopSessionCleanup := context.WithCancel(context.Background())
+	defer stopSessionCleanup()
+	startSessionCleanup(cleanupCtx, db, 6*time.Hour, slog.Default())
+
 	setupTokenRepo := repository.NewSetupTokenRepository(db)
 	setupTxManager := repository.NewSetupTxManager(db)
 	authService := service.NewAuthService(
@@ -279,4 +266,30 @@ func logInsecureSMTPTLSWarning(logger *slog.Logger, emailMode, tlsMode string) {
 	}
 
 	logger.Warn("SMTP is configured without TLS — credentials and emails may be visible on the network", "tls_mode", tlsMode)
+}
+
+type sessionCleanupDB interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func startSessionCleanup(ctx context.Context, db sessionCleanupDB, interval time.Duration, logger *slog.Logger) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if _, err := db.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at < NOW() - INTERVAL '1 day';`); err != nil {
+					logger.Error("Failed to clean up expired sessions", "error", err)
+				}
+			}
+		}
+	}()
 }

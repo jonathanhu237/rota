@@ -2,7 +2,7 @@ schema: spec-driven
 
 context: |
   Rota — a web-based shift scheduling app for a ~100-person department.
-  Go backend + PostgreSQL + Redis; React + Vite frontend; Docker Compose
+  Go backend + PostgreSQL; React + Vite frontend; Docker Compose
   behind Caddy. Full execution rules are in `AGENTS.md`.
 
   Load-bearing invariants — any change must respect these:
