@@ -39,6 +39,7 @@ type CreateShiftChangeRequestParams struct {
 	LeaveID                   *int64
 	ExpiresAt                 time.Time
 	CreatedAt                 time.Time
+	AfterCreateTx             func(ctx context.Context, tx *sql.Tx, req *model.ShiftChangeRequest) error
 }
 
 // Create inserts a new shift_change_request.
@@ -46,6 +47,25 @@ func (r *ShiftChangeRepository) Create(
 	ctx context.Context,
 	params CreateShiftChangeRequestParams,
 ) (*model.ShiftChangeRequest, error) {
+	if params.AfterCreateTx != nil {
+		tx, err := r.db.BeginTx(ctx, nil)
+		if err != nil {
+			return nil, err
+		}
+		defer tx.Rollback()
+
+		req, err := createShiftChangeRequest(ctx, tx, params)
+		if err != nil {
+			return nil, err
+		}
+		if err := params.AfterCreateTx(ctx, tx, req); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return req, nil
+	}
 	return createShiftChangeRequest(ctx, r.db, params)
 }
 
@@ -135,6 +155,14 @@ func (r *ShiftChangeRepository) GetByID(
 	ctx context.Context,
 	id int64,
 ) (*model.ShiftChangeRequest, error) {
+	return getShiftChangeRequestByID(ctx, r.db, id)
+}
+
+func getShiftChangeRequestByID(
+	ctx context.Context,
+	db dbtx,
+	id int64,
+) (*model.ShiftChangeRequest, error) {
 	const query = `
 		SELECT
 			id,
@@ -156,7 +184,7 @@ func (r *ShiftChangeRepository) GetByID(
 		WHERE id = $1;
 	`
 
-	req, err := scanShiftChangeRequest(r.db.QueryRowContext(ctx, query, id))
+	req, err := scanShiftChangeRequest(db.QueryRowContext(ctx, query, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrShiftChangeNotFound
 	}
@@ -328,6 +356,7 @@ type UpdateStateParams struct {
 	NextState       model.ShiftChangeState
 	DecidedByUserID *int64
 	Now             time.Time
+	AfterUpdateTx   func(ctx context.Context, tx *sql.Tx) error
 }
 
 // UpdateState transitions a request's state, only if it is currently in
@@ -338,6 +367,26 @@ func (r *ShiftChangeRepository) UpdateState(
 	ctx context.Context,
 	params UpdateStateParams,
 ) error {
+	if params.AfterUpdateTx != nil {
+		tx, err := r.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+
+		if err := updateShiftChangeState(ctx, tx, params); err != nil {
+			return err
+		}
+		if err := params.AfterUpdateTx(ctx, tx); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+
+	return updateShiftChangeState(ctx, r.db, params)
+}
+
+func updateShiftChangeState(ctx context.Context, db dbtx, params UpdateStateParams) error {
 	const query = `
 		UPDATE shift_change_requests
 		SET state = $2, decided_by_user_id = $3, decided_at = $4
@@ -349,7 +398,7 @@ func (r *ShiftChangeRepository) UpdateState(
 		decidedBy = sql.NullInt64{Int64: *params.DecidedByUserID, Valid: true}
 	}
 
-	result, err := r.db.ExecContext(
+	result, err := db.ExecContext(
 		ctx,
 		query,
 		params.ID,
@@ -396,6 +445,7 @@ type ApplySwapParams struct {
 	CounterpartOccurrenceDate time.Time
 	DecidedByUserID           int64
 	Now                       time.Time
+	AfterApplyTx              func(ctx context.Context, tx *sql.Tx) error
 }
 
 // ApplyGiveParams applies an approved give (direct or pool claim). The
@@ -411,6 +461,7 @@ type ApplyGiveParams struct {
 	ReceiverUserID        int64
 	DecidedByUserID       int64
 	Now                   time.Time
+	AfterApplyTx          func(ctx context.Context, tx *sql.Tx) error
 }
 
 // ApproveResult surfaces the final assignment snapshots after a successful
@@ -494,6 +545,12 @@ func (r *ShiftChangeRepository) ApplySwap(
 		return nil, err
 	}
 
+	if params.AfterApplyTx != nil {
+		if err := params.AfterApplyTx(ctx, tx); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, mapSchedulingRetryableError(err)
 	}
@@ -550,6 +607,12 @@ func (r *ShiftChangeRepository) ApplyGive(
 		return nil, err
 	}
 
+	if params.AfterApplyTx != nil {
+		if err := params.AfterApplyTx(ctx, tx); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, mapSchedulingRetryableError(err)
 	}
@@ -581,6 +644,33 @@ func (r *ShiftChangeRepository) InvalidateRequestsForAssignment(
 	assignmentID int64,
 	now time.Time,
 ) ([]int64, error) {
+	requests, err := invalidateRequestsForAssignment(ctx, r.db, assignmentID, now)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]int64, 0, len(requests))
+	for _, req := range requests {
+		ids = append(ids, req.ID)
+	}
+	return ids, nil
+}
+
+func (r *ShiftChangeRepository) InvalidateRequestsForAssignmentTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	assignmentID int64,
+	now time.Time,
+) ([]*model.ShiftChangeRequest, error) {
+	return invalidateRequestsForAssignment(ctx, tx, assignmentID, now)
+}
+
+func invalidateRequestsForAssignment(
+	ctx context.Context,
+	db dbtx,
+	assignmentID int64,
+	now time.Time,
+) ([]*model.ShiftChangeRequest, error) {
 	const query = `
 		UPDATE shift_change_requests
 		SET state = 'invalidated', decided_at = $2
@@ -592,7 +682,7 @@ func (r *ShiftChangeRepository) InvalidateRequestsForAssignment(
 		RETURNING id;
 	`
 
-	rows, err := r.db.QueryContext(ctx, query, assignmentID, now)
+	rows, err := db.QueryContext(ctx, query, assignmentID, now)
 	if err != nil {
 		return nil, err
 	}
@@ -611,7 +701,16 @@ func (r *ShiftChangeRepository) InvalidateRequestsForAssignment(
 	}
 
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	return ids, nil
+
+	requests := make([]*model.ShiftChangeRequest, 0, len(ids))
+	for _, id := range ids {
+		req, err := getShiftChangeRequestByID(ctx, db, id)
+		if err != nil {
+			return nil, err
+		}
+		requests = append(requests, req)
+	}
+	return requests, nil
 }
 
 // MarkExpired transitions a pending request to expired on observation.

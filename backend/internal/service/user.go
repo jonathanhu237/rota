@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/mail"
 	"strings"
@@ -143,6 +144,7 @@ func (s *UserService) CreateUser(ctx context.Context, input CreateUserInput) (*m
 	var rawToken string
 	err = s.setupFlows.txManager.WithinTx(ctx, func(
 		ctx context.Context,
+		tx *sql.Tx,
 		txUserRepo repository.SetupUserRepository,
 		txTokenRepo repository.SetupTokenRepositoryWriter,
 	) error {
@@ -168,14 +170,10 @@ func (s *UserService) CreateUser(ctx context.Context, input CreateUserInput) (*m
 			return err
 		}
 
-		return nil
+		return s.setupFlows.enqueueInvitationTx(ctx, tx, createdUser, rawToken)
 	})
 	if err != nil {
 		return nil, err
-	}
-
-	if err := s.setupFlows.sendInvitation(ctx, createdUser, rawToken); err != nil {
-		s.recordInvitationEmailFailure(ctx, createdUser, err)
 	}
 
 	targetID := createdUser.ID
@@ -201,6 +199,7 @@ func (s *UserService) ResendInvitation(ctx context.Context, userID int64) error 
 	var rawToken string
 	err := s.setupFlows.txManager.WithinTx(ctx, func(
 		ctx context.Context,
+		tx *sql.Tx,
 		txUserRepo repository.SetupUserRepository,
 		txTokenRepo repository.SetupTokenRepositoryWriter,
 	) error {
@@ -220,14 +219,13 @@ func (s *UserService) ResendInvitation(ctx context.Context, userID int64) error 
 			model.SetupTokenPurposeInvitation,
 			s.setupFlows.invitationTokenTTL,
 		)
-		return err
+		if err != nil {
+			return err
+		}
+		return s.setupFlows.enqueueInvitationTx(ctx, tx, user, rawToken)
 	})
 	if err != nil {
 		return err
-	}
-
-	if err := s.setupFlows.sendInvitation(ctx, user, rawToken); err != nil {
-		s.recordInvitationEmailFailure(ctx, user, err)
 	}
 
 	targetID := user.ID
@@ -253,32 +251,6 @@ func (s *UserService) GetUserByID(ctx context.Context, id int64) (*model.User, e
 		return nil, mapRepositoryError(err)
 	}
 	return user, nil
-}
-
-func (s *UserService) recordInvitationEmailFailure(ctx context.Context, user *model.User, err error) {
-	if user == nil || err == nil {
-		return
-	}
-
-	targetID := user.ID
-	audit.Record(ctx, audit.Event{
-		Action:     audit.ActionUserInvitationEmailFailed,
-		TargetType: audit.TargetTypeUser,
-		TargetID:   &targetID,
-		Metadata: map[string]any{
-			"email": user.Email,
-			"error": err.Error(),
-		},
-	})
-
-	if s.setupFlows != nil && s.setupFlows.logger != nil {
-		s.setupFlows.logger.Warn(
-			"invitation email failed",
-			"user_id", user.ID,
-			"email", user.Email,
-			"error", err,
-		)
-	}
 }
 
 func (s *UserService) UpdateUser(ctx context.Context, input UpdateUserInput) (*model.User, error) {

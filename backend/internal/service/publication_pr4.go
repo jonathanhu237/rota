@@ -153,9 +153,26 @@ func (s *PublicationService) DeleteAssignment(
 		assignmentOverridesRemoved = 0
 	}
 
+	var invalidatedRequests []*model.ShiftChangeRequest
 	if err := s.publicationRepo.DeleteAssignment(ctx, repository.DeleteAssignmentParams{
 		PublicationID: input.PublicationID,
 		AssignmentID:  input.AssignmentID,
+		AfterDeleteTx: func(ctx context.Context, tx *sql.Tx) error {
+			if s.shiftChangeRepo == nil {
+				return nil
+			}
+			requests, err := s.shiftChangeRepo.InvalidateRequestsForAssignmentTx(ctx, tx, input.AssignmentID, now)
+			if err != nil {
+				return err
+			}
+			for _, req := range requests {
+				if err := s.enqueueShiftChangeRequestInvalidatedTx(ctx, tx, req, input.AssignmentID, deletedAssignment); err != nil {
+					return err
+				}
+			}
+			invalidatedRequests = requests
+			return nil
+		},
 	}); err != nil {
 		return mapPublicationRepositoryError(err)
 	}
@@ -177,7 +194,19 @@ func (s *PublicationService) DeleteAssignment(
 		Metadata:   metadata,
 	})
 
-	s.invalidateShiftChangeRequestsForDeletedAssignment(ctx, input.AssignmentID, deletedAssignment, now)
+	for _, req := range invalidatedRequests {
+		targetID := req.ID
+		audit.Record(ctx, audit.Event{
+			Action:     audit.ActionShiftChangeInvalidateCascade,
+			TargetType: audit.TargetTypeShiftChangeRequest,
+			TargetID:   &targetID,
+			Metadata: map[string]any{
+				"request_id":    req.ID,
+				"reason":        "assignment_deleted",
+				"assignment_id": input.AssignmentID,
+			},
+		})
+	}
 
 	return nil
 }
@@ -464,62 +493,23 @@ func (s *PublicationService) assignmentSnapshotForCascade(
 	}
 }
 
-func (s *PublicationService) invalidateShiftChangeRequestsForDeletedAssignment(
+func (s *PublicationService) enqueueShiftChangeRequestInvalidatedTx(
 	ctx context.Context,
-	assignmentID int64,
-	deletedAssignment *model.Assignment,
-	now time.Time,
-) {
-	if s.shiftChangeRepo == nil {
-		return
-	}
-
-	requestIDs, err := s.shiftChangeRepo.InvalidateRequestsForAssignment(ctx, assignmentID, now)
-	if err != nil {
-		s.logger.Warn("publication: invalidate shift change requests for deleted assignment", "assignment_id", assignmentID, "error", err)
-		return
-	}
-
-	for _, requestID := range requestIDs {
-		targetID := requestID
-		audit.Record(ctx, audit.Event{
-			Action:     audit.ActionShiftChangeInvalidateCascade,
-			TargetType: audit.TargetTypeShiftChangeRequest,
-			TargetID:   &targetID,
-			Metadata: map[string]any{
-				"request_id":    requestID,
-				"reason":        "assignment_deleted",
-				"assignment_id": assignmentID,
-			},
-		})
-		s.notifyShiftChangeRequestInvalidated(ctx, requestID, assignmentID, deletedAssignment)
-	}
-}
-
-func (s *PublicationService) notifyShiftChangeRequestInvalidated(
-	ctx context.Context,
-	requestID int64,
+	tx *sql.Tx,
+	req *model.ShiftChangeRequest,
 	deletedAssignmentID int64,
 	deletedAssignment *model.Assignment,
-) {
-	if s.emailer == nil || s.shiftChangeRepo == nil {
-		return
-	}
-
-	req, err := s.shiftChangeRepo.GetByID(ctx, requestID)
-	if err != nil {
-		s.logger.Warn("publication: load shift change request for invalidation email", "request_id", requestID, "error", err)
-		return
+) error {
+	if s.outboxRepo == nil {
+		return nil
 	}
 	requester, err := s.publicationRepo.GetUserByID(ctx, req.RequesterUserID)
 	if err != nil {
-		s.logger.Warn("publication: load requester for invalidation email", "request_id", requestID, "error", err)
-		return
+		return err
 	}
 	publication, err := s.publicationRepo.GetByID(ctx, req.PublicationID)
 	if err != nil {
-		s.logger.Warn("publication: load publication for invalidation email", "request_id", requestID, "error", err)
-		return
+		return err
 	}
 
 	data := email.ShiftChangeResolvedData{
@@ -537,7 +527,7 @@ func (s *PublicationService) notifyShiftChangeRequestInvalidated(
 		deletedAssignment,
 	)
 	if err != nil {
-		s.logger.Warn("publication: load requester shift for invalidation email", "request_id", requestID, "error", err)
+		s.logger.Warn("publication: load requester shift for invalidation email", "request_id", req.ID, "error", err)
 	} else if requesterShift != nil {
 		data.RequesterShift = *requesterShift
 	}
@@ -550,16 +540,14 @@ func (s *PublicationService) notifyShiftChangeRequestInvalidated(
 			deletedAssignment,
 		)
 		if err != nil {
-			s.logger.Warn("publication: load counterpart shift for invalidation email", "request_id", requestID, "error", err)
+			s.logger.Warn("publication: load counterpart shift for invalidation email", "request_id", req.ID, "error", err)
 		} else if counterpartShift != nil {
 			data.CounterpartShift = counterpartShift
 		}
 	}
 
 	msg := email.BuildShiftChangeResolvedMessage(data)
-	if err := s.emailer.Send(ctx, msg); err != nil {
-		s.logger.Warn("publication: send invalidation email", "request_id", requestID, "error", err)
-	}
+	return s.outboxRepo.EnqueueTx(ctx, tx, msg, repository.WithOutboxUserID(requester.ID))
 }
 
 func (s *PublicationService) resolveShiftChangeEmailShift(

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 
@@ -137,6 +138,7 @@ func (s *AuthService) RequestPasswordReset(ctx context.Context, emailAddress str
 	var rawToken string
 	err := s.setupFlows.txManager.WithinTx(ctx, func(
 		ctx context.Context,
+		tx *sql.Tx,
 		txUserRepo repository.SetupUserRepository,
 		txTokenRepo repository.SetupTokenRepositoryWriter,
 	) error {
@@ -159,21 +161,13 @@ func (s *AuthService) RequestPasswordReset(ctx context.Context, emailAddress str
 			model.SetupTokenPurposePasswordReset,
 			s.setupFlows.passwordResetTokenTTL,
 		)
-		return err
+		if err != nil {
+			return err
+		}
+		return s.setupFlows.enqueuePasswordResetTx(ctx, tx, user, rawToken)
 	})
 	if err != nil {
 		return err
-	}
-
-	if user != nil && rawToken != "" {
-		if err := s.setupFlows.sendPasswordReset(ctx, user, rawToken); err != nil {
-			s.setupFlows.logger.Warn(
-				"password reset email failed",
-				"user_id", user.ID,
-				"email", user.Email,
-				"error", err,
-			)
-		}
 	}
 
 	// user_found reflects whether an eligible (active) user exists for the
@@ -219,6 +213,7 @@ func (s *AuthService) SetupPassword(ctx context.Context, input SetupPasswordInpu
 	var activatedToken *model.SetupToken
 	if err := s.setupFlows.txManager.WithinTx(ctx, func(
 		ctx context.Context,
+		tx *sql.Tx,
 		txUserRepo repository.SetupUserRepository,
 		txTokenRepo repository.SetupTokenRepositoryWriter,
 	) error {

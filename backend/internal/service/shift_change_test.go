@@ -109,6 +109,11 @@ func (m *shiftChangeRepositoryStatefulMock) Create(
 	}
 	m.nextID++
 	m.requests[req.ID] = cloneShiftChangeRequest(req)
+	if params.AfterCreateTx != nil {
+		if err := params.AfterCreateTx(ctx, nil, cloneShiftChangeRequest(req)); err != nil {
+			return nil, err
+		}
+	}
 	return cloneShiftChangeRequest(req), nil
 }
 
@@ -227,6 +232,11 @@ func (m *shiftChangeRepositoryStatefulMock) UpdateState(
 	}
 	t := params.Now
 	req.DecidedAt = &t
+	if params.AfterUpdateTx != nil {
+		if err := params.AfterUpdateTx(ctx, nil); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -264,6 +274,11 @@ func (m *shiftChangeRepositoryStatefulMock) ApplySwap(
 	req.DecidedByUserID = &decidedBy
 	t := params.Now
 	req.DecidedAt = &t
+	if params.AfterApplyTx != nil {
+		if err := params.AfterApplyTx(ctx, nil); err != nil {
+			return nil, err
+		}
+	}
 
 	return &repository.ApproveResult{
 		RequesterAssignment:   findAssignmentByID(m.pub, params.RequesterAssignmentID),
@@ -298,6 +313,11 @@ func (m *shiftChangeRepositoryStatefulMock) ApplyGive(
 	req.DecidedByUserID = &decidedBy
 	t := params.Now
 	req.DecidedAt = &t
+	if params.AfterApplyTx != nil {
+		if err := params.AfterApplyTx(ctx, nil); err != nil {
+			return nil, err
+		}
+	}
 
 	return &repository.ApproveResult{
 		RequesterAssignment: findAssignmentByID(m.pub, params.RequesterAssignmentID),
@@ -351,6 +371,23 @@ func (m *shiftChangeRepositoryStatefulMock) InvalidateRequestsForAssignment(
 	assignmentID int64,
 	now time.Time,
 ) ([]int64, error) {
+	requests, err := m.InvalidateRequestsForAssignmentTx(ctx, nil, assignmentID, now)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int64, 0, len(requests))
+	for _, req := range requests {
+		ids = append(ids, req.ID)
+	}
+	return ids, nil
+}
+
+func (m *shiftChangeRepositoryStatefulMock) InvalidateRequestsForAssignmentTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	assignmentID int64,
+	now time.Time,
+) ([]*model.ShiftChangeRequest, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -358,8 +395,8 @@ func (m *shiftChangeRepositoryStatefulMock) InvalidateRequestsForAssignment(
 		return nil, m.invalidateRequestsForAssignmentErr
 	}
 
-	ids := make([]int64, 0)
-	for id, req := range m.requests {
+	requests := make([]*model.ShiftChangeRequest, 0)
+	for _, req := range m.requests {
 		if req.State != model.ShiftChangeStatePending {
 			continue
 		}
@@ -371,11 +408,11 @@ func (m *shiftChangeRepositoryStatefulMock) InvalidateRequestsForAssignment(
 		req.State = model.ShiftChangeStateInvalidated
 		t := now
 		req.DecidedAt = &t
-		ids = append(ids, id)
+		requests = append(requests, cloneShiftChangeRequest(req))
 	}
 
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	return ids, nil
+	sort.Slice(requests, func(i, j int) bool { return requests[i].ID < requests[j].ID })
+	return requests, nil
 }
 
 // findAssignmentByID returns a pointer to the assignment stored in the
@@ -415,6 +452,15 @@ func (s *emailStub) Send(_ context.Context, m email.Message) error {
 	defer s.mu.Unlock()
 	s.sent = append(s.sent, m)
 	return nil
+}
+
+func (s *emailStub) EnqueueTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	m email.Message,
+	opts ...repository.OutboxOption,
+) error {
+	return s.Send(ctx, m)
 }
 
 func (s *emailStub) messages() []email.Message {
@@ -468,10 +514,10 @@ func buildShiftChangeFixture(now time.Time) (*publicationRepositoryStatefulMock,
 func newTestShiftChangeService(
 	pub *publicationRepositoryStatefulMock,
 	sc *shiftChangeRepositoryStatefulMock,
-	emailer email.Emailer,
+	outboxRepo setupOutboxRepository,
 	now time.Time,
 ) *ShiftChangeService {
-	return NewShiftChangeService(sc, pub, emailer, "https://rota.example.com", fixedClock{now: now}, nil)
+	return NewShiftChangeService(sc, pub, outboxRepo, "https://rota.example.com", fixedClock{now: now}, nil)
 }
 
 func mondayOccurrence(now time.Time) time.Time {

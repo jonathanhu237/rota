@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log/slog"
 	"sort"
@@ -10,7 +11,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/jonathanhu237/rota/backend/internal/audit"
-	"github.com/jonathanhu237/rota/backend/internal/email"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 )
@@ -76,12 +76,18 @@ type publicationRepository interface {
 type publicationShiftChangeRepository interface {
 	GetByID(ctx context.Context, id int64) (*model.ShiftChangeRequest, error)
 	InvalidateRequestsForAssignment(ctx context.Context, assignmentID int64, now time.Time) ([]int64, error)
+	InvalidateRequestsForAssignmentTx(
+		ctx context.Context,
+		tx *sql.Tx,
+		assignmentID int64,
+		now time.Time,
+	) ([]*model.ShiftChangeRequest, error)
 }
 
 type PublicationService struct {
 	publicationRepo publicationRepository
 	shiftChangeRepo publicationShiftChangeRepository
-	emailer         email.Emailer
+	outboxRepo      setupOutboxRepository
 	logger          *slog.Logger
 	clock           Clock
 	appBaseURL      string
@@ -147,13 +153,13 @@ type DeleteAssignmentInput struct {
 
 func WithPublicationShiftChangeNotifications(
 	shiftChangeRepo publicationShiftChangeRepository,
-	emailer email.Emailer,
+	outboxRepo setupOutboxRepository,
 	appBaseURL string,
 	logger *slog.Logger,
 ) PublicationServiceOption {
 	return func(service *PublicationService) {
 		service.shiftChangeRepo = shiftChangeRepo
-		service.emailer = emailer
+		service.outboxRepo = outboxRepo
 		service.appBaseURL = appBaseURL
 		if logger != nil {
 			service.logger = logger

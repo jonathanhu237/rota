@@ -32,6 +32,7 @@ type CreateAssignmentParams struct {
 type DeleteAssignmentParams struct {
 	PublicationID int64
 	AssignmentID  int64
+	AfterDeleteTx func(ctx context.Context, tx *sql.Tx) error
 }
 
 type ReplaceAssignmentParams struct {
@@ -189,12 +190,32 @@ func createAssignmentWithScheduleCheck(
 }
 
 func (r *PublicationRepository) DeleteAssignment(ctx context.Context, params DeleteAssignmentParams) error {
+	if params.AfterDeleteTx != nil {
+		tx, err := r.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+
+		if err := deleteAssignment(ctx, tx, params); err != nil {
+			return err
+		}
+		if err := params.AfterDeleteTx(ctx, tx); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+
+	return deleteAssignment(ctx, r.db, params)
+}
+
+func deleteAssignment(ctx context.Context, db dbtx, params DeleteAssignmentParams) error {
 	const query = `
 		DELETE FROM assignments
 		WHERE publication_id = $1 AND id = $2;
 	`
 
-	result, err := r.db.ExecContext(ctx, query, params.PublicationID, params.AssignmentID)
+	result, err := db.ExecContext(ctx, query, params.PublicationID, params.AssignmentID)
 	if err != nil {
 		return err
 	}

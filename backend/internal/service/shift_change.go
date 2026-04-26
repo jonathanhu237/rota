@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log/slog"
 	"sort"
@@ -56,7 +57,7 @@ type shiftChangeDeps interface {
 type ShiftChangeService struct {
 	shiftChangeRepo shiftChangeRepository
 	publicationRepo shiftChangeDeps
-	emailer         email.Emailer
+	outboxRepo      setupOutboxRepository
 	logger          *slog.Logger
 	clock           Clock
 	appBaseURL      string
@@ -67,7 +68,7 @@ type ShiftChangeService struct {
 func NewShiftChangeService(
 	shiftChangeRepo shiftChangeRepository,
 	publicationRepo shiftChangeDeps,
-	emailer email.Emailer,
+	outboxRepo setupOutboxRepository,
 	appBaseURL string,
 	clock Clock,
 	logger *slog.Logger,
@@ -81,7 +82,7 @@ func NewShiftChangeService(
 	return &ShiftChangeService{
 		shiftChangeRepo: shiftChangeRepo,
 		publicationRepo: publicationRepo,
-		emailer:         emailer,
+		outboxRepo:      outboxRepo,
 		logger:          logger,
 		clock:           clock,
 		appBaseURL:      appBaseURL,
@@ -133,6 +134,15 @@ func (s *ShiftChangeService) CreateShiftChangeRequest(
 	prepared, err := s.prepareCreateShiftChangeRequest(ctx, input, publication, now)
 	if err != nil {
 		return nil, err
+	}
+	if shouldNotifyShiftChangeCreate(prepared.params.Type) && s.outboxRepo != nil {
+		prepared.params.AfterCreateTx = func(
+			ctx context.Context,
+			tx *sql.Tx,
+			created *model.ShiftChangeRequest,
+		) error {
+			return s.enqueueRequestCreatedTx(ctx, tx, created, prepared.requesterShift, prepared.counterpartShift)
+		}
 	}
 
 	created, err := s.shiftChangeRepo.Create(ctx, prepared.params)
@@ -294,10 +304,6 @@ func (s *ShiftChangeService) recordShiftChangeCreated(
 		TargetID:   &targetID,
 		Metadata:   shiftChangeCreateMetadata(created),
 	})
-
-	if created.Type == model.ShiftChangeTypeSwap || created.Type == model.ShiftChangeTypeGiveDirect {
-		s.notifyRequestCreated(ctx, created, requesterShift, counterpartShift)
-	}
 }
 
 // GetShiftChangeRequest returns a single request, enforcing that the viewer
@@ -447,6 +453,9 @@ func (s *ShiftChangeService) RejectShiftChangeRequest(
 		NextState:       model.ShiftChangeStateRejected,
 		DecidedByUserID: &viewerUserID,
 		Now:             now,
+		AfterUpdateTx: func(ctx context.Context, tx *sql.Tx) error {
+			return s.enqueueRequestResolvedTx(ctx, tx, req, email.ShiftChangeOutcomeRejected, viewerUserID)
+		},
 	}); err != nil {
 		return err
 	}
@@ -463,7 +472,6 @@ func (s *ShiftChangeService) RejectShiftChangeRequest(
 		},
 	})
 
-	s.notifyRequestResolved(ctx, req, email.ShiftChangeOutcomeRejected, viewerUserID)
 	return nil
 }
 
@@ -575,8 +583,6 @@ func (s *ShiftChangeService) ApproveShiftChangeRequest(
 		}
 	}
 
-	// Apply atomically in the repo.
-	var outcome email.ShiftChangeOutcome
 	switch req.Type {
 	case model.ShiftChangeTypeSwap:
 		_, err := s.shiftChangeRepo.ApplySwap(ctx, repository.ApplySwapParams{
@@ -590,11 +596,13 @@ func (s *ShiftChangeService) ApproveShiftChangeRequest(
 			CounterpartOccurrenceDate: *req.CounterpartOccurrenceDate,
 			DecidedByUserID:           viewerUserID,
 			Now:                       now,
+			AfterApplyTx: func(ctx context.Context, tx *sql.Tx) error {
+				return s.enqueueRequestResolvedTx(ctx, tx, req, email.ShiftChangeOutcomeApproved, viewerUserID)
+			},
 		})
 		if err != nil {
 			return s.mapApplyError(ctx, req, err, now)
 		}
-		outcome = email.ShiftChangeOutcomeApproved
 	default:
 		_, err := s.shiftChangeRepo.ApplyGive(ctx, repository.ApplyGiveParams{
 			RequestID:             req.ID,
@@ -605,14 +613,16 @@ func (s *ShiftChangeService) ApproveShiftChangeRequest(
 			ReceiverUserID:        receiverUserID,
 			DecidedByUserID:       viewerUserID,
 			Now:                   now,
+			AfterApplyTx: func(ctx context.Context, tx *sql.Tx) error {
+				outcome := email.ShiftChangeOutcomeApproved
+				if req.Type == model.ShiftChangeTypeGivePool {
+					outcome = email.ShiftChangeOutcomeClaimed
+				}
+				return s.enqueueRequestResolvedTx(ctx, tx, req, outcome, viewerUserID)
+			},
 		})
 		if err != nil {
 			return s.mapApplyError(ctx, req, err, now)
-		}
-		if req.Type == model.ShiftChangeTypeGivePool {
-			outcome = email.ShiftChangeOutcomeClaimed
-		} else {
-			outcome = email.ShiftChangeOutcomeApproved
 		}
 	}
 
@@ -629,7 +639,6 @@ func (s *ShiftChangeService) ApproveShiftChangeRequest(
 		},
 	})
 
-	s.notifyRequestResolved(ctx, req, outcome, viewerUserID)
 	return nil
 }
 
@@ -769,23 +778,26 @@ func (s *ShiftChangeService) mapApplyError(
 
 // ------------ email ------------
 
-func (s *ShiftChangeService) notifyRequestCreated(
+func shouldNotifyShiftChangeCreate(requestType model.ShiftChangeType) bool {
+	return requestType == model.ShiftChangeTypeSwap || requestType == model.ShiftChangeTypeGiveDirect
+}
+
+func (s *ShiftChangeService) enqueueRequestCreatedTx(
 	ctx context.Context,
+	tx *sql.Tx,
 	req *model.ShiftChangeRequest,
 	requesterShift, counterpartShift *model.PublicationShift,
-) {
-	if s.emailer == nil || req.CounterpartUserID == nil {
-		return
+) error {
+	if s.outboxRepo == nil || req.CounterpartUserID == nil {
+		return nil
 	}
 	counterpart, err := s.publicationRepo.GetUserByID(ctx, *req.CounterpartUserID)
 	if err != nil {
-		s.logger.Warn("shift_change: load counterpart for email", "error", err)
-		return
+		return err
 	}
 	requester, err := s.publicationRepo.GetUserByID(ctx, req.RequesterUserID)
 	if err != nil {
-		s.logger.Warn("shift_change: load requester for email", "error", err)
-		return
+		return err
 	}
 
 	data := email.ShiftChangeRequestReceivedData{
@@ -801,45 +813,39 @@ func (s *ShiftChangeService) notifyRequestCreated(
 		data.CounterpartShift = &ref
 	}
 	msg := email.BuildShiftChangeRequestReceivedMessage(data)
-	if err := s.emailer.Send(ctx, msg); err != nil {
-		s.logger.Warn("shift_change: send received email", "error", err)
-	}
+	return s.outboxRepo.EnqueueTx(ctx, tx, msg, repository.WithOutboxUserID(counterpart.ID))
 }
 
-func (s *ShiftChangeService) notifyRequestResolved(
+func (s *ShiftChangeService) enqueueRequestResolvedTx(
 	ctx context.Context,
+	tx *sql.Tx,
 	req *model.ShiftChangeRequest,
 	outcome email.ShiftChangeOutcome,
 	responderID int64,
-) {
-	if s.emailer == nil {
-		return
+) error {
+	if s.outboxRepo == nil {
+		return nil
 	}
 	requester, err := s.publicationRepo.GetUserByID(ctx, req.RequesterUserID)
 	if err != nil {
-		s.logger.Warn("shift_change: load requester for resolved email", "error", err)
-		return
+		return err
 	}
 	shiftIndex, err := s.loadShiftIndex(ctx, req.PublicationID)
 	if err != nil {
-		s.logger.Warn("shift_change: load shift index for resolved email", "error", err)
-		return
+		return err
 	}
 	responder, err := s.publicationRepo.GetUserByID(ctx, responderID)
 	if err != nil {
-		s.logger.Warn("shift_change: load responder for resolved email", "error", err)
-		return
+		return err
 	}
 
 	requesterAssignment, err := s.publicationRepo.GetAssignment(ctx, req.RequesterAssignmentID)
 	if err != nil {
-		s.logger.Warn("shift_change: load requester assignment for resolved email", "error", err)
-		return
+		return err
 	}
 	requesterShift := findPublicationShiftForAssignment(shiftIndex, requesterAssignment)
 	if requesterShift == nil {
-		s.logger.Warn("shift_change: missing requester shift for resolved email", "assignment_id", req.RequesterAssignmentID)
-		return
+		return ErrTemplateSlotPositionNotFound
 	}
 
 	data := email.ShiftChangeResolvedData{
@@ -861,9 +867,7 @@ func (s *ShiftChangeService) notifyRequestResolved(
 		}
 	}
 	msg := email.BuildShiftChangeResolvedMessage(data)
-	if err := s.emailer.Send(ctx, msg); err != nil {
-		s.logger.Warn("shift_change: send resolved email", "error", err)
-	}
+	return s.outboxRepo.EnqueueTx(ctx, tx, msg, repository.WithOutboxUserID(requester.ID))
 }
 
 func weekdayLabel(weekday int) string {

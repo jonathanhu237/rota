@@ -30,7 +30,12 @@ type SetupTokenRepositoryWriter interface {
 type SetupTxRunner interface {
 	WithinTx(
 		ctx context.Context,
-		fn func(ctx context.Context, userRepo SetupUserRepository, tokenRepo SetupTokenRepositoryWriter) error,
+		fn func(
+			ctx context.Context,
+			tx *sql.Tx,
+			userRepo SetupUserRepository,
+			tokenRepo SetupTokenRepositoryWriter,
+		) error,
 	) error
 }
 
@@ -40,7 +45,12 @@ func NewSetupTxManager(db *sql.DB) *SetupTxManager {
 
 func (m *SetupTxManager) WithinTx(
 	ctx context.Context,
-	fn func(ctx context.Context, userRepo SetupUserRepository, tokenRepo SetupTokenRepositoryWriter) error,
+	fn func(
+		ctx context.Context,
+		tx *sql.Tx,
+		userRepo SetupUserRepository,
+		tokenRepo SetupTokenRepositoryWriter,
+	) error,
 ) error {
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -48,7 +58,7 @@ func (m *SetupTxManager) WithinTx(
 	}
 	defer tx.Rollback()
 
-	if err := fn(ctx, NewUserRepository(tx), NewSetupTokenRepository(tx)); err != nil {
+	if err := fn(ctx, tx, NewUserRepository(tx), NewSetupTokenRepository(tx)); err != nil {
 		return err
 	}
 

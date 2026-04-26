@@ -49,6 +49,7 @@ func main() {
 	publicationRepo := repository.NewPublicationRepository(db)
 	userPositionRepo := repository.NewUserPositionRepository(db)
 	leaveRepo := repository.NewLeaveRepository(db)
+	outboxRepo := repository.NewOutboxRepository(db)
 	if err := service.EnsureBootstrapAdmin(ctx, service.BootstrapAdminInput{
 		Email:    cfg.BootstrapAdminEmail,
 		Password: cfg.BootstrapAdminPassword,
@@ -91,6 +92,8 @@ func main() {
 	cleanupCtx, stopSessionCleanup := context.WithCancel(context.Background())
 	defer stopSessionCleanup()
 	startSessionCleanup(cleanupCtx, db, 6*time.Hour, slog.Default())
+	var auditRecorder audit.Recorder = repository.NewAuditRecorder(db, slog.Default())
+	RunOutboxWorker(audit.WithRecorder(cleanupCtx, auditRecorder), outboxRepo, emailer, slog.Default())
 
 	setupTokenRepo := repository.NewSetupTokenRepository(db)
 	setupTxManager := repository.NewSetupTxManager(db)
@@ -100,7 +103,7 @@ func main() {
 		service.WithAuthSetupFlows(service.SetupFlowConfig{
 			TxManager:             setupTxManager,
 			SetupTokenRepo:        setupTokenRepo,
-			Emailer:               emailer,
+			OutboxRepo:            outboxRepo,
 			Logger:                slog.Default(),
 			AppBaseURL:            cfg.AppBaseURL,
 			InvitationTokenTTL:    cfg.InvitationTokenTTL,
@@ -112,7 +115,7 @@ func main() {
 		sessionStore,
 		service.WithSetupFlows(service.SetupFlowConfig{
 			TxManager:          setupTxManager,
-			Emailer:            emailer,
+			OutboxRepo:         outboxRepo,
 			Logger:             slog.Default(),
 			AppBaseURL:         cfg.AppBaseURL,
 			InvitationTokenTTL: cfg.InvitationTokenTTL,
@@ -126,14 +129,12 @@ func main() {
 		nil,
 		service.WithPublicationShiftChangeNotifications(
 			shiftChangeRepo,
-			emailer,
+			outboxRepo,
 			cfg.AppBaseURL,
 			slog.Default(),
 		),
 	)
 	userPositionService := service.NewUserPositionService(userPositionRepo)
-
-	var auditRecorder audit.Recorder = repository.NewAuditRecorder(db, slog.Default())
 
 	// Initialize handlers
 	healthHandler := handler.NewHealthHandler()
@@ -146,7 +147,7 @@ func main() {
 	shiftChangeService := service.NewShiftChangeService(
 		shiftChangeRepo,
 		publicationRepo,
-		emailer,
+		outboxRepo,
 		cfg.AppBaseURL,
 		nil,
 		slog.Default(),

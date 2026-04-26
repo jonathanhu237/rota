@@ -512,11 +512,29 @@ func (m *publicationRepositoryStatefulMock) DeleteAssignment(
 	ctx context.Context,
 	params repository.DeleteAssignmentParams,
 ) error {
+	var deletedKey string
+	var deletedAssignment *model.Assignment
+	var deletedOverrideCount int64
+	var hadOverrideCount bool
 	for key, assignment := range m.assignments {
 		if assignment.PublicationID == params.PublicationID && assignment.ID == params.AssignmentID {
+			deletedKey = key
+			deletedAssignment = cloneAssignment(assignment)
+			deletedOverrideCount, hadOverrideCount = m.assignmentOverrideCounts[params.AssignmentID]
 			delete(m.assignments, key)
 			delete(m.assignmentOverrideCounts, params.AssignmentID)
 			break
+		}
+	}
+	if params.AfterDeleteTx != nil {
+		if err := params.AfterDeleteTx(ctx, nil); err != nil {
+			if deletedAssignment != nil {
+				m.assignments[deletedKey] = deletedAssignment
+			}
+			if hadOverrideCount {
+				m.assignmentOverrideCounts[params.AssignmentID] = deletedOverrideCount
+			}
+			return err
 		}
 	}
 

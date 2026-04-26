@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -24,6 +25,10 @@ type setupUserRepository = repository.SetupUserRepository
 type setupTokenRepository = repository.SetupTokenRepositoryWriter
 type setupTxManager = repository.SetupTxRunner
 
+type setupOutboxRepository interface {
+	EnqueueTx(ctx context.Context, tx *sql.Tx, msg email.Message, opts ...repository.OutboxOption) error
+}
+
 type setupLogger interface {
 	Error(msg string, args ...any)
 	Warn(msg string, args ...any)
@@ -32,7 +37,7 @@ type setupLogger interface {
 type SetupFlowConfig struct {
 	TxManager             setupTxManager
 	SetupTokenRepo        setupTokenRepository
-	Emailer               email.Emailer
+	OutboxRepo            setupOutboxRepository
 	Logger                setupLogger
 	AppBaseURL            string
 	InvitationTokenTTL    time.Duration
@@ -55,7 +60,7 @@ type SetupPasswordInput struct {
 type setupFlowHelper struct {
 	txManager             setupTxManager
 	setupTokenRepo        setupTokenRepository
-	emailer               email.Emailer
+	outboxRepo            setupOutboxRepository
 	logger                setupLogger
 	appBaseURL            string
 	invitationTokenTTL    time.Duration
@@ -83,7 +88,7 @@ func newSetupFlowHelper(config SetupFlowConfig) *setupFlowHelper {
 	return &setupFlowHelper{
 		txManager:             config.TxManager,
 		setupTokenRepo:        config.SetupTokenRepo,
-		emailer:               config.Emailer,
+		outboxRepo:            config.OutboxRepo,
 		logger:                logger,
 		appBaseURL:            strings.TrimSpace(config.AppBaseURL),
 		invitationTokenTTL:    config.InvitationTokenTTL,
@@ -123,34 +128,49 @@ func (h *setupFlowHelper) issueToken(
 	return rawToken, nil
 }
 
-func (h *setupFlowHelper) sendInvitation(ctx context.Context, user *model.User, rawToken string) error {
-	return h.sendEmail(ctx, email.BuildInvitationMessage(email.TemplateData{
+func (h *setupFlowHelper) enqueueInvitationTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	user *model.User,
+	rawToken string,
+) error {
+	return h.enqueueEmailTx(ctx, tx, email.BuildInvitationMessage(email.TemplateData{
 		To:         user.Email,
 		Name:       user.Name,
 		BaseURL:    h.appBaseURL,
 		Token:      rawToken,
 		Language:   "en",
 		Expiration: h.invitationTokenTTL,
-	}))
+	}), repository.WithOutboxUserID(user.ID))
 }
 
-func (h *setupFlowHelper) sendPasswordReset(ctx context.Context, user *model.User, rawToken string) error {
-	return h.sendEmail(ctx, email.BuildPasswordResetMessage(email.TemplateData{
+func (h *setupFlowHelper) enqueuePasswordResetTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	user *model.User,
+	rawToken string,
+) error {
+	return h.enqueueEmailTx(ctx, tx, email.BuildPasswordResetMessage(email.TemplateData{
 		To:         user.Email,
 		Name:       user.Name,
 		BaseURL:    h.appBaseURL,
 		Token:      rawToken,
 		Language:   "en",
 		Expiration: h.passwordResetTokenTTL,
-	}))
+	}), repository.WithOutboxUserID(user.ID))
 }
 
-func (h *setupFlowHelper) sendEmail(ctx context.Context, msg email.Message) error {
-	if h.emailer == nil {
+func (h *setupFlowHelper) enqueueEmailTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	msg email.Message,
+	opts ...repository.OutboxOption,
+) error {
+	if h.outboxRepo == nil {
 		return nil
 	}
 
-	return h.emailer.Send(ctx, msg)
+	return h.outboxRepo.EnqueueTx(ctx, tx, msg, opts...)
 }
 
 func (h *setupFlowHelper) resolveToken(

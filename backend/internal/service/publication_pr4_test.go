@@ -560,10 +560,11 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		}
 	})
 
-	t.Run("delete still succeeds when cascade update fails", func(t *testing.T) {
+	t.Run("delete rolls back when cascade update fails", func(t *testing.T) {
 		t.Parallel()
 
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+		cascadeErr := errors.New("db unavailable")
 		repo := newPublicationRepositoryStatefulMock()
 		repo.publications[1] = publishedPublication(now)
 		repo.assignments[assignmentKey(1, 7, 21)] = &model.Assignment{
@@ -575,7 +576,7 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			CreatedAt:     now.Add(-15 * time.Minute),
 		}
 		shiftChangeRepo := newShiftChangeRepositoryStatefulMock(repo)
-		shiftChangeRepo.invalidateRequestsForAssignmentErr = errors.New("db unavailable")
+		shiftChangeRepo.invalidateRequestsForAssignmentErr = cascadeErr
 		shiftChangeRepo.requests[58] = &model.ShiftChangeRequest{
 			ID:                    58,
 			PublicationID:         1,
@@ -600,18 +601,18 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 			PublicationID: 1,
 			AssignmentID:  1,
 		})
-		if err != nil {
-			t.Fatalf("DeleteAssignment returned error: %v", err)
+		if !errors.Is(err, cascadeErr) {
+			t.Fatalf("expected cascade error, got %v", err)
 		}
 
-		if len(repo.assignments) != 0 {
-			t.Fatalf("expected assignment delete to succeed, got %d assignments", len(repo.assignments))
+		if len(repo.assignments) != 1 {
+			t.Fatalf("expected assignment delete to roll back, got %d assignments", len(repo.assignments))
 		}
 		if got := shiftChangeRepo.requests[58].State; got != model.ShiftChangeStatePending {
 			t.Fatalf("expected request to remain pending, got %q", got)
 		}
-		if len(stub.Events()) != 1 {
-			t.Fatalf("expected only assignment delete audit event, got %+v", stub.Events())
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on cascade failure, got %+v", stub.Events())
 		}
 		if len(emailer.messages()) != 0 {
 			t.Fatalf("expected no email, got %d", len(emailer.messages()))
