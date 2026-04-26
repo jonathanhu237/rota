@@ -21,11 +21,12 @@ The system SHALL maintain a many-to-many link between users and positions in `us
 
 ### Requirement: Qualification gates employee actions
 
-An employee SHALL only be permitted to submit availability, create a shift-change request, accept a direct give, approve a swap, or claim a pool request for a `(slot, position)` pair whose `position_id` is in their `user_positions` set. Admins bypass this check when creating assignments directly.
+An employee SHALL only be permitted to submit availability for a slot whose composition has at least one position in their `user_positions` set. For shift-change requests (create / accept give / approve swap / claim pool), the qualification check is per `(slot, position)` since assignments carry a specific position. Admins bypass these checks when creating assignments directly.
 
-#### Scenario: Employee submits availability for an unqualified position
+#### Scenario: Employee submits availability for a slot whose composition does not overlap
 
-- **WHEN** an employee submits availability for a `(slot, position)` pair whose `position_id` is not in their `user_positions`
+- **GIVEN** a slot `S` whose composition is `{P1, P2}` and a viewer whose `user_positions` is `{P3}`
+- **WHEN** the viewer submits availability for `S`
 - **THEN** the response is HTTP 403 with error code `NOT_QUALIFIED`
 
 #### Scenario: Admin assigns regardless of qualification check path
@@ -299,19 +300,21 @@ The `leave_id IS NULL` clause excludes leave-bearing requests from activation ex
 
 ### Requirement: Availability submission data model
 
-`availability_submissions` rows SHALL store `id`, `publication_id`, `user_id`, `slot_id`, `position_id`, `created_at`. There SHALL be a unique constraint on `(publication_id, user_id, slot_id, position_id)`. Rows SHALL be `ON DELETE CASCADE` from publication, user, and slot. A submission's `(slot_id, position_id)` pair SHALL correspond to an existing `template_slot_positions` row.
+`availability_submissions` rows SHALL store `id`, `publication_id`, `user_id`, `slot_id`, `created_at`. There SHALL be a unique constraint on `(publication_id, user_id, slot_id)`. Rows SHALL be `ON DELETE CASCADE` from publication, user, and slot. There SHALL be an index on `(publication_id, slot_id)` to support the auto-assigner and assignment-board reads.
+
+A submission row carries no position information: it expresses "this user is available during this time block in this publication". The position the user fills is decided downstream by auto-assign (and may be hand-edited by an admin), bounded by `user_positions ∩ template_slot_positions(slot_id)`.
 
 #### Scenario: Duplicate tick is idempotent at the database
 
-- **GIVEN** an existing `availability_submissions` row for `(pub, user, slot, position)`
+- **GIVEN** an existing `availability_submissions` row for `(pub, user, slot)`
 - **WHEN** another insert is attempted for the same tuple
 - **THEN** the database's unique constraint rejects it
 
-#### Scenario: Submitted position must belong to the slot
+#### Scenario: Submission for a slot whose composition has no overlap with user_positions is rejected
 
-- **GIVEN** a slot `S` whose composition does not include position `P`
-- **WHEN** a submission is attempted for `(pub, user, S, P)`
-- **THEN** the request is rejected with `NOT_QUALIFIED` (the client-facing code is unchanged; the server-side enforcement uses the `template_slot_positions` link)
+- **GIVEN** a slot `S` whose composition does not include any position in the user's `user_positions`
+- **WHEN** a submission is attempted for `(pub, user, S)`
+- **THEN** the request is rejected with HTTP 403 and error code `NOT_QUALIFIED`
 
 ### Requirement: Availability window
 
@@ -320,31 +323,47 @@ The system SHALL permit creation and deletion of `availability_submissions` only
 #### Scenario: Tick during COLLECTING is accepted
 
 - **GIVEN** a publication whose effective state is `COLLECTING`
-- **WHEN** a qualified employee calls `POST /publications/{id}/submissions` for a `(slot, position)` pair they are qualified for
+- **WHEN** a qualified employee calls `POST /publications/{id}/submissions` for a slot whose composition overlaps their `user_positions`
 - **THEN** the submission is persisted
 
 #### Scenario: Tick outside COLLECTING is refused
 
-- **WHEN** an employee calls `POST /publications/{id}/submissions` or `DELETE /publications/{id}/submissions/{slot_id}/{position_id}` while the effective state is not `COLLECTING`
+- **WHEN** an employee calls `POST /publications/{id}/submissions` or `DELETE /publications/{id}/submissions/{slot_id}` while the effective state is not `COLLECTING`
 - **THEN** the response is HTTP 409 with error code `PUBLICATION_NOT_COLLECTING`
 
 ### Requirement: Employee availability endpoints
 
-The system SHALL expose the following employee-facing endpoints, each requiring `RequireAuth`: `GET /publications/{id}/shifts/me` (returns the `(slot, position)` pairs the viewer is qualified for; gated on effective state `COLLECTING`), `GET /publications/{id}/submissions/me` (viewer's own ticked `(slot, position)` pairs), `POST /publications/{id}/submissions` (tick; gated on `COLLECTING`; body `{ slot_id, position_id }`), and `DELETE /publications/{id}/submissions/{slot_id}/{position_id}` (un-tick; gated on `COLLECTING`).
+The system SHALL expose the following employee-facing endpoints, each requiring `RequireAuth`:
 
-`GET /publications/{id}/shifts/me` SHALL return one row per `(slot, position)` pair whose `position_id` is in the viewer's `user_positions`. Each row SHALL carry `slot_id`, `position_id`, `weekday`, `start_time`, `end_time`, and `required_headcount`. The response SHALL NOT include a single legacy surrogate `id` field; callers identify rows by the `(slot_id, position_id)` natural key.
+- `GET /publications/{id}/shifts/me` — returns the slots the viewer is qualified to fill (gated on effective state `COLLECTING`).
+- `GET /publications/{id}/submissions/me` — returns the viewer's ticked `slot_id`s in this publication.
+- `POST /publications/{id}/submissions` — body `{ slot_id }` (gated on `COLLECTING`).
+- `DELETE /publications/{id}/submissions/{slot_id}` — un-tick (gated on `COLLECTING`).
 
-#### Scenario: shifts/me filters by qualification
+`GET /publications/{id}/shifts/me` SHALL return one row per slot whose composition has at least one position in the viewer's `user_positions`. Each row SHALL carry `slot_id`, `weekday`, `start_time`, `end_time`, and a `composition` array — the array enumerates the slot's `(position_id, position_name, required_headcount)` triples for display purposes only. The viewer ticks the slot, not individual positions in the composition.
 
-- **GIVEN** a template with `(slot, position)` pairs in positions `P1` and `P2`, and a viewer qualified only for `P1`
+#### Scenario: shifts/me filters by qualification overlap
+
+- **GIVEN** a template with slot `S1` whose composition is `{P1}` and slot `S2` whose composition is `{P2}`, and a viewer whose `user_positions` is `{P1}`
 - **WHEN** the viewer calls `GET /publications/{id}/shifts/me` during `COLLECTING`
-- **THEN** the response contains only rows whose `position_id = P1`
+- **THEN** the response contains `S1` and does NOT contain `S2`
 
-#### Scenario: shifts/me response shape carries slot_id and position_id
+#### Scenario: shifts/me response shape carries slot_id and composition
 
 - **WHEN** an authenticated employee calls `GET /publications/{id}/shifts/me`
-- **THEN** each returned row has fields `slot_id`, `position_id`, `weekday`, `start_time`, `end_time`, `required_headcount`
-- **AND** no top-level `id` or `template_shift_id` field is present
+- **THEN** each returned row has fields `slot_id`, `weekday`, `start_time`, `end_time`, `composition`
+- **AND** no top-level `position_id` field is present at the row level
+
+#### Scenario: Submission body carries slot_id only
+
+- **WHEN** an authenticated employee calls `POST /publications/{id}/submissions`
+- **THEN** the request body is `{ slot_id: <int> }`
+- **AND** any `position_id` field in the body is ignored
+
+#### Scenario: Delete URL carries slot_id only
+
+- **WHEN** an authenticated employee calls `DELETE /publications/{id}/submissions/{slot_id}`
+- **THEN** the row matching `(publication_id, viewer_user_id, slot_id)` is removed
 
 ### Requirement: Assignment data model
 
@@ -442,9 +461,9 @@ The system SHALL expose `GET /publications/{id}/assignment-board`, `POST /public
 
 `POST /publications/{id}/auto-assign` SHALL run a min-cost max-flow solver over the candidate pool and SHALL replace the entire assignment set for the publication inside one transaction, so a partial result is never observed.
 
-The candidate pool SHALL be derived by joining `availability_submissions` with the user's *current* `user_positions` and the user's *current* `users.status`. A submission whose `(user_id, position_id)` is no longer present in `user_positions`, or whose `user_id` is no longer `status = 'active'`, SHALL NOT contribute to the candidate pool, even though the submission row itself remains in the database (admin can re-add the position to restore it).
+The candidate pool SHALL be derived by joining `availability_submissions` with each submission's slot composition (`template_slot_positions`), the user's *current* `user_positions`, and the user's *current* `users.status`. A `(user, slot)` submission contributes candidacy iff `user_positions(user) ∩ composition(slot) ≠ ∅` AND `users.status = 'active'`. A submission whose user has lost all qualifying positions for the slot's composition, or whose user is no longer `active`, SHALL NOT contribute, even though the submission row remains in the database (admin can re-add a position to restore candidacy).
 
-The graph SHALL be constructed as follows: a source `s`; for each user with at least one candidacy, per-weekday maximal overlap groups of slots the user submitted availability for (a user may take at most one slot per overlap group); up to `min(#groups, total_demand)` per-user "seat" nodes between `s` and a central "employee" node; one node per `(slot, position)` pair (i.e., per `template_slot_positions` row with candidacy); an intermediate `(user, slot)` node of capacity 1 between the user and any `(slot, position)` node for that slot (so a user can hold at most one position in the same slot, consistent with the `UNIQUE(publication_id, user_id, slot_id)` natural key); `(slot, position)` nodes connected to sink `t` with capacity `required_headcount` and a negative coverage bonus; all user-side edges of capacity 1; seat edges with costs that grow linearly with the seat index so work is spread across employees. The coverage bonus SHALL be large and negative (`-2 * total_demand`) so demand fill dominates spreading.
+The graph SHALL be constructed as follows: a source `s`; for each user with at least one candidacy, per-weekday maximal overlap groups of slots the user submitted availability for (a user may take at most one slot per overlap group); up to `min(#groups, total_demand)` per-user "seat" nodes between `s` and a central "employee" node; one node per `(slot, position)` cell (i.e., per `template_slot_positions` row that has at least one candidate); an intermediate `(user, slot)` node of capacity 1 between the user and the `(slot, position)` cells of that slot — edges from `(user, slot)` go ONLY to those cells whose position is in `user_positions(user)` (so a user is only routed to roles they can actually fill); `(slot, position)` nodes connected to sink `t` with capacity `required_headcount` and a negative coverage bonus; all user-side edges of capacity 1; seat edges with costs that grow linearly with the seat index so work is spread across employees. The coverage bonus SHALL be large and negative (`-2 * total_demand`) so demand fill dominates spreading.
 
 The solver SHALL NOT optimise for fairness over time, seniority, or preference weighting; those are out of scope. Admins MAY hand-edit any assignment afterward.
 
@@ -462,24 +481,31 @@ The solver SHALL NOT optimise for fairness over time, seniority, or preference w
 
 #### Scenario: Auto-assign does not put a user in two positions of the same slot
 
-- **GIVEN** a user who submitted availability for two positions within the same slot `S`
+- **GIVEN** a user who submitted availability for slot `S` whose composition is `{P1, P2}` and the user is qualified for both
 - **WHEN** auto-assign runs
-- **THEN** the user is assigned to at most one of those `(S, position)` pairs, consistent with the per-slot unique key
+- **THEN** the user is assigned to at most one of `(S, P1)` or `(S, P2)`, consistent with the per-slot unique key
+
+#### Scenario: Auto-assign routes a multi-qualified user to whichever cell helps coverage
+
+- **GIVEN** a user qualified for both `P1` and `P2` who submitted availability for slot `S` whose composition is `{P1, P2}`
+- **AND** another candidate exists for `(S, P1)` but not `(S, P2)`
+- **WHEN** auto-assign runs
+- **THEN** the multi-qualified user is preferentially assigned to `(S, P2)` so coverage is maximised, subject to the rest of the graph
 
 #### Scenario: Auto-assign skips submissions whose qualification was revoked
 
-- **GIVEN** a user `U` who submitted availability for `(slot S, position P)` while qualified for `P`
+- **GIVEN** a user `U` who submitted availability for slot `S` whose composition is `{P}` while qualified for `P`
 - **AND** an admin removed `P` from `U`'s `user_positions` before auto-assign runs
 - **WHEN** auto-assign runs
-- **THEN** the candidate pool does not include `(U, S, P)`
-- **AND** auto-assign does not assign `U` to `(S, P)`
-- **AND** the `availability_submissions` row for `(U, S, P)` is unchanged in the database (it stays for potential future re-qualification)
+- **THEN** `U` does not appear in the candidate pool for `S` (no qualifying overlap remains)
+- **AND** auto-assign does not assign `U` to any cell of `S`
+- **AND** the `availability_submissions` row for `(U, S)` is unchanged in the database (it stays for potential future re-qualification)
 
 #### Scenario: Auto-assign skips submissions from disabled users
 
 - **GIVEN** a user `U` who submitted availability and was later disabled
 - **WHEN** auto-assign runs
-- **THEN** the candidate pool does not include any `(U, slot, position)` rows
+- **THEN** the candidate pool does not include any `(U, slot)` rows
 
 ### Requirement: Shift-change request data model
 
