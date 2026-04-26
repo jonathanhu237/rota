@@ -35,7 +35,7 @@ func main() {
 func run(ctx context.Context, cfg *config.Config, args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("seed", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	scenario := flags.String("scenario", defaultScenario, "seed scenario: basic, full, or stress")
+	scenario := flags.String("scenario", defaultScenario, "seed scenario: basic, full, stress, or realistic")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -46,7 +46,7 @@ func run(ctx context.Context, cfg *config.Config, args []string, stdout, stderr 
 
 	name := strings.ToLower(strings.TrimSpace(*scenario))
 	if !scenarios.IsValid(name) {
-		return fmt.Errorf("seed: unknown scenario %q; expected basic, full, or stress", *scenario)
+		return fmt.Errorf("seed: unknown scenario %q; expected basic, full, stress, or realistic", *scenario)
 	}
 
 	db, err := sql.Open("postgres", cfg.DatabaseDSN())

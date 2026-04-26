@@ -46,7 +46,7 @@ type slotDefinition struct {
 
 func IsValid(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "basic", "full", "stress":
+	case "basic", "full", "stress", "realistic":
 		return true
 	default:
 		return false
@@ -62,6 +62,8 @@ func Run(ctx context.Context, tx *sql.Tx, name string, opts Options) error {
 		return RunFull(ctx, tx, opts)
 	case "stress":
 		return RunStress(ctx, tx, opts)
+	case "realistic":
+		return RunRealistic(ctx, tx, opts)
 	default:
 		return fmt.Errorf("unknown scenario %q", name)
 	}
