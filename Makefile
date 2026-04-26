@@ -7,7 +7,7 @@ GOOSE_DBSTRING = postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOS
 GOOSE_MIGRATION_DIR = ./migrations
 SCENARIO ?= basic
 
-.PHONY: run-backend run-frontend migrate-up migrate-down migrate-status seed test-backend test-integration prod-up prod-down prod-logs prod-pull
+.PHONY: run-backend run-frontend migrate-up migrate-down migrate-reset migrate-status seed test-backend test-integration prod-up prod-down prod-logs prod-pull
 
 run-backend:
 	@cd backend && go run ./cmd/server
@@ -20,6 +20,9 @@ migrate-up:
 
 migrate-down:
 	@GOOSE_DRIVER=$(GOOSE_DRIVER) GOOSE_DBSTRING=$(GOOSE_DBSTRING) GOOSE_MIGRATION_DIR=$(GOOSE_MIGRATION_DIR) goose down
+
+migrate-reset:
+	@GOOSE_DRIVER=$(GOOSE_DRIVER) GOOSE_DBSTRING=$(GOOSE_DBSTRING) GOOSE_MIGRATION_DIR=$(GOOSE_MIGRATION_DIR) goose reset
 
 migrate-status:
 	@GOOSE_DRIVER=$(GOOSE_DRIVER) GOOSE_DBSTRING=$(GOOSE_DBSTRING) GOOSE_MIGRATION_DIR=$(GOOSE_MIGRATION_DIR) goose status
