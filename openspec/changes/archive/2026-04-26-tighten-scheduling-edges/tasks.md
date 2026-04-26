@@ -3,7 +3,7 @@
 - [x] 1.1 In `backend/internal/repository/assignment.go`, modify the `ListAssignmentCandidates` SQL: add `INNER JOIN user_positions up ON up.user_id = asub.user_id AND up.position_id = asub.position_id` and `AND u.status = 'active'` in the WHERE clause. Keep the existing ORDER BY. Verify: `cd backend && go build ./...`.
 - [x] 1.2 Add a service-layer test in `backend/internal/service/publication_pr5_test.go` (or similar): seed a publication with COLLECTING-era submissions for user `U` at position `P`. Then remove `P` from `U`'s `user_positions`. Run `AutoAssignPublication`. Assert `U` is NOT assigned to `(slot, P)`. Verify: `cd backend && go test ./internal/service -run AutoAssignSkipsRevokedQualification -count=1`.
 - [x] 1.3 Add a parallel test for `u.status = disabled`. Verify: `cd backend && go test ./internal/service -run AutoAssignSkipsDisabled -count=1`.
-- [x] 1.4 Add a repository integration test confirming the SQL filter works directly. Verify: `POSTGRES_HOST=localhost POSTGRES_PORT=${POSTGRES_PORT:-5433} POSTGRES_USER=rota POSTGRES_PASSWORD=pa55word POSTGRES_DB=rota go test -tags=integration ./internal/repository -run ListAssignmentCandidatesFiltered -count=1`.
+- [x] 1.4 Add a repository integration test confirming the SQL filter works directly. Verify: `POSTGRES_HOST=localhost POSTGRES_PORT=${POSTGRES_PORT:-5432} POSTGRES_USER=rota POSTGRES_PASSWORD=pa55word POSTGRES_DB=rota go test -tags=integration ./internal/repository -run ListAssignmentCandidatesFiltered -count=1`.
 
 ## 2. New shared helper — lock-and-check user schedule + status (in-tx)
 
@@ -54,6 +54,6 @@
 ## 9. Final verification
 
 - [x] 9.1 `cd backend && go build ./... && go vet ./... && go test ./... && govulncheck ./...` — all clean.
-- [x] 9.2 `POSTGRES_HOST=localhost POSTGRES_PORT=${POSTGRES_PORT:-5433} POSTGRES_USER=rota POSTGRES_PASSWORD=pa55word POSTGRES_DB=rota go test -tags=integration ./... -count=1` — all clean.
+- [x] 9.2 `POSTGRES_HOST=localhost POSTGRES_PORT=${POSTGRES_PORT:-5432} POSTGRES_USER=rota POSTGRES_PASSWORD=pa55word POSTGRES_DB=rota go test -tags=integration ./... -count=1` — all clean.
 - [x] 9.3 `cd frontend && pnpm lint && pnpm test && pnpm build` — all clean.
 - [x] 9.4 Smoke test against `docker compose -f docker-compose.prod.yml up`: (a) Create a user, submit availability for a position, admin removes that position, admin runs auto-assign, verify user is not assigned. (b) Create two pending give_directs to the same user with overlapping slots, fire two parallel approve curls, verify exactly one succeeds with 204 and the other returns 409 `SHIFT_CHANGE_TIME_CONFLICT`. (c) Verify disabled-user rejection at the API boundary with admin `CreateAssignment` returning 409 `USER_DISABLED`, and verify the already-authorized in-flight give race with `TestApplyGiveDisabledReceiverWhileScheduleLocked` because auth middleware rejects already-disabled users before the shift-change handler. (d) Race admin `CreateAssignment` and a give for the same user with overlapping slots, verify only one succeeds.

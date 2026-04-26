@@ -29,7 +29,7 @@
     - clean exit on ctx cancellation
   Decision: keep this in `cmd/server`, next to the existing process-lifecycle wiring, because the worker coordinates repository, emailer, audit, and shutdown context. Verify: unit tests for backoff math and retry-vs-fail decision; integration tests for claim → fail → retry → succeed and terminal fail → audit.
 
-- [x] 3.2 Wire `RunOutboxWorker` into `backend/cmd/server/main.go` immediately after the existing `startSessionCleanup` call. Use the same `cleanupCtx` (or a fresh background ctx with cancel on shutdown). Verify: `go test ./cmd/server -count=1` and `POSTGRES_PORT=5433 go test -tags=integration ./cmd/server -run OutboxWorkerIntegration -count=1`.
+- [x] 3.2 Wire `RunOutboxWorker` into `backend/cmd/server/main.go` immediately after the existing `startSessionCleanup` call. Use the same `cleanupCtx` (or a fresh background ctx with cancel on shutdown). Verify: `go test ./cmd/server -count=1` and `POSTGRES_PORT=5432 go test -tags=integration ./cmd/server -run OutboxWorkerIntegration -count=1`.
 
 ## 4. Producer-side refactor
 
@@ -67,9 +67,9 @@
 - [x] 7.2 Frontend untouched: `cd frontend && pnpm lint && pnpm test && pnpm build` (regression check; this change touches no frontend code).
 - [x] 7.3 Migrations roundtrip: apply all migrations on a throwaway Postgres database, run `goose down`, then run `goose up` again.
 - [x] 7.4 Automated smoke coverage:
-    - (a) `POSTGRES_PORT=5433 go test -tags=integration ./cmd/server -run OutboxWorkerIntegration -count=1` covers a real outbox row transitioning `pending → retryable → sent`.
+    - (a) `POSTGRES_PORT=5432 go test -tags=integration ./cmd/server -run OutboxWorkerIntegration -count=1` covers a real outbox row transitioning `pending → retryable → sent`.
     - (b) The same integration test covers an invitation row with `retry_count=7` transitioning to `failed` and writing `user.invitation.email_failed`.
-    - (c) `POSTGRES_PORT=5433 go test -tags=integration ./internal/repository -run Outbox -count=1` covers transactional enqueue, claim lease, terminal-row exclusion, and concurrent claim behavior.
+    - (c) `POSTGRES_PORT=5432 go test -tags=integration ./internal/repository -run Outbox -count=1` covers transactional enqueue, claim lease, terminal-row exclusion, and concurrent claim behavior.
     - (d) `go test ./internal/service -count=1` covers password reset, invitation, shift-change, and assignment-delete producers enqueueing through the outbox mocks.
 - [x] 7.5 Confirm zero direct calls to `emailer.Send` from non-worker production code: `rg -n "emailer\\.Send|email\\.Emailer|Emailer:" backend/internal/service backend/internal/handler --glob '!**/*_test.go'` returns no hits (only the worker should hold the Emailer reference).
 - [x] 7.6 Confirm local CI-equivalent checks are green on the `change/add-email-outbox` branch: backend build/vet/test/integration/govulncheck, frontend lint/test/build, migrations roundtrip. Remote CI remains a post-push handoff check.

@@ -18,7 +18,7 @@
 - [x] 3.3 Add `ShiftChangeOutcomeInvalidated` to `backend/internal/email/shift_change.go` and extend `BuildShiftChangeResolvedMessage` to render the invalidation body copy.
 - [x] 3.4 In `publication_pr4.go:DeleteAssignment`, after the repo delete succeeds, call the new shift-change repo helper; for each returned request id, emit one `audit.Record` and one `emailer.Send`. Cascade failures are logged at WARN and do not surface to the caller.
 - [x] 3.5 Add service tests in `publication_pr4_test.go` covering: requester-side reference, counterpart-side reference, non-pending reference (not touched), missing reference (no events), and cascade-UPDATE error (delete still succeeds). Verify: `cd backend && go test ./internal/service -run DeleteAssignment -count=1`.
-- [x] 3.6 Add a repository integration test in `backend/internal/repository/shift_change_db_test.go` for `InvalidateRequestsForAssignment` covering both FK sides and state-filter correctness. Verify: `POSTGRES_HOST=localhost POSTGRES_PORT=${POSTGRES_PORT:-5433} POSTGRES_USER=rota POSTGRES_PASSWORD=pa55word POSTGRES_DB=rota go test -tags=integration ./internal/repository -run InvalidateRequestsForAssignment -count=1`.
+- [x] 3.6 Add a repository integration test in `backend/internal/repository/shift_change_db_test.go` for `InvalidateRequestsForAssignment` covering both FK sides and state-filter correctness. Verify: `POSTGRES_HOST=localhost POSTGRES_PORT=${POSTGRES_PORT:-5432} POSTGRES_USER=rota POSTGRES_PASSWORD=pa55word POSTGRES_DB=rota go test -tags=integration ./internal/repository -run InvalidateRequestsForAssignment -count=1`.
 
 ## 4. Assignment board non-candidate qualified
 
@@ -49,7 +49,7 @@
 ## 8. Final verification
 
 - [x] 8.1 `cd backend && go build ./... && go vet ./... && go test ./... && govulncheck ./...` — all clean.
-- [x] 8.2 `POSTGRES_HOST=localhost POSTGRES_PORT=${POSTGRES_PORT:-5433} POSTGRES_USER=rota POSTGRES_PASSWORD=pa55word POSTGRES_DB=rota go test -tags=integration ./... -count=1` — all clean.
+- [x] 8.2 `POSTGRES_HOST=localhost POSTGRES_PORT=${POSTGRES_PORT:-5432} POSTGRES_USER=rota POSTGRES_PASSWORD=pa55word POSTGRES_DB=rota go test -tags=integration ./... -count=1` — all clean.
 - [x] 8.3 `cd frontend && pnpm lint && pnpm test && pnpm build` — all clean.
 - [x] 8.4 Smoke test against `docker compose -f docker-compose.prod.yml up`: publish a publication, assign and pending-swap one employee, admin deletes that assignment, verify the swap is `invalidated` in `/requests` history and the affected employee received an email (log line in dev mode).
 

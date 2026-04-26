@@ -3,7 +3,7 @@
 - [x] 1.1 In `backend/internal/repository/assignment.go`, rename `LockAndCheckUserSchedule` to `LockAndCheckUserStatus`. Drop the `additions []SlotTimeWindow` and `excludeAssignmentIDs []int64` parameters. Drop the `SELECT ... FOR UPDATE OF a` over assignments and the entire conflict-predicate loop. Keep the per-(publication, user) advisory lock and the `SELECT status FROM users WHERE id = $userID FOR UPDATE` + `ErrUserDisabled` return. Verify: `cd backend && go build ./...`.
 - [x] 1.2 Remove the `ErrTimeConflict` repository sentinel (no caller will return or consume it after §3 / §4 / §5 are done). Verify: `cd backend && go build ./...`.
 - [x] 1.3 Remove the `SlotTimeWindow` struct if it has no other users in the repository package. If something else uses it, leave it. Verify: `cd backend && go build ./...`.
-- [x] 1.4 Update or replace the helper's repository integration test (`LockAndCheckUserSchedule` → `LockAndCheckUserStatus`): drop the conflict assertions, keep the disabled-user assertion. Rename test to match. Verify: `POSTGRES_HOST=localhost POSTGRES_PORT=${POSTGRES_PORT:-5433} POSTGRES_USER=rota POSTGRES_PASSWORD=pa55word POSTGRES_DB=rota go test -tags=integration ./internal/repository -run LockAndCheckUserStatus -count=1`.
+- [x] 1.4 Update or replace the helper's repository integration test (`LockAndCheckUserSchedule` → `LockAndCheckUserStatus`): drop the conflict assertions, keep the disabled-user assertion. Rename test to match. Verify: `POSTGRES_HOST=localhost POSTGRES_PORT=${POSTGRES_PORT:-5432} POSTGRES_USER=rota POSTGRES_PASSWORD=pa55word POSTGRES_DB=rota go test -tags=integration ./internal/repository -run LockAndCheckUserStatus -count=1`.
 
 ## 2. Remove pre-tx time-conflict checks (service layer)
 
@@ -39,6 +39,6 @@
 ## 8. Final verification
 
 - [x] 8.1 `cd backend && go build ./... && go vet ./... && go test ./... && govulncheck ./...` — all clean.
-- [x] 8.2 `POSTGRES_HOST=localhost POSTGRES_PORT=${POSTGRES_PORT:-5433} POSTGRES_USER=rota POSTGRES_PASSWORD=pa55word POSTGRES_DB=rota go test -tags=integration ./... -count=1` — all clean. **Critically**: the 3 deleted concurrent tests are not silently skipped (they don't exist); the disabled-user mid-flight tests do still run and pass.
+- [x] 8.2 `POSTGRES_HOST=localhost POSTGRES_PORT=${POSTGRES_PORT:-5432} POSTGRES_USER=rota POSTGRES_PASSWORD=pa55word POSTGRES_DB=rota go test -tags=integration ./... -count=1` — all clean. **Critically**: the 3 deleted concurrent tests are not silently skipped (they don't exist); the disabled-user mid-flight tests do still run and pass.
 - [x] 8.3 `cd frontend && pnpm lint && pnpm test && pnpm build` — all clean. (Frontend should not need any changes.)
 - [ ] 8.4 Push the branch; verify GitHub CI's `backend-test` job is green (it was failing on the 3 broken tests before this change).
