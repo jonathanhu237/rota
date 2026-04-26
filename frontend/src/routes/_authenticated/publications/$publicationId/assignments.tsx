@@ -215,6 +215,17 @@ function PublicationAssignmentsPage() {
                   positionID,
                 })
               }
+              onDraftAssign={(userID, slotID, positionID) =>
+                createAssignment(numericPublicationID, {
+                  user_id: userID,
+                  slot_id: slotID,
+                  position_id: positionID,
+                })
+              }
+              onDraftRefresh={invalidateBoard}
+              onDraftUnassign={(assignmentID) =>
+                deleteAssignment(numericPublicationID, assignmentID)
+              }
               onUnassign={(assignmentID) =>
                 updateAssignmentMutation.mutate({
                   type: "unassign",

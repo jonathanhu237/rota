@@ -642,6 +642,23 @@
     "assigned": "Assigned",
     "emptyCandidates": "No candidates submitted availability for this shift.",
     "emptyAssignments": "Nobody is assigned to this shift yet.",
+    "drafts": {
+      "pendingCount": "Drafts: {{count}} pending",
+      "submit": "Submit",
+      "discard": "Discard drafts",
+      "confirmAndSubmit": "Confirm and submit",
+      "cancel": "Cancel",
+      "changed": "Draft",
+      "userHoursLabel": "{{user}} ({{hours}}h)",
+      "submitFailed": "Could not submit {{user}}. Fix the draft or retry.",
+      "submitFailedUnknown": "Unable to submit this draft operation.",
+      "confirmDialog": {
+        "title": "Confirm qualification overrides",
+        "description": "These draft assignments bypass the default qualification match.",
+        "warningTitle": "{{user}} -> {{slot}} / {{position}}",
+        "warningReason": "{{user}} is not qualified for {{position}} in this publication."
+      }
+    },
     "autoAssignDialog": {
       "title": "Auto-assign shifts",
       "description": "This will replace all current assignments for {{name}}. Continue?",

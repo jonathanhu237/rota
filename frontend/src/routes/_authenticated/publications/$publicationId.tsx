@@ -1,6 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Link, createFileRoute, redirect, useNavigate } from "@tanstack/react-router"
+import {
+  Link,
+  Outlet,
+  createFileRoute,
+  redirect,
+  useNavigate,
+} from "@tanstack/react-router"
 import { Trash2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
@@ -436,6 +442,7 @@ function PublicationDetailPage() {
             </form>
           </CardContent>
         </Card>
+        <Outlet />
       </div>
       <DeletePublicationDialog
         open={isDeleteDialogOpen}
