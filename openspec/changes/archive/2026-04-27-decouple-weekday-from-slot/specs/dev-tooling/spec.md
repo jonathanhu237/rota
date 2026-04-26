@@ -1,8 +1,5 @@
-# dev-tooling Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change seed-dev-data. Update Purpose after archive.
-## Requirements
 ### Requirement: Local-development data seeding command
 
 The project SHALL provide a `make seed` command (and equivalent `go run ./backend/cmd/seed`) that resets the configured Postgres database to one of four named scenarios in seconds. The command SHALL refuse to run when the configured `AppEnv` resolves to `production` and SHALL print a clear "WIPING database" banner before truncating tables.
@@ -61,4 +58,3 @@ The seeded data SHALL satisfy the existing schema constraints (foreign keys, UNI
 - **AND** stderr contains a message naming "production" and "refusing"
 - **AND** no `TRUNCATE` is executed
 - **AND** no row is modified
-
