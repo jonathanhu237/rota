@@ -700,7 +700,8 @@
     },
     "shift": {
       "timeRange": "{{startTime}}-{{endTime}}",
-      "summary": "Position #{{positionId}} · {{headcount}} staff needed"
+      "composition": "{{summary}}",
+      "compositionEntry": "{{position}} × {{count}}"
     },
     "errors": {
       "FORBIDDEN": "Forbidden",

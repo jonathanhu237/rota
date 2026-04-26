@@ -19,7 +19,7 @@ type stubPublicationService struct {
 	getPublicationByIDFunc             func(ctx context.Context, id int64) (*model.Publication, error)
 	deletePublicationFunc              func(ctx context.Context, id int64) error
 	getCurrentPublicationFunc          func(ctx context.Context) (*model.Publication, error)
-	listSubmissionSlotPositionsFunc    func(ctx context.Context, publicationID, userID int64) ([]model.SlotPositionRef, error)
+	listSubmissionSlotsFunc            func(ctx context.Context, publicationID, userID int64) ([]model.SlotRef, error)
 	createAvailabilitySubmissionFunc   func(ctx context.Context, input service.CreateAvailabilitySubmissionInput) (*model.AvailabilitySubmission, error)
 	deleteAvailabilitySubmissionFunc   func(ctx context.Context, input service.DeleteAvailabilitySubmissionInput) error
 	listQualifiedPublicationShiftsFunc func(ctx context.Context, publicationID, userID int64) ([]*model.QualifiedShift, error)
@@ -59,8 +59,8 @@ func (s *stubPublicationService) GetCurrentPublication(ctx context.Context) (*mo
 	return s.getCurrentPublicationFunc(ctx)
 }
 
-func (s *stubPublicationService) ListAvailabilitySubmissionSlotPositions(ctx context.Context, publicationID, userID int64) ([]model.SlotPositionRef, error) {
-	return s.listSubmissionSlotPositionsFunc(ctx, publicationID, userID)
+func (s *stubPublicationService) ListAvailabilitySubmissionSlots(ctx context.Context, publicationID, userID int64) ([]model.SlotRef, error) {
+	return s.listSubmissionSlotsFunc(ctx, publicationID, userID)
 }
 
 func (s *stubPublicationService) CreateAvailabilitySubmission(ctx context.Context, input service.CreateAvailabilitySubmissionInput) (*model.AvailabilitySubmission, error) {
@@ -330,14 +330,14 @@ func TestPublicationHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("ListMySubmissionSlotPositions returns slot positions", func(t *testing.T) {
+	t.Run("ListMySubmissionSlots returns slots", func(t *testing.T) {
 		t.Parallel()
 
 		handler := NewPublicationHandler(&stubPublicationService{
-			listSubmissionSlotPositionsFunc: func(ctx context.Context, publicationID, userID int64) ([]model.SlotPositionRef, error) {
-				return []model.SlotPositionRef{
-					{SlotID: 21, PositionID: 101},
-					{SlotID: 22, PositionID: 102},
+			listSubmissionSlotsFunc: func(ctx context.Context, publicationID, userID int64) ([]model.SlotRef, error) {
+				return []model.SlotRef{
+					{SlotID: 21},
+					{SlotID: 22},
 				}, nil
 			},
 		})
@@ -347,7 +347,7 @@ func TestPublicationHandler(t *testing.T) {
 			sampleUser(),
 		)
 
-		handler.ListMySubmissionSlotPositions(recorder, req)
+		handler.ListMySubmissionSlots(recorder, req)
 
 		if recorder.Code != http.StatusOK {
 			t.Fatalf("expected status 200, got %d", recorder.Code)
@@ -355,9 +355,7 @@ func TestPublicationHandler(t *testing.T) {
 		response := decodeJSONResponse[submissionsMeResponse](t, recorder)
 		if len(response.Submissions) != 2 ||
 			response.Submissions[0].SlotID != 21 ||
-			response.Submissions[0].PositionID != 101 ||
-			response.Submissions[1].SlotID != 22 ||
-			response.Submissions[1].PositionID != 102 {
+			response.Submissions[1].SlotID != 22 {
 			t.Fatalf("unexpected response: %+v", response)
 		}
 	})
@@ -372,7 +370,38 @@ func TestPublicationHandler(t *testing.T) {
 					PublicationID: input.PublicationID,
 					UserID:        input.UserID,
 					SlotID:        input.SlotID,
-					PositionID:    input.PositionID,
+					CreatedAt:     samplePublicationTime(),
+				}, nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithUser(
+			requestWithPathValues(jsonRequest(t, http.MethodPost, "/publications/1/submissions", map[string]any{
+				"slot_id": 21,
+			}), map[string]string{"id": "1"}),
+			sampleUser(),
+		)
+
+		handler.CreateSubmission(recorder, req)
+
+		if recorder.Code != http.StatusCreated {
+			t.Fatalf("expected status 201, got %d", recorder.Code)
+		}
+	})
+
+	t.Run("CreateSubmission ignores stray position id", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			createAvailabilitySubmissionFunc: func(ctx context.Context, input service.CreateAvailabilitySubmissionInput) (*model.AvailabilitySubmission, error) {
+				if input.SlotID != 21 {
+					t.Fatalf("expected slot_id=21, got %+v", input)
+				}
+				return &model.AvailabilitySubmission{
+					ID:            1,
+					PublicationID: input.PublicationID,
+					UserID:        input.UserID,
+					SlotID:        input.SlotID,
 					CreatedAt:     samplePublicationTime(),
 				}, nil
 			},
@@ -403,7 +432,7 @@ func TestPublicationHandler(t *testing.T) {
 		}{
 			{name: "publication not collecting", err: service.ErrPublicationNotCollecting, status: http.StatusConflict, code: "PUBLICATION_NOT_COLLECTING"},
 			{name: "not qualified", err: service.ErrNotQualified, status: http.StatusForbidden, code: "NOT_QUALIFIED"},
-			{name: "slot position not found", err: service.ErrTemplateSlotPositionNotFound, status: http.StatusNotFound, code: "TEMPLATE_SLOT_POSITION_NOT_FOUND"},
+			{name: "slot not found", err: service.ErrTemplateSlotNotFound, status: http.StatusNotFound, code: "TEMPLATE_SLOT_NOT_FOUND"},
 		}
 
 		for _, tc := range cases {
@@ -419,7 +448,7 @@ func TestPublicationHandler(t *testing.T) {
 				recorder := httptest.NewRecorder()
 				req := requestWithUser(
 					requestWithPathValues(jsonRequest(t, http.MethodPost, "/publications/1/submissions", map[string]any{
-						"slot_id": 21, "position_id": 101,
+						"slot_id": 21,
 					}), map[string]string{"id": "1"}),
 					sampleUser(),
 				)
@@ -456,8 +485,8 @@ func TestPublicationHandler(t *testing.T) {
 		})
 		recorder := httptest.NewRecorder()
 		req := requestWithUser(
-			requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/publications/1/submissions/21/101", nil), map[string]string{
-				"id": "1", "slot_id": "21", "position_id": "101",
+			requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/publications/1/submissions/21", nil), map[string]string{
+				"id": "1", "slot_id": "21",
 			}),
 			sampleUser(),
 		)
@@ -479,8 +508,8 @@ func TestPublicationHandler(t *testing.T) {
 		})
 		recorder := httptest.NewRecorder()
 		req := requestWithUser(
-			requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/publications/1/submissions/21/101", nil), map[string]string{
-				"id": "1", "slot_id": "21", "position_id": "101",
+			requestWithPathValues(httptest.NewRequest(http.MethodDelete, "/publications/1/submissions/21", nil), map[string]string{
+				"id": "1", "slot_id": "21",
 			}),
 			sampleUser(),
 		)
@@ -510,7 +539,10 @@ func TestPublicationHandler(t *testing.T) {
 			t.Fatalf("expected status 200, got %d", recorder.Code)
 		}
 		response := decodeJSONResponse[shiftsMeResponse](t, recorder)
-		if len(response.Shifts) != 1 || response.Shifts[0].SlotID != 21 || response.Shifts[0].PositionID != 101 {
+		if len(response.Shifts) != 1 ||
+			response.Shifts[0].SlotID != 21 ||
+			len(response.Shifts[0].Composition) != 1 ||
+			response.Shifts[0].Composition[0].PositionID != 101 {
 			t.Fatalf("unexpected response: %+v", response)
 		}
 	})

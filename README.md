@@ -45,7 +45,7 @@ make seed SCENARIO=stress
 Scenarios:
 
 - `basic`: bootstrap admin, 5 employees, 3 positions, and one empty template.
-- `full`: 8 employees, 4 positions, a populated template, one effective `ASSIGNING` publication with an 8-week planned active window, and availability submissions ready for auto-assign.
+- `full`: 8 employees, 4 roles, a populated template, one effective `ASSIGNING` publication with an 8-week planned active window, and slot-level availability submissions ready for auto-assign.
 - `stress`: 50 employees, 8 positions, dense template data, one `ACTIVE` publication with assignments and pending occurrence-level shift-change requests, plus ended historical fixture data with varied planned active windows. The database permits only one non-`ENDED` publication at a time.
 
 ### Leave Workflow

@@ -34,16 +34,20 @@ export type Position = {
 
 export type QualifiedShift = {
   slot_id: number
-  position_id: number
   weekday: number
   start_time: string
   end_time: string
+  composition: QualifiedShiftComposition[]
+}
+
+export type QualifiedShiftComposition = {
+  position_id: number
+  position_name: string
   required_headcount: number
 }
 
-export type SlotPositionRef = {
+export type SlotRef = {
   slot_id: number
-  position_id: number
 }
 
 export type TemplateSlotPosition = {

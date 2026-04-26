@@ -48,11 +48,10 @@ func TestPublicationServiceAutoAssignPublicationIntegration(t *testing.T) {
 	seedServiceUserPosition(t, db, overlapOnlyUserID, positionA)
 	seedServiceUserPosition(t, db, slotOnlyUserID, positionA)
 
-	seedServiceSubmission(t, db, publicationID, flexibleUserID, slotOneID, positionA, now.Add(-4*time.Minute))
-	seedServiceSubmission(t, db, publicationID, flexibleUserID, slotOneID, positionB, now.Add(-3*time.Minute))
-	seedServiceSubmission(t, db, publicationID, flexibleUserID, slotTwoID, positionA, now.Add(-2*time.Minute))
-	seedServiceSubmission(t, db, publicationID, overlapOnlyUserID, slotTwoID, positionA, now.Add(-time.Minute))
-	seedServiceSubmission(t, db, publicationID, slotOnlyUserID, slotOneID, positionA, now)
+	seedServiceSubmission(t, db, publicationID, flexibleUserID, slotOneID, now.Add(-4*time.Minute))
+	seedServiceSubmission(t, db, publicationID, flexibleUserID, slotTwoID, now.Add(-2*time.Minute))
+	seedServiceSubmission(t, db, publicationID, overlapOnlyUserID, slotTwoID, now.Add(-time.Minute))
+	seedServiceSubmission(t, db, publicationID, slotOnlyUserID, slotOneID, now)
 
 	repo := repository.NewPublicationRepository(db)
 	service := NewPublicationService(repo, fixedClock{now: now})
@@ -498,7 +497,7 @@ func seedServiceUserPosition(t testing.TB, db *sql.DB, userID, positionID int64)
 func seedServiceSubmission(
 	t testing.TB,
 	db *sql.DB,
-	publicationID, userID, slotID, positionID int64,
+	publicationID, userID, slotID int64,
 	createdAt time.Time,
 ) {
 	t.Helper()
@@ -510,15 +509,13 @@ func seedServiceSubmission(
 				publication_id,
 				user_id,
 				slot_id,
-				position_id,
 				created_at
 			)
-			VALUES ($1, $2, $3, $4, $5);
+			VALUES ($1, $2, $3, $4);
 		`,
 		publicationID,
 		userID,
 		slotID,
-		positionID,
 		createdAt,
 	); err != nil {
 		t.Fatalf("seed submission: %v", err)

@@ -507,18 +507,23 @@ func (r *PublicationRepository) ListAssignmentCandidates(
 	const query = `
 		SELECT
 			asub.slot_id,
-			asub.position_id,
+			tsp.position_id,
 			u.id,
 			u.name,
 			u.email
 		FROM availability_submissions asub
+		INNER JOIN publications pub ON pub.id = asub.publication_id
+		INNER JOIN template_slots ts
+			ON ts.id = asub.slot_id
+			AND ts.template_id = pub.template_id
+		INNER JOIN template_slot_positions tsp ON tsp.slot_id = ts.id
 		INNER JOIN users u ON u.id = asub.user_id
 		INNER JOIN user_positions up
 			ON up.user_id = asub.user_id
-			AND up.position_id = asub.position_id
+			AND up.position_id = tsp.position_id
 		WHERE asub.publication_id = $1
 			AND u.status = 'active'
-		ORDER BY asub.slot_id ASC, asub.position_id ASC, u.id ASC;
+		ORDER BY asub.slot_id ASC, tsp.position_id ASC, u.id ASC;
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, publicationID)
@@ -666,9 +671,12 @@ func (r *PublicationRepository) GetAssignmentBoardView(
 			) AS users
 			FROM availability_submissions asub
 			INNER JOIN users u ON u.id = asub.user_id
+			INNER JOIN user_positions up
+				ON up.user_id = asub.user_id
+				AND up.position_id = tsp.position_id
 			WHERE asub.publication_id = pub.id
 				AND asub.slot_id = ts.id
-				AND asub.position_id = tsp.position_id
+				AND u.status = 'active'
 		) candidates ON true
 		LEFT JOIN LATERAL (
 			SELECT jsonb_agg(
@@ -688,7 +696,6 @@ func (r *PublicationRepository) GetAssignmentBoardView(
 					FROM availability_submissions asub
 					WHERE asub.publication_id = pub.id
 						AND asub.slot_id = ts.id
-						AND asub.position_id = tsp.position_id
 						AND asub.user_id = u.id
 				)
 				AND NOT EXISTS (

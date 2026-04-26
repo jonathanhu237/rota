@@ -1027,19 +1027,19 @@ func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
 		repo := newPublicationRepositoryStatefulMock()
 		repo.publications[1] = publishedPublication(now)
-		repo.submissions[submissionKey(1, 7, 21, 101)] = &model.AvailabilitySubmission{
+		repo.submissions[submissionKey(1, 7, 21)] = &model.AvailabilitySubmission{
 			ID:            1,
 			PublicationID: 1,
 			UserID:        7,
-			SlotID:        21, PositionID: 101,
-			CreatedAt: now.Add(-2 * time.Hour),
+			SlotID:        21,
+			CreatedAt:     now.Add(-2 * time.Hour),
 		}
-		repo.submissions[submissionKey(1, 8, 21, 101)] = &model.AvailabilitySubmission{
+		repo.submissions[submissionKey(1, 8, 21)] = &model.AvailabilitySubmission{
 			ID:            2,
 			PublicationID: 1,
 			UserID:        8,
-			SlotID:        21, PositionID: 101,
-			CreatedAt: now.Add(-90 * time.Minute),
+			SlotID:        21,
+			CreatedAt:     now.Add(-90 * time.Minute),
 		}
 		delete(repo.qualifiedByUser, 7)
 		repo.users[10] = &model.User{
@@ -1074,11 +1074,11 @@ func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
 		if firstPosition.RequiredHeadcount != 2 {
 			t.Fatalf("expected headcount 2, got %d", firstPosition.RequiredHeadcount)
 		}
-		if len(firstPosition.Candidates) != 2 {
-			t.Fatalf("expected 2 candidates, got %d", len(firstPosition.Candidates))
+		if len(firstPosition.Candidates) != 1 {
+			t.Fatalf("expected 1 candidate, got %d", len(firstPosition.Candidates))
 		}
-		if firstPosition.Candidates[0].UserID != 7 {
-			t.Fatalf("expected revoked-but-submitted candidate user 7, got %d", firstPosition.Candidates[0].UserID)
+		if firstPosition.Candidates[0].UserID != 8 {
+			t.Fatalf("expected qualified submitted candidate user 8, got %d", firstPosition.Candidates[0].UserID)
 		}
 		if len(firstPosition.Assignments) != 1 || firstPosition.Assignments[0].UserID != 8 {
 			t.Fatalf("unexpected assignments: %+v", firstPosition.Assignments)

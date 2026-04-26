@@ -16,7 +16,30 @@ export function groupQualifiedShiftsByWeekday(shifts: QualifiedShift[]) {
       continue
     }
 
-    grouped[shift.weekday].push(shift)
+    const existing = grouped[shift.weekday].find(
+      (candidate) => candidate.slot_id === shift.slot_id,
+    )
+    if (existing) {
+      const seenPositions = new Set(
+        existing.composition.map((entry) => entry.position_id),
+      )
+      existing.composition.push(
+        ...shift.composition.filter(
+          (entry) => !seenPositions.has(entry.position_id),
+        ),
+      )
+      existing.composition.sort((left, right) =>
+        left.position_id - right.position_id,
+      )
+      continue
+    }
+
+    grouped[shift.weekday].push({
+      ...shift,
+      composition: [...shift.composition].sort(
+        (left, right) => left.position_id - right.position_id,
+      ),
+    })
   }
 
   for (const weekday of Object.keys(grouped)) {
@@ -29,7 +52,7 @@ export function groupQualifiedShiftsByWeekday(shifts: QualifiedShift[]) {
         return left.slot_id - right.slot_id
       }
 
-      return left.position_id - right.position_id
+      return 0
     })
   }
 

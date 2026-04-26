@@ -55,7 +55,6 @@ type UpsertAvailabilitySubmissionParams struct {
 	PublicationID    int64
 	UserID           int64
 	SlotID           int64
-	PositionID       int64
 	PublicationState *model.PublicationState
 	Now              time.Time
 }
@@ -64,7 +63,6 @@ type DeleteAvailabilitySubmissionParams struct {
 	PublicationID    int64
 	UserID           int64
 	SlotID           int64
-	PositionID       int64
 	PublicationState *model.PublicationState
 	Now              time.Time
 }
@@ -350,10 +348,10 @@ func (r *PublicationRepository) DeletePublication(ctx context.Context, params De
 	return nil
 }
 
-func (r *PublicationRepository) ListSubmissionSlotPositions(
+func (r *PublicationRepository) ListSubmissionSlots(
 	ctx context.Context,
 	publicationID, userID int64,
-) ([]model.SlotPositionRef, error) {
+) ([]model.SlotRef, error) {
 	exists, err := publicationExists(ctx, r.db, publicationID)
 	if err != nil {
 		return nil, err
@@ -363,10 +361,10 @@ func (r *PublicationRepository) ListSubmissionSlotPositions(
 	}
 
 	const query = `
-		SELECT asub.slot_id, asub.position_id
+		SELECT asub.slot_id
 		FROM availability_submissions asub
 		WHERE asub.publication_id = $1 AND asub.user_id = $2
-		ORDER BY asub.slot_id ASC, asub.position_id ASC;
+		ORDER BY asub.slot_id ASC;
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, publicationID, userID)
@@ -375,19 +373,19 @@ func (r *PublicationRepository) ListSubmissionSlotPositions(
 	}
 	defer rows.Close()
 
-	slotPositions := make([]model.SlotPositionRef, 0)
+	slots := make([]model.SlotRef, 0)
 	for rows.Next() {
-		var slotPosition model.SlotPositionRef
-		if err := rows.Scan(&slotPosition.SlotID, &slotPosition.PositionID); err != nil {
+		var slot model.SlotRef
+		if err := rows.Scan(&slot.SlotID); err != nil {
 			return nil, err
 		}
-		slotPositions = append(slotPositions, slotPosition)
+		slots = append(slots, slot)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
-	return slotPositions, nil
+	return slots, nil
 }
 
 func (r *PublicationRepository) UpsertSubmission(
@@ -404,7 +402,7 @@ func (r *PublicationRepository) UpsertSubmission(
 		return nil, err
 	}
 
-	if _, err := getTemplateSlotPositionEntryID(ctx, tx, params.SlotID, params.PositionID); err != nil {
+	if err := ensureSlotBelongsToPublicationTemplate(ctx, tx, params.PublicationID, params.SlotID); err != nil {
 		return nil, err
 	}
 
@@ -413,12 +411,11 @@ func (r *PublicationRepository) UpsertSubmission(
 			publication_id,
 			user_id,
 			slot_id,
-			position_id,
 			created_at
 		)
-		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (publication_id, user_id, slot_id, position_id) DO NOTHING
-		RETURNING id, publication_id, user_id, slot_id, position_id, created_at;
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (publication_id, user_id, slot_id) DO NOTHING
+		RETURNING id, publication_id, user_id, slot_id, created_at;
 	`
 
 	submission, err := scanSubmission(tx.QueryRowContext(
@@ -427,12 +424,11 @@ func (r *PublicationRepository) UpsertSubmission(
 		params.PublicationID,
 		params.UserID,
 		params.SlotID,
-		params.PositionID,
 		params.Now,
 	))
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		submission, err = getSubmissionByKey(ctx, tx, params.PublicationID, params.UserID, params.SlotID, params.PositionID)
+		submission, err = getSubmissionByKey(ctx, tx, params.PublicationID, params.UserID, params.SlotID)
 		if err != nil {
 			return nil, err
 		}
@@ -461,19 +457,12 @@ func (r *PublicationRepository) DeleteSubmission(
 		return err
 	}
 
-	if _, err := getTemplateSlotPositionEntryID(ctx, tx, params.SlotID, params.PositionID); err != nil {
-		if errors.Is(err, ErrTemplateSlotPositionNotFound) {
-			return tx.Commit()
-		}
-		return err
-	}
-
 	const query = `
 		DELETE FROM availability_submissions
-		WHERE publication_id = $1 AND user_id = $2 AND slot_id = $3 AND position_id = $4;
+		WHERE publication_id = $1 AND user_id = $2 AND slot_id = $3;
 	`
 
-	if _, err := tx.ExecContext(ctx, query, params.PublicationID, params.UserID, params.SlotID, params.PositionID); err != nil {
+	if _, err := tx.ExecContext(ctx, query, params.PublicationID, params.UserID, params.SlotID); err != nil {
 		return err
 	}
 
@@ -515,16 +504,24 @@ func (r *PublicationRepository) ListQualifiedPublicationSlotPositions(
 	const query = `
 		SELECT
 			ts.id,
-			tsp.position_id,
 			ts.weekday,
 			TO_CHAR(ts.start_time, 'HH24:MI'),
 			TO_CHAR(ts.end_time, 'HH24:MI'),
+			tsp.position_id,
+			pos.name,
 			tsp.required_headcount
 		FROM publications p
 		INNER JOIN template_slots ts ON ts.template_id = p.template_id
 		INNER JOIN template_slot_positions tsp ON tsp.slot_id = ts.id
-		INNER JOIN user_positions up ON up.position_id = tsp.position_id
-		WHERE p.id = $1 AND up.user_id = $2
+		INNER JOIN positions pos ON pos.id = tsp.position_id
+		WHERE p.id = $1
+			AND EXISTS (
+				SELECT 1
+				FROM template_slot_positions qualified_tsp
+				INNER JOIN user_positions up ON up.position_id = qualified_tsp.position_id
+				WHERE qualified_tsp.slot_id = ts.id
+					AND up.user_id = $2
+			)
 		ORDER BY ts.weekday ASC, ts.start_time ASC, ts.id ASC, tsp.position_id ASC;
 	`
 
@@ -535,19 +532,45 @@ func (r *PublicationRepository) ListQualifiedPublicationSlotPositions(
 	defer rows.Close()
 
 	shifts := make([]*model.QualifiedShift, 0)
+	shiftsBySlotID := make(map[int64]*model.QualifiedShift)
 	for rows.Next() {
-		shift := &model.QualifiedShift{}
+		var (
+			slotID            int64
+			weekday           int
+			startTime         string
+			endTime           string
+			positionID        int64
+			positionName      string
+			requiredHeadcount int
+		)
 		if err := rows.Scan(
-			&shift.SlotID,
-			&shift.PositionID,
-			&shift.Weekday,
-			&shift.StartTime,
-			&shift.EndTime,
-			&shift.RequiredHeadcount,
+			&slotID,
+			&weekday,
+			&startTime,
+			&endTime,
+			&positionID,
+			&positionName,
+			&requiredHeadcount,
 		); err != nil {
 			return nil, err
 		}
-		shifts = append(shifts, shift)
+		shift := shiftsBySlotID[slotID]
+		if shift == nil {
+			shift = &model.QualifiedShift{
+				SlotID:      slotID,
+				Weekday:     weekday,
+				StartTime:   startTime,
+				EndTime:     endTime,
+				Composition: make([]model.QualifiedShiftComposition, 0),
+			}
+			shiftsBySlotID[slotID] = shift
+			shifts = append(shifts, shift)
+		}
+		shift.Composition = append(shift.Composition, model.QualifiedShiftComposition{
+			PositionID:        positionID,
+			PositionName:      positionName,
+			RequiredHeadcount: requiredHeadcount,
+		})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -658,10 +681,36 @@ func updatePublicationStateIfNeeded(
 	return nil
 }
 
+func ensureSlotBelongsToPublicationTemplate(
+	ctx context.Context,
+	db dbtx,
+	publicationID, slotID int64,
+) error {
+	const query = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM publications p
+			INNER JOIN template_slots ts ON ts.template_id = p.template_id
+			WHERE p.id = $1
+				AND ts.id = $2
+		);
+	`
+
+	var exists bool
+	if err := db.QueryRowContext(ctx, query, publicationID, slotID).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return ErrTemplateSlotNotFound
+	}
+
+	return nil
+}
+
 func getSubmissionByKey(
 	ctx context.Context,
 	db dbtx,
-	publicationID, userID, slotID, positionID int64,
+	publicationID, userID, slotID int64,
 ) (*model.AvailabilitySubmission, error) {
 	const query = `
 		SELECT
@@ -669,16 +718,14 @@ func getSubmissionByKey(
 			asub.publication_id,
 			asub.user_id,
 			asub.slot_id,
-			asub.position_id,
 			asub.created_at
 		FROM availability_submissions asub
 		WHERE asub.publication_id = $1
 			AND asub.user_id = $2
-			AND asub.slot_id = $3
-			AND asub.position_id = $4;
+			AND asub.slot_id = $3;
 	`
 
-	return submissionFromRow(db.QueryRowContext(ctx, query, publicationID, userID, slotID, positionID))
+	return submissionFromRow(db.QueryRowContext(ctx, query, publicationID, userID, slotID))
 }
 
 func publicationExists(ctx context.Context, db dbtx, publicationID int64) (bool, error) {
@@ -729,7 +776,6 @@ func scanSubmission(row scanner) (*model.AvailabilitySubmission, error) {
 		&submission.PublicationID,
 		&submission.UserID,
 		&submission.SlotID,
-		&submission.PositionID,
 		&submission.CreatedAt,
 	)
 	if err != nil {

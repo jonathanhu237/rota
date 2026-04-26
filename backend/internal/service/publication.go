@@ -51,7 +51,7 @@ type publicationRepository interface {
 	CreatePublication(ctx context.Context, params repository.CreatePublicationParams) (*model.Publication, error)
 	UpdatePublicationFields(ctx context.Context, params repository.UpdatePublicationFieldsParams) (*model.Publication, error)
 	DeletePublication(ctx context.Context, params repository.DeletePublicationParams) error
-	ListSubmissionSlotPositions(ctx context.Context, publicationID, userID int64) ([]model.SlotPositionRef, error)
+	ListSubmissionSlots(ctx context.Context, publicationID, userID int64) ([]model.SlotRef, error)
 	UpsertSubmission(ctx context.Context, params repository.UpsertAvailabilitySubmissionParams) (*model.AvailabilitySubmission, error)
 	DeleteSubmission(ctx context.Context, params repository.DeleteAvailabilitySubmissionParams) error
 	GetSlot(ctx context.Context, templateID, slotID int64) (*model.TemplateSlot, error)
@@ -129,14 +129,12 @@ type CreateAvailabilitySubmissionInput struct {
 	PublicationID int64
 	UserID        int64
 	SlotID        int64
-	PositionID    int64
 }
 
 type DeleteAvailabilitySubmissionInput struct {
 	PublicationID int64
 	UserID        int64
 	SlotID        int64
-	PositionID    int64
 }
 
 type CreateAssignmentInput struct {
@@ -426,27 +424,27 @@ func (s *PublicationService) DeletePublication(ctx context.Context, id int64) er
 	return ErrPublicationNotFound
 }
 
-func (s *PublicationService) ListAvailabilitySubmissionSlotPositions(
+func (s *PublicationService) ListAvailabilitySubmissionSlots(
 	ctx context.Context,
 	publicationID, userID int64,
-) ([]model.SlotPositionRef, error) {
+) ([]model.SlotRef, error) {
 	if publicationID <= 0 || userID <= 0 {
 		return nil, ErrInvalidInput
 	}
 
-	slotPositions, err := s.publicationRepo.ListSubmissionSlotPositions(ctx, publicationID, userID)
+	slots, err := s.publicationRepo.ListSubmissionSlots(ctx, publicationID, userID)
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
 
-	return slotPositions, nil
+	return slots, nil
 }
 
 func (s *PublicationService) CreateAvailabilitySubmission(
 	ctx context.Context,
 	input CreateAvailabilitySubmissionInput,
 ) (*model.AvailabilitySubmission, error) {
-	if input.PublicationID <= 0 || input.UserID <= 0 || input.SlotID <= 0 || input.PositionID <= 0 {
+	if input.PublicationID <= 0 || input.UserID <= 0 || input.SlotID <= 0 {
 		return nil, ErrInvalidInput
 	}
 
@@ -461,16 +459,15 @@ func (s *PublicationService) CreateAvailabilitySubmission(
 		return nil, ErrPublicationNotCollecting
 	}
 
-	shifts, err := s.publicationRepo.ListPublicationShifts(ctx, input.PublicationID)
+	if _, err := s.publicationRepo.GetSlot(ctx, publication.TemplateID, input.SlotID); err != nil {
+		return nil, mapPublicationRepositoryError(err)
+	}
+
+	slotPositions, err := s.publicationRepo.ListSlotPositions(ctx, input.SlotID)
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
-	shift := findPublicationShiftBySlotPosition(shifts, input.SlotID, input.PositionID)
-	if shift == nil {
-		return nil, ErrTemplateSlotPositionNotFound
-	}
-
-	qualified, err := s.publicationRepo.IsUserQualifiedForPosition(ctx, input.UserID, shift.PositionID)
+	qualified, err := s.userQualifiedForAnySlotPosition(ctx, input.UserID, slotPositions)
 	if err != nil {
 		return nil, err
 	}
@@ -482,7 +479,6 @@ func (s *PublicationService) CreateAvailabilitySubmission(
 		PublicationID:    input.PublicationID,
 		UserID:           input.UserID,
 		SlotID:           input.SlotID,
-		PositionID:       input.PositionID,
 		PublicationState: stalePublicationState(publication.State, effectiveState),
 		Now:              now,
 	})
@@ -498,7 +494,6 @@ func (s *PublicationService) CreateAvailabilitySubmission(
 		Metadata: map[string]any{
 			"publication_id": submission.PublicationID,
 			"slot_id":        submission.SlotID,
-			"position_id":    submission.PositionID,
 		},
 	})
 
@@ -509,7 +504,7 @@ func (s *PublicationService) DeleteAvailabilitySubmission(
 	ctx context.Context,
 	input DeleteAvailabilitySubmissionInput,
 ) error {
-	if input.PublicationID <= 0 || input.UserID <= 0 || input.SlotID <= 0 || input.PositionID <= 0 {
+	if input.PublicationID <= 0 || input.UserID <= 0 || input.SlotID <= 0 {
 		return ErrInvalidInput
 	}
 
@@ -528,7 +523,6 @@ func (s *PublicationService) DeleteAvailabilitySubmission(
 		PublicationID:    input.PublicationID,
 		UserID:           input.UserID,
 		SlotID:           input.SlotID,
-		PositionID:       input.PositionID,
 		PublicationState: stalePublicationState(publication.State, effectiveState),
 		Now:              now,
 	}); err != nil {
@@ -541,7 +535,6 @@ func (s *PublicationService) DeleteAvailabilitySubmission(
 		Metadata: map[string]any{
 			"publication_id": input.PublicationID,
 			"slot_id":        input.SlotID,
-			"position_id":    input.PositionID,
 		},
 	})
 
@@ -580,10 +573,31 @@ func (s *PublicationService) ListQualifiedPublicationSlotPositions(
 		if shifts[i].SlotID != shifts[j].SlotID {
 			return shifts[i].SlotID < shifts[j].SlotID
 		}
-		return shifts[i].PositionID < shifts[j].PositionID
+		return false
 	})
 
 	return shifts, nil
+}
+
+func (s *PublicationService) userQualifiedForAnySlotPosition(
+	ctx context.Context,
+	userID int64,
+	slotPositions []*model.TemplateSlotPosition,
+) (bool, error) {
+	for _, slotPosition := range slotPositions {
+		if slotPosition == nil {
+			continue
+		}
+		qualified, err := s.publicationRepo.IsUserQualifiedForPosition(ctx, userID, slotPosition.PositionID)
+		if err != nil {
+			return false, err
+		}
+		if qualified {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func normalizePublicationName(name string) (string, error) {

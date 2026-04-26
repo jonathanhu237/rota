@@ -536,7 +536,7 @@ func seedUserPosition(t testing.TB, db *sql.DB, userID, positionID int64) {
 func seedSubmission(
 	t testing.TB,
 	db *sql.DB,
-	publicationID, userID, slotID, positionID int64,
+	publicationID, userID, slotID int64,
 	createdAt time.Time,
 ) *model.AvailabilitySubmission {
 	t.Helper()
@@ -546,11 +546,10 @@ func seedSubmission(
 			publication_id,
 			user_id,
 			slot_id,
-			position_id,
 			created_at
 		)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, publication_id, user_id, slot_id, position_id, created_at;
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, publication_id, user_id, slot_id, created_at;
 	`
 
 	submission := &model.AvailabilitySubmission{}
@@ -560,14 +559,12 @@ func seedSubmission(
 		publicationID,
 		userID,
 		slotID,
-		positionID,
 		createdAt,
 	).Scan(
 		&submission.ID,
 		&submission.PublicationID,
 		&submission.UserID,
 		&submission.SlotID,
-		&submission.PositionID,
 		&submission.CreatedAt,
 	); err != nil {
 		t.Fatalf("seed submission: %v", err)

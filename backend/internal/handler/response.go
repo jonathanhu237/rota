@@ -82,11 +82,16 @@ type templateSlotPositionResponse struct {
 }
 
 type qualifiedShiftResponse struct {
-	SlotID            int64  `json:"slot_id"`
+	SlotID      int64                               `json:"slot_id"`
+	Weekday     int                                 `json:"weekday"`
+	StartTime   string                              `json:"start_time"`
+	EndTime     string                              `json:"end_time"`
+	Composition []qualifiedShiftCompositionResponse `json:"composition"`
+}
+
+type qualifiedShiftCompositionResponse struct {
 	PositionID        int64  `json:"position_id"`
-	Weekday           int    `json:"weekday"`
-	StartTime         string `json:"start_time"`
-	EndTime           string `json:"end_time"`
+	PositionName      string `json:"position_name"`
 	RequiredHeadcount int    `json:"required_headcount"`
 }
 
@@ -231,14 +236,23 @@ func newTemplateListResponse(template *model.Template) templateListResponse {
 }
 
 func newQualifiedShiftResponse(shift *model.QualifiedShift) qualifiedShiftResponse {
-	return qualifiedShiftResponse{
-		SlotID:            shift.SlotID,
-		PositionID:        shift.PositionID,
-		Weekday:           shift.Weekday,
-		StartTime:         shift.StartTime,
-		EndTime:           shift.EndTime,
-		RequiredHeadcount: shift.RequiredHeadcount,
+	response := qualifiedShiftResponse{
+		SlotID:      shift.SlotID,
+		Weekday:     shift.Weekday,
+		StartTime:   shift.StartTime,
+		EndTime:     shift.EndTime,
+		Composition: make([]qualifiedShiftCompositionResponse, 0, len(shift.Composition)),
 	}
+
+	for _, entry := range shift.Composition {
+		response.Composition = append(response.Composition, qualifiedShiftCompositionResponse{
+			PositionID:        entry.PositionID,
+			PositionName:      entry.PositionName,
+			RequiredHeadcount: entry.RequiredHeadcount,
+		})
+	}
+
+	return response
 }
 
 func newTemplateSlotResponse(slot *model.TemplateSlot) templateSlotResponse {

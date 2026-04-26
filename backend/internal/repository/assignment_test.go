@@ -285,7 +285,7 @@ func TestListAssignmentCandidatesFiltered(t *testing.T) {
 	db := openIntegrationDB(t)
 	repo := NewPublicationRepository(db)
 	publication, slotID, positionID, _, user := seedAssignmentPrerequisites(t, db)
-	seedSubmission(t, db, publication.ID, user.ID, slotID, positionID, testTime())
+	seedSubmission(t, db, publication.ID, user.ID, slotID, testTime())
 
 	candidates, err := repo.ListAssignmentCandidates(ctx, publication.ID)
 	if err != nil {

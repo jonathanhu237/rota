@@ -699,7 +699,8 @@
     },
     "shift": {
       "timeRange": "{{startTime}}-{{endTime}}",
-      "summary": "岗位 #{{positionId}} · 需要 {{headcount}} 人"
+      "composition": "{{summary}}",
+      "compositionEntry": "{{position}} × {{count}}"
     },
     "errors": {
       "FORBIDDEN": "无权限访问",

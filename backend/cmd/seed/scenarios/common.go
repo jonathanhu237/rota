@@ -308,11 +308,15 @@ func insertAvailabilitySubmissions(
 	now time.Time,
 ) error {
 	for _, userID := range userIDs {
+		submittedSlots := make(map[int64]struct{})
 		for _, entry := range entries {
+			if _, submitted := submittedSlots[entry.SlotID]; submitted {
+				continue
+			}
 			if !qualified[userID][entry.PositionID] {
 				continue
 			}
-			if (userID+entry.SlotID+entry.PositionID)%modulus >= threshold {
+			if (userID+entry.SlotID)%modulus >= threshold {
 				continue
 			}
 			if _, err := tx.ExecContext(
@@ -322,19 +326,18 @@ func insertAvailabilitySubmissions(
 						publication_id,
 						user_id,
 						slot_id,
-						position_id,
 						created_at
 					)
-					VALUES ($1, $2, $3, $4, $5);
+					VALUES ($1, $2, $3, $4);
 				`,
 				publicationID,
 				userID,
 				entry.SlotID,
-				entry.PositionID,
 				now,
 			); err != nil {
-				return fmt.Errorf("insert submission publication=%d user=%d slot=%d position=%d: %w", publicationID, userID, entry.SlotID, entry.PositionID, err)
+				return fmt.Errorf("insert submission publication=%d user=%d slot=%d: %w", publicationID, userID, entry.SlotID, err)
 			}
+			submittedSlots[entry.SlotID] = struct{}{}
 		}
 	}
 	return nil

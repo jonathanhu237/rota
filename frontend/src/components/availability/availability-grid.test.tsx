@@ -9,19 +9,34 @@ import { AvailabilityGrid } from "./availability-grid"
 const shifts: QualifiedShift[] = [
   {
     slot_id: 21,
-    position_id: 101,
     weekday: 1,
     start_time: "09:00",
     end_time: "11:00",
-    required_headcount: 2,
+    composition: [
+      {
+        position_id: 101,
+        position_name: "Front Desk",
+        required_headcount: 2,
+      },
+      {
+        position_id: 102,
+        position_name: "Cashier",
+        required_headcount: 1,
+      },
+    ],
   },
   {
     slot_id: 22,
-    position_id: 102,
     weekday: 2,
     start_time: "12:00",
     end_time: "14:00",
-    required_headcount: 1,
+    composition: [
+      {
+        position_id: 103,
+        position_name: "Stock",
+        required_headcount: 1,
+      },
+    ],
   },
 ]
 
@@ -30,11 +45,11 @@ describe("AvailabilityGrid", () => {
     const user = userEvent.setup()
     const onToggle = vi.fn()
 
-    const { getByText, getAllByRole } = renderWithProviders(
+    const { getByText, getAllByRole, getAllByText } = renderWithProviders(
       <AvailabilityGrid
         isPending={false}
         onToggle={onToggle}
-        selectedSlotPositions={[{ slot_id: 22, position_id: 102 }]}
+        selectedSlots={[{ slot_id: 22 }]}
         shifts={shifts}
       />,
     )
@@ -47,8 +62,9 @@ describe("AvailabilityGrid", () => {
     await user.click(getAllByRole("checkbox")[0])
     await user.click(getAllByRole("checkbox")[1])
 
-    expect(onToggle).toHaveBeenNthCalledWith(1, 21, 101, true)
-    expect(onToggle).toHaveBeenNthCalledWith(2, 22, 102, false)
+    expect(getAllByText("availability.shift.composition").length).toBeGreaterThan(0)
+    expect(onToggle).toHaveBeenNthCalledWith(1, 21, true)
+    expect(onToggle).toHaveBeenNthCalledWith(2, 22, false)
   })
 
   it("disables checkboxes while pending", () => {
@@ -56,7 +72,7 @@ describe("AvailabilityGrid", () => {
       <AvailabilityGrid
         isPending
         onToggle={vi.fn()}
-        selectedSlotPositions={[]}
+        selectedSlots={[]}
         shifts={shifts}
       />,
     )

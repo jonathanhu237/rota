@@ -444,12 +444,17 @@ func sampleTemplate() *model.Template {
 
 func sampleQualifiedShift() *model.QualifiedShift {
 	return &model.QualifiedShift{
-		SlotID:            21,
-		PositionID:        101,
-		Weekday:           1,
-		StartTime:         "09:00",
-		EndTime:           "12:00",
-		RequiredHeadcount: 2,
+		SlotID:    21,
+		Weekday:   1,
+		StartTime: "09:00",
+		EndTime:   "12:00",
+		Composition: []model.QualifiedShiftComposition{
+			{
+				PositionID:        101,
+				PositionName:      "Front Desk",
+				RequiredHeadcount: 2,
+			},
+		},
 	}
 }
 

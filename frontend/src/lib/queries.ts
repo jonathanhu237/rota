@@ -14,7 +14,7 @@ import type {
   QualifiedShift,
   ShiftChangeRequest,
   ShiftChangeType,
-  SlotPositionRef,
+  SlotRef,
   Template,
   TemplateDetail,
   TemplateSlot,
@@ -84,7 +84,7 @@ export type PublicationShiftsResponse = {
 }
 
 export type MyPublicationSubmissionsResponse = {
-  submissions: SlotPositionRef[]
+  submissions: SlotRef[]
 }
 
 export type AssignmentBoardResponse = AssignmentBoard
@@ -615,22 +615,17 @@ export async function deleteAssignment(
 export async function createAvailabilitySubmission(
   publicationID: number,
   slotID: number,
-  positionID: number,
 ) {
   await api.post(`/publications/${publicationID}/submissions`, {
     slot_id: slotID,
-    position_id: positionID,
   })
 }
 
 export async function deleteAvailabilitySubmission(
   publicationID: number,
   slotID: number,
-  positionID: number,
 ) {
-  await api.delete(
-    `/publications/${publicationID}/submissions/${slotID}/${positionID}`,
-  )
+  await api.delete(`/publications/${publicationID}/submissions/${slotID}`)
 }
 
 export type ShiftChangeRequestResponse = {

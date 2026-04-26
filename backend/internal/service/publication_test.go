@@ -326,34 +326,30 @@ func (m *publicationRepositoryStatefulMock) DeletePublication(
 	return nil
 }
 
-func (m *publicationRepositoryStatefulMock) ListSubmissionSlotPositions(
+func (m *publicationRepositoryStatefulMock) ListSubmissionSlots(
 	ctx context.Context,
 	publicationID int64,
 	userID int64,
-) ([]model.SlotPositionRef, error) {
+) ([]model.SlotRef, error) {
 	if _, ok := m.publications[publicationID]; !ok {
 		return nil, repository.ErrPublicationNotFound
 	}
 
-	slotPositions := make([]model.SlotPositionRef, 0)
+	slots := make([]model.SlotRef, 0)
 	for _, submission := range m.submissions {
 		if submission.PublicationID != publicationID || submission.UserID != userID {
 			continue
 		}
-		slotPositions = append(slotPositions, model.SlotPositionRef{
-			SlotID:     submission.SlotID,
-			PositionID: submission.PositionID,
+		slots = append(slots, model.SlotRef{
+			SlotID: submission.SlotID,
 		})
 	}
 
-	sort.Slice(slotPositions, func(i, j int) bool {
-		if slotPositions[i].SlotID != slotPositions[j].SlotID {
-			return slotPositions[i].SlotID < slotPositions[j].SlotID
-		}
-		return slotPositions[i].PositionID < slotPositions[j].PositionID
+	sort.Slice(slots, func(i, j int) bool {
+		return slots[i].SlotID < slots[j].SlotID
 	})
 
-	return slotPositions, nil
+	return slots, nil
 }
 
 func (m *publicationRepositoryStatefulMock) UpsertSubmission(
@@ -370,11 +366,12 @@ func (m *publicationRepositoryStatefulMock) UpsertSubmission(
 		publication.UpdatedAt = params.Now
 	}
 
-	if m.findSlotPositionEntryID(params.SlotID, params.PositionID) == 0 {
-		return nil, repository.ErrTemplateSlotPositionNotFound
+	slot, ok := m.templateSlots[params.SlotID]
+	if !ok || slot.TemplateID != publication.TemplateID {
+		return nil, repository.ErrTemplateSlotNotFound
 	}
 
-	key := submissionKey(params.PublicationID, params.UserID, params.SlotID, params.PositionID)
+	key := submissionKey(params.PublicationID, params.UserID, params.SlotID)
 	if existing, ok := m.submissions[key]; ok {
 		return cloneSubmission(existing), nil
 	}
@@ -384,7 +381,6 @@ func (m *publicationRepositoryStatefulMock) UpsertSubmission(
 		PublicationID: params.PublicationID,
 		UserID:        params.UserID,
 		SlotID:        params.SlotID,
-		PositionID:    params.PositionID,
 		CreatedAt:     params.Now,
 	}
 
@@ -408,11 +404,7 @@ func (m *publicationRepositoryStatefulMock) DeleteSubmission(
 		publication.UpdatedAt = params.Now
 	}
 
-	if m.findSlotPositionEntryID(params.SlotID, params.PositionID) == 0 {
-		return repository.ErrTemplateSlotPositionNotFound
-	}
-
-	delete(m.submissions, submissionKey(params.PublicationID, params.UserID, params.SlotID, params.PositionID))
+	delete(m.submissions, submissionKey(params.PublicationID, params.UserID, params.SlotID))
 	return nil
 }
 
@@ -445,19 +437,33 @@ func (m *publicationRepositoryStatefulMock) ListQualifiedPublicationSlotPosition
 		if slot.TemplateID != publication.TemplateID {
 			continue
 		}
+		qualifiedForSlot := false
 		for _, slotPosition := range m.slotPositions[slotID] {
 			if qualified, _ := m.IsUserQualifiedForPosition(ctx, userID, slotPosition.PositionID); !qualified {
 				continue
 			}
-			shifts = append(shifts, &model.QualifiedShift{
-				SlotID:            slotID,
+			qualifiedForSlot = true
+			break
+		}
+		if !qualifiedForSlot {
+			continue
+		}
+
+		shift := &model.QualifiedShift{
+			SlotID:      slotID,
+			Weekday:     slot.Weekday,
+			StartTime:   slot.StartTime,
+			EndTime:     slot.EndTime,
+			Composition: make([]model.QualifiedShiftComposition, 0, len(m.slotPositions[slotID])),
+		}
+		for _, slotPosition := range m.slotPositions[slotID] {
+			shift.Composition = append(shift.Composition, model.QualifiedShiftComposition{
 				PositionID:        slotPosition.PositionID,
-				Weekday:           slot.Weekday,
-				StartTime:         slot.StartTime,
-				EndTime:           slot.EndTime,
+				PositionName:      mockPositionName(slotPosition.PositionID),
 				RequiredHeadcount: slotPosition.RequiredHeadcount,
 			})
 		}
+		shifts = append(shifts, shift)
 	}
 
 	sort.Slice(shifts, func(i, j int) bool {
@@ -470,7 +476,7 @@ func (m *publicationRepositoryStatefulMock) ListQualifiedPublicationSlotPosition
 		if shifts[i].SlotID != shifts[j].SlotID {
 			return shifts[i].SlotID < shifts[j].SlotID
 		}
-		return shifts[i].PositionID < shifts[j].PositionID
+		return false
 	})
 
 	return shifts, nil
@@ -713,20 +719,21 @@ func (m *publicationRepositoryStatefulMock) ListAssignmentCandidates(
 		if !ok {
 			continue
 		}
-		slotID, positionID, _ := m.resolveStoredSubmissionRef(submission)
 		if user.Status != model.UserStatusActive {
 			continue
 		}
-		if qualified, _ := m.IsUserQualifiedForPosition(ctx, user.ID, positionID); !qualified {
-			continue
+		for _, slotPosition := range m.slotPositions[submission.SlotID] {
+			if qualified, _ := m.IsUserQualifiedForPosition(ctx, user.ID, slotPosition.PositionID); !qualified {
+				continue
+			}
+			candidates = append(candidates, &model.AssignmentCandidate{
+				SlotID:     submission.SlotID,
+				PositionID: slotPosition.PositionID,
+				UserID:     user.ID,
+				Name:       user.Name,
+				Email:      user.Email,
+			})
 		}
-		candidates = append(candidates, &model.AssignmentCandidate{
-			SlotID:     slotID,
-			PositionID: positionID,
-			UserID:     user.ID,
-			Name:       user.Name,
-			Email:      user.Email,
-		})
 	}
 
 	sort.Slice(candidates, func(i, j int) bool {
@@ -905,14 +912,21 @@ func (m *publicationRepositoryStatefulMock) listAssignmentBoardCandidates(public
 		if !ok {
 			continue
 		}
-		slotID, positionID, _ := m.resolveStoredSubmissionRef(submission)
-		candidates = append(candidates, &model.AssignmentCandidate{
-			SlotID:     slotID,
-			PositionID: positionID,
-			UserID:     user.ID,
-			Name:       user.Name,
-			Email:      user.Email,
-		})
+		if user.Status != model.UserStatusActive {
+			continue
+		}
+		for _, slotPosition := range m.slotPositions[submission.SlotID] {
+			if qualified, _ := m.IsUserQualifiedForPosition(context.Background(), user.ID, slotPosition.PositionID); !qualified {
+				continue
+			}
+			candidates = append(candidates, &model.AssignmentCandidate{
+				SlotID:     submission.SlotID,
+				PositionID: slotPosition.PositionID,
+				UserID:     user.ID,
+				Name:       user.Name,
+				Email:      user.Email,
+			})
+		}
 	}
 
 	sort.Slice(candidates, func(i, j int) bool {
@@ -1314,12 +1328,12 @@ func TestPublicationServiceDeletePublication(t *testing.T) {
 			CreatedAt:         now.Add(-24 * time.Hour),
 			UpdatedAt:         now.Add(-24 * time.Hour),
 		}
-		repo.submissions[submissionKey(1, 7, 21, 101)] = &model.AvailabilitySubmission{
+		repo.submissions[submissionKey(1, 7, 21)] = &model.AvailabilitySubmission{
 			ID:            1,
 			PublicationID: 1,
 			UserID:        7,
-			SlotID:        21, PositionID: 101,
-			CreatedAt: now.Add(-2 * time.Hour),
+			SlotID:        21,
+			CreatedAt:     now.Add(-2 * time.Hour),
 		}
 		service := NewPublicationService(repo, fixedClock{now: now})
 
@@ -1439,35 +1453,35 @@ func TestPublicationServiceDeletePublication(t *testing.T) {
 	})
 }
 
-func TestPublicationServiceListAvailabilitySubmissionSlotPositions(t *testing.T) {
-	t.Run("returns submitted slot positions", func(t *testing.T) {
+func TestPublicationServiceListAvailabilitySubmissionSlots(t *testing.T) {
+	t.Run("returns submitted slots", func(t *testing.T) {
 		t.Parallel()
 
 		repo := newPublicationRepositoryStatefulMock()
-		repo.submissions[submissionKey(1, 7, 21, 101)] = &model.AvailabilitySubmission{
+		repo.submissions[submissionKey(1, 7, 21)] = &model.AvailabilitySubmission{
 			ID:            1,
 			PublicationID: 1,
 			UserID:        7,
-			SlotID:        21, PositionID: 101,
+			SlotID:        21,
 		}
-		repo.submissions[submissionKey(1, 7, 22, 102)] = &model.AvailabilitySubmission{
+		repo.submissions[submissionKey(1, 7, 22)] = &model.AvailabilitySubmission{
 			ID:            2,
 			PublicationID: 1,
 			UserID:        7,
-			SlotID:        22, PositionID: 102,
+			SlotID:        22,
 		}
 		service := NewPublicationService(repo, fixedClock{})
 
-		slotPositions, err := service.ListAvailabilitySubmissionSlotPositions(context.Background(), 1, 7)
+		slots, err := service.ListAvailabilitySubmissionSlots(context.Background(), 1, 7)
 		if err != nil {
-			t.Fatalf("ListAvailabilitySubmissionSlotPositions returned error: %v", err)
+			t.Fatalf("ListAvailabilitySubmissionSlots returned error: %v", err)
 		}
-		if len(slotPositions) != 2 {
-			t.Fatalf("expected 2 slot positions, got %v", slotPositions)
+		if len(slots) != 2 {
+			t.Fatalf("expected 2 slots, got %v", slots)
 		}
-		if slotPositions[0] != (model.SlotPositionRef{SlotID: 21, PositionID: 101}) ||
-			slotPositions[1] != (model.SlotPositionRef{SlotID: 22, PositionID: 102}) {
-			t.Fatalf("unexpected slot positions: %v", slotPositions)
+		if slots[0] != (model.SlotRef{SlotID: 21}) ||
+			slots[1] != (model.SlotRef{SlotID: 22}) {
+			t.Fatalf("unexpected slots: %v", slots)
 		}
 	})
 
@@ -1477,15 +1491,15 @@ func TestPublicationServiceListAvailabilitySubmissionSlotPositions(t *testing.T)
 		repo := newPublicationRepositoryStatefulMock()
 		service := NewPublicationService(repo, fixedClock{})
 
-		slotPositions, err := service.ListAvailabilitySubmissionSlotPositions(context.Background(), 1, 8)
+		slots, err := service.ListAvailabilitySubmissionSlots(context.Background(), 1, 8)
 		if err != nil {
-			t.Fatalf("ListAvailabilitySubmissionSlotPositions returned error: %v", err)
+			t.Fatalf("ListAvailabilitySubmissionSlots returned error: %v", err)
 		}
-		if slotPositions == nil {
+		if slots == nil {
 			t.Fatal("expected empty slice, got nil")
 		}
-		if len(slotPositions) != 0 {
-			t.Fatalf("expected no slot positions, got %v", slotPositions)
+		if len(slots) != 0 {
+			t.Fatalf("expected no slots, got %v", slots)
 		}
 	})
 
@@ -1495,7 +1509,7 @@ func TestPublicationServiceListAvailabilitySubmissionSlotPositions(t *testing.T)
 		repo := newPublicationRepositoryStatefulMock()
 		service := NewPublicationService(repo, fixedClock{})
 
-		_, err := service.ListAvailabilitySubmissionSlotPositions(context.Background(), 999, 7)
+		_, err := service.ListAvailabilitySubmissionSlots(context.Background(), 999, 7)
 		if !errors.Is(err, ErrPublicationNotFound) {
 			t.Fatalf("expected ErrPublicationNotFound, got %v", err)
 		}
@@ -1517,13 +1531,13 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		submission, err := service.CreateAvailabilitySubmission(ctx, CreateAvailabilitySubmissionInput{
 			PublicationID: 1,
 			UserID:        7,
-			SlotID:        21, PositionID: 101,
+			SlotID:        21,
 		})
 		if err != nil {
 			t.Fatalf("CreateAvailabilitySubmission returned error: %v", err)
 		}
 		if submission.PublicationID != 1 || submission.UserID != 7 ||
-			submission.SlotID != 21 || submission.PositionID != 101 {
+			submission.SlotID != 21 {
 			t.Fatalf("unexpected submission: %+v", submission)
 		}
 
@@ -1540,8 +1554,11 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		if event.Metadata["publication_id"] != int64(1) {
 			t.Fatalf("expected publication_id=1 in metadata, got %+v", event.Metadata)
 		}
-		if event.Metadata["slot_id"] != int64(21) || event.Metadata["position_id"] != int64(101) {
-			t.Fatalf("expected slot_id=21 and position_id=101 in metadata, got %+v", event.Metadata)
+		if event.Metadata["slot_id"] != int64(21) {
+			t.Fatalf("expected slot_id=21 in metadata, got %+v", event.Metadata)
+		}
+		if _, ok := event.Metadata["position_id"]; ok {
+			t.Fatalf("expected no position_id in metadata, got %+v", event.Metadata)
 		}
 	})
 
@@ -1557,7 +1574,7 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		_, err := service.CreateAvailabilitySubmission(context.Background(), CreateAvailabilitySubmissionInput{
 			PublicationID: 1,
 			UserID:        7,
-			SlotID:        21, PositionID: 101,
+			SlotID:        21,
 		})
 		if err != nil {
 			t.Fatalf("CreateAvailabilitySubmission returned error: %v", err)
@@ -1578,7 +1595,7 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		first, err := service.CreateAvailabilitySubmission(context.Background(), CreateAvailabilitySubmissionInput{
 			PublicationID: 1,
 			UserID:        7,
-			SlotID:        21, PositionID: 101,
+			SlotID:        21,
 		})
 		if err != nil {
 			t.Fatalf("first CreateAvailabilitySubmission returned error: %v", err)
@@ -1586,7 +1603,7 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		second, err := service.CreateAvailabilitySubmission(context.Background(), CreateAvailabilitySubmissionInput{
 			PublicationID: 1,
 			UserID:        7,
-			SlotID:        21, PositionID: 101,
+			SlotID:        21,
 		})
 		if err != nil {
 			t.Fatalf("second CreateAvailabilitySubmission returned error: %v", err)
@@ -1621,7 +1638,7 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		_, err := service.CreateAvailabilitySubmission(context.Background(), CreateAvailabilitySubmissionInput{
 			PublicationID: 1,
 			UserID:        7,
-			SlotID:        21, PositionID: 101,
+			SlotID:        21,
 		})
 		if !errors.Is(err, ErrPublicationNotCollecting) {
 			t.Fatalf("expected ErrPublicationNotCollecting, got %v", err)
@@ -1650,14 +1667,14 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		_, err := service.CreateAvailabilitySubmission(context.Background(), CreateAvailabilitySubmissionInput{
 			PublicationID: 1,
 			UserID:        7,
-			SlotID:        21, PositionID: 101,
+			SlotID:        21,
 		})
 		if !errors.Is(err, ErrPublicationNotCollecting) {
 			t.Fatalf("expected ErrPublicationNotCollecting, got %v", err)
 		}
 	})
 
-	t.Run("rejects slot position outside publication template", func(t *testing.T) {
+	t.Run("rejects slot outside publication template", func(t *testing.T) {
 		t.Parallel()
 
 		now := time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC)
@@ -1668,10 +1685,10 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		_, err := service.CreateAvailabilitySubmission(context.Background(), CreateAvailabilitySubmissionInput{
 			PublicationID: 1,
 			UserID:        7,
-			SlotID:        99, PositionID: 199,
+			SlotID:        99,
 		})
-		if !errors.Is(err, ErrTemplateSlotPositionNotFound) {
-			t.Fatalf("expected ErrTemplateSlotPositionNotFound, got %v", err)
+		if !errors.Is(err, ErrTemplateSlotNotFound) {
+			t.Fatalf("expected ErrTemplateSlotNotFound, got %v", err)
 		}
 	})
 
@@ -1689,7 +1706,7 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		_, err := service.CreateAvailabilitySubmission(ctx, CreateAvailabilitySubmissionInput{
 			PublicationID: 1,
 			UserID:        7,
-			SlotID:        22, PositionID: 102,
+			SlotID:        22,
 		})
 		if !errors.Is(err, ErrNotQualified) {
 			t.Fatalf("expected ErrNotQualified, got %v", err)
@@ -1711,7 +1728,7 @@ func TestPublicationServiceCreateAvailabilitySubmission(t *testing.T) {
 		_, err := service.CreateAvailabilitySubmission(context.Background(), CreateAvailabilitySubmissionInput{
 			PublicationID: 1,
 			UserID:        7,
-			SlotID:        21, PositionID: 101,
+			SlotID:        21,
 		})
 		if !errors.Is(err, ErrPublicationNotFound) {
 			t.Fatalf("expected ErrPublicationNotFound, got %v", err)
@@ -1726,12 +1743,12 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 		now := time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC)
 		repo := newPublicationRepositoryStatefulMock()
 		repo.publications[1] = collectingPublication(now)
-		repo.submissions[submissionKey(1, 7, 21, 101)] = &model.AvailabilitySubmission{
+		repo.submissions[submissionKey(1, 7, 21)] = &model.AvailabilitySubmission{
 			ID:            1,
 			PublicationID: 1,
 			UserID:        7,
-			SlotID:        21, PositionID: 101,
-			CreatedAt: now.Add(-15 * time.Minute),
+			SlotID:        21,
+			CreatedAt:     now.Add(-15 * time.Minute),
 		}
 		service := NewPublicationService(repo, fixedClock{now: now})
 
@@ -1741,7 +1758,7 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 		err := service.DeleteAvailabilitySubmission(ctx, DeleteAvailabilitySubmissionInput{
 			PublicationID: 1,
 			UserID:        7,
-			SlotID:        21, PositionID: 101,
+			SlotID:        21,
 		})
 		if err != nil {
 			t.Fatalf("DeleteAvailabilitySubmission returned error: %v", err)
@@ -1763,8 +1780,11 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 		if event.Metadata["publication_id"] != int64(1) {
 			t.Fatalf("expected publication_id=1 in metadata, got %+v", event.Metadata)
 		}
-		if event.Metadata["slot_id"] != int64(21) || event.Metadata["position_id"] != int64(101) {
-			t.Fatalf("expected slot_id=21 and position_id=101 in metadata, got %+v", event.Metadata)
+		if event.Metadata["slot_id"] != int64(21) {
+			t.Fatalf("expected slot_id=21 in metadata, got %+v", event.Metadata)
+		}
+		if _, ok := event.Metadata["position_id"]; ok {
+			t.Fatalf("expected no position_id in metadata, got %+v", event.Metadata)
 		}
 	})
 
@@ -1779,7 +1799,7 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 		err := service.DeleteAvailabilitySubmission(context.Background(), DeleteAvailabilitySubmissionInput{
 			PublicationID: 1,
 			UserID:        7,
-			SlotID:        21, PositionID: 101,
+			SlotID:        21,
 		})
 		if err != nil {
 			t.Fatalf("DeleteAvailabilitySubmission returned error: %v", err)
@@ -1792,12 +1812,12 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 		now := time.Date(2026, 4, 20, 10, 0, 0, 0, time.UTC)
 		repo := newPublicationRepositoryStatefulMock()
 		repo.publications[1] = collectingPublication(now)
-		repo.submissions[submissionKey(1, 7, 21, 101)] = &model.AvailabilitySubmission{
+		repo.submissions[submissionKey(1, 7, 21)] = &model.AvailabilitySubmission{
 			ID:            1,
 			PublicationID: 1,
 			UserID:        7,
-			SlotID:        21, PositionID: 101,
-			CreatedAt: now.Add(-15 * time.Minute),
+			SlotID:        21,
+			CreatedAt:     now.Add(-15 * time.Minute),
 		}
 		delete(repo.qualifiedByUser, 7)
 		service := NewPublicationService(repo, fixedClock{now: now})
@@ -1805,7 +1825,7 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 		err := service.DeleteAvailabilitySubmission(context.Background(), DeleteAvailabilitySubmissionInput{
 			PublicationID: 1,
 			UserID:        7,
-			SlotID:        21, PositionID: 101,
+			SlotID:        21,
 		})
 		if err != nil {
 			t.Fatalf("DeleteAvailabilitySubmission returned error: %v", err)
@@ -1840,7 +1860,7 @@ func TestPublicationServiceDeleteAvailabilitySubmission(t *testing.T) {
 		err := service.DeleteAvailabilitySubmission(ctx, DeleteAvailabilitySubmissionInput{
 			PublicationID: 1,
 			UserID:        7,
-			SlotID:        21, PositionID: 101,
+			SlotID:        21,
 		})
 		if !errors.Is(err, ErrPublicationNotCollecting) {
 			t.Fatalf("expected ErrPublicationNotCollecting, got %v", err)
@@ -1864,8 +1884,9 @@ func TestPublicationServiceListQualifiedPublicationSlotPositions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ListQualifiedPublicationSlotPositions returned error: %v", err)
 		}
-		if len(shifts) != 1 || shifts[0].SlotID != 21 || shifts[0].PositionID != 101 {
-			t.Fatalf("expected one qualified slot position 21/101, got %+v", shifts)
+		if len(shifts) != 1 || shifts[0].SlotID != 21 || len(shifts[0].Composition) != 1 ||
+			shifts[0].Composition[0].PositionID != 101 {
+			t.Fatalf("expected one qualified slot 21 with composition 101, got %+v", shifts)
 		}
 	})
 
@@ -1990,16 +2011,6 @@ func (m *publicationRepositoryStatefulMock) resolveAssignmentRef(slotID, positio
 	return slotID, positionID, entryID, nil
 }
 
-func (m *publicationRepositoryStatefulMock) resolveStoredSubmissionRef(
-	submission *model.AvailabilitySubmission,
-) (int64, int64, int64) {
-	if submission == nil {
-		return 0, 0, 0
-	}
-
-	return submission.SlotID, submission.PositionID, m.findSlotPositionEntryID(submission.SlotID, submission.PositionID)
-}
-
 func (m *publicationRepositoryStatefulMock) resolveStoredAssignmentRef(
 	assignment *model.Assignment,
 ) (int64, int64, int64) {
@@ -2043,11 +2054,10 @@ func mockPositionName(positionID int64) string {
 	}
 }
 
-func submissionKey(publicationID, userID, slotID, positionID int64) string {
+func submissionKey(publicationID, userID, slotID int64) string {
 	return strconv.FormatInt(publicationID, 10) +
 		":" + strconv.FormatInt(userID, 10) +
-		":" + strconv.FormatInt(slotID, 10) +
-		":" + strconv.FormatInt(positionID, 10)
+		":" + strconv.FormatInt(slotID, 10)
 }
 
 func assignmentKey(publicationID, userID, slotID int64) string {

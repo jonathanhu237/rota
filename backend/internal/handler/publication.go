@@ -17,7 +17,7 @@ type publicationService interface {
 	GetPublicationByID(ctx context.Context, id int64) (*model.Publication, error)
 	DeletePublication(ctx context.Context, id int64) error
 	GetCurrentPublication(ctx context.Context) (*model.Publication, error)
-	ListAvailabilitySubmissionSlotPositions(ctx context.Context, publicationID, userID int64) ([]model.SlotPositionRef, error)
+	ListAvailabilitySubmissionSlots(ctx context.Context, publicationID, userID int64) ([]model.SlotRef, error)
 	CreateAvailabilitySubmission(ctx context.Context, input service.CreateAvailabilitySubmissionInput) (*model.AvailabilitySubmission, error)
 	DeleteAvailabilitySubmission(ctx context.Context, input service.DeleteAvailabilitySubmissionInput) error
 	ListQualifiedPublicationSlotPositions(ctx context.Context, publicationID, userID int64) ([]*model.QualifiedShift, error)
@@ -50,12 +50,11 @@ type currentPublicationResponse struct {
 }
 
 type submissionsMeResponse struct {
-	Submissions []slotPositionRefResponse `json:"submissions"`
+	Submissions []slotRefResponse `json:"submissions"`
 }
 
-type slotPositionRefResponse struct {
-	SlotID     int64 `json:"slot_id"`
-	PositionID int64 `json:"position_id"`
+type slotRefResponse struct {
+	SlotID int64 `json:"slot_id"`
 }
 
 type shiftsMeResponse struct {
@@ -79,8 +78,7 @@ type updatePublicationRequest struct {
 }
 
 type createSubmissionRequest struct {
-	SlotID     int64 `json:"slot_id"`
-	PositionID int64 `json:"position_id"`
+	SlotID int64 `json:"slot_id"`
 }
 
 type createAssignmentRequest struct {
@@ -240,7 +238,7 @@ func (h *PublicationHandler) GetCurrent(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-func (h *PublicationHandler) ListMySubmissionSlotPositions(w http.ResponseWriter, r *http.Request) {
+func (h *PublicationHandler) ListMySubmissionSlots(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUserFromRequest(r)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
@@ -253,22 +251,21 @@ func (h *PublicationHandler) ListMySubmissionSlotPositions(w http.ResponseWriter
 		return
 	}
 
-	slotPositions, err := h.publicationService.ListAvailabilitySubmissionSlotPositions(r.Context(), publicationID, user.ID)
+	slots, err := h.publicationService.ListAvailabilitySubmissionSlots(r.Context(), publicationID, user.ID)
 	if err != nil {
 		h.writePublicationServiceError(w, err)
 		return
 	}
 
-	responseSlotPositions := make([]slotPositionRefResponse, 0, len(slotPositions))
-	for _, slotPosition := range slotPositions {
-		responseSlotPositions = append(responseSlotPositions, slotPositionRefResponse{
-			SlotID:     slotPosition.SlotID,
-			PositionID: slotPosition.PositionID,
+	responseSlots := make([]slotRefResponse, 0, len(slots))
+	for _, slot := range slots {
+		responseSlots = append(responseSlots, slotRefResponse{
+			SlotID: slot.SlotID,
 		})
 	}
 
 	writeData(w, http.StatusOK, submissionsMeResponse{
-		Submissions: responseSlotPositions,
+		Submissions: responseSlots,
 	})
 }
 
@@ -286,7 +283,11 @@ func (h *PublicationHandler) CreateSubmission(w http.ResponseWriter, r *http.Req
 	}
 
 	var req createSubmissionRequest
-	if err := readJSON(w, r, &req); err != nil {
+	if err := readJSONAllowUnknownFields(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+	if req.SlotID <= 0 {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
 		return
 	}
@@ -295,7 +296,6 @@ func (h *PublicationHandler) CreateSubmission(w http.ResponseWriter, r *http.Req
 		PublicationID: publicationID,
 		UserID:        user.ID,
 		SlotID:        req.SlotID,
-		PositionID:    req.PositionID,
 	}); err != nil {
 		h.writePublicationServiceError(w, err)
 		return
@@ -322,17 +322,11 @@ func (h *PublicationHandler) DeleteSubmission(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid slot id")
 		return
 	}
-	positionID, err := parsePathID(r, "position_id")
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid position id")
-		return
-	}
 
 	if err := h.publicationService.DeleteAvailabilitySubmission(r.Context(), service.DeleteAvailabilitySubmissionInput{
 		PublicationID: publicationID,
 		UserID:        user.ID,
 		SlotID:        slotID,
-		PositionID:    positionID,
 	}); err != nil {
 		h.writePublicationServiceError(w, err)
 		return

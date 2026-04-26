@@ -290,7 +290,6 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 			PublicationID:    publication.ID,
 			UserID:           user.ID,
 			SlotID:           shift.SlotID,
-			PositionID:       shift.PositionID,
 			PublicationState: &newState,
 			Now:              testTime(),
 		})
@@ -302,7 +301,6 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 			PublicationID: publication.ID,
 			UserID:        user.ID,
 			SlotID:        shift.SlotID,
-			PositionID:    shift.PositionID,
 			Now:           testTime().Add(5 * time.Minute),
 		})
 		if err != nil {
@@ -355,8 +353,8 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		secondUser := seedUser(t, db, userSeed{Name: "Bob", Email: "bob@example.com"})
 		seedUserPosition(t, db, firstUser.ID, matchingPosition.ID)
 		seedUserPosition(t, db, secondUser.ID, otherPosition.ID)
-		seedSubmission(t, db, publication.ID, firstUser.ID, firstShift.SlotID, firstShift.PositionID, testTime())
-		seedSubmission(t, db, publication.ID, secondUser.ID, secondShift.SlotID, secondShift.PositionID, testTime().Add(1*time.Minute))
+		seedSubmission(t, db, publication.ID, firstUser.ID, firstShift.SlotID, testTime())
+		seedSubmission(t, db, publication.ID, secondUser.ID, secondShift.SlotID, testTime().Add(1*time.Minute))
 		firstSlotID := firstShift.SlotID
 		secondSlotID := secondShift.SlotID
 
@@ -381,8 +379,9 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		if len(qualified) != 1 {
 			t.Fatalf("expected 1 qualified shift, got %d", len(qualified))
 		}
-		if qualified[0].SlotID != firstShift.SlotID || qualified[0].PositionID != firstShift.PositionID {
-			t.Fatalf("expected qualified slot-position %d/%d, got %+v", firstShift.SlotID, firstShift.PositionID, qualified[0])
+		if qualified[0].SlotID != firstShift.SlotID || len(qualified[0].Composition) != 1 ||
+			qualified[0].Composition[0].PositionID != firstShift.PositionID {
+			t.Fatalf("expected qualified slot %d with composition %d, got %+v", firstShift.SlotID, firstShift.PositionID, qualified[0])
 		}
 		if qualified[0].StartTime != "09:00" || qualified[0].EndTime != "12:00" {
 			t.Fatalf("expected time formatting 09:00-12:00, got %s-%s", qualified[0].StartTime, qualified[0].EndTime)
@@ -425,8 +424,8 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 			seedUserPosition(t, db, userID, firstPosition.ID)
 		}
 
-		seedSubmission(t, db, publication.ID, firstCandidate.ID, firstSlotID, firstPosition.ID, testTime())
-		seedSubmission(t, db, publication.ID, secondCandidate.ID, firstSlotID, firstPosition.ID, testTime().Add(1*time.Minute))
+		seedSubmission(t, db, publication.ID, firstCandidate.ID, firstSlotID, testTime())
+		seedSubmission(t, db, publication.ID, secondCandidate.ID, firstSlotID, testTime().Add(1*time.Minute))
 		seedAssignment(t, db, publication.ID, secondCandidate.ID, firstSlotID, firstPosition.ID, testTime().Add(2*time.Minute))
 
 		board, err := repo.GetAssignmentBoardView(ctx, publication.ID)

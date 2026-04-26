@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next"
 
 import { groupQualifiedShiftsByWeekday } from "@/components/templates/group-qualified-shifts"
 import { Checkbox } from "@/components/ui/checkbox"
-import type { QualifiedShift, SlotPositionRef } from "@/lib/types"
+import type { QualifiedShift, SlotRef } from "@/lib/types"
 
 const weekdayKeys = {
   1: "templates.weekday.mon",
@@ -16,24 +16,20 @@ const weekdayKeys = {
 
 type AvailabilityGridProps = {
   shifts: QualifiedShift[]
-  selectedSlotPositions: SlotPositionRef[]
+  selectedSlots: SlotRef[]
   isPending: boolean
-  onToggle: (slotID: number, positionID: number, checked: boolean) => void
+  onToggle: (slotID: number, checked: boolean) => void
 }
 
 export function AvailabilityGrid({
   shifts,
-  selectedSlotPositions,
+  selectedSlots,
   isPending,
   onToggle,
 }: AvailabilityGridProps) {
   const { t } = useTranslation()
   const groupedShifts = groupQualifiedShiftsByWeekday(shifts)
-  const selectedSlotPositionSet = new Set(
-    selectedSlotPositions.map((position) =>
-      slotPositionKey(position.slot_id, position.position_id),
-    ),
-  )
+  const selectedSlotSet = new Set(selectedSlots.map((slot) => slot.slot_id))
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -55,21 +51,15 @@ export function AvailabilityGrid({
               ) : (
                 weekdayShifts.map((shift) => (
                   <label
-                    key={slotPositionKey(shift.slot_id, shift.position_id)}
+                    key={shift.slot_id}
                     className="flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/20"
                   >
                     <Checkbox
-                      checked={selectedSlotPositionSet.has(
-                        slotPositionKey(shift.slot_id, shift.position_id),
-                      )}
+                      checked={selectedSlotSet.has(shift.slot_id)}
                       className="mt-0.5"
                       disabled={isPending}
                       onChange={(event) =>
-                        onToggle(
-                          shift.slot_id,
-                          shift.position_id,
-                          event.currentTarget.checked,
-                        )
+                        onToggle(shift.slot_id, event.currentTarget.checked)
                       }
                     />
                     <div className="grid gap-1">
@@ -80,9 +70,15 @@ export function AvailabilityGrid({
                         })}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        {t("availability.shift.summary", {
-                          positionId: shift.position_id,
-                          headcount: shift.required_headcount,
+                        {t("availability.shift.composition", {
+                          summary: shift.composition
+                            .map((entry) =>
+                              t("availability.shift.compositionEntry", {
+                                position: entry.position_name,
+                                count: entry.required_headcount,
+                              }),
+                            )
+                            .join(" / "),
                         })}
                       </div>
                     </div>
@@ -95,8 +91,4 @@ export function AvailabilityGrid({
       })}
     </div>
   )
-}
-
-function slotPositionKey(slotID: number, positionID: number) {
-  return `${slotID}:${positionID}`
 }
