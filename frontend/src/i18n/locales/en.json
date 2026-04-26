@@ -90,6 +90,8 @@
     "roster": "Roster",
     "availability": "Availability",
     "requests": "Requests",
+    "leave": "Leave",
+    "myLeaves": "My Leaves",
     "users": "Users",
     "positions": "Positions",
     "templates": "Templates",
@@ -801,6 +803,89 @@
       "SHIFT_CHANGE_TIME_CONFLICT": "This change conflicts with another shift you already have.",
       "SCHEDULING_RETRYABLE": "Another scheduling change was applied at the same time. Please try again.",
       "UNAUTHORIZED": "Unauthorized"
+    }
+  },
+  "leave": {
+    "title": "Leave",
+    "description": "Select upcoming shifts and request coverage.",
+    "from": "From",
+    "to": "To",
+    "shareUrls": "Share URLs",
+    "copy": "Copy",
+    "emptyPreview": "No future shifts are available in this range.",
+    "typeLabel": "Type",
+    "typeGivePool": "Open pool",
+    "typeGiveDirect": "Direct colleague",
+    "categoryLabel": "Category",
+    "categorySick": "Sick",
+    "categoryPersonal": "Personal",
+    "categoryBereavement": "Bereavement",
+    "counterpart": "Counterpart",
+    "counterpartPlaceholder": "Select a colleague",
+    "reason": "Reason",
+    "reasonPlaceholder": "Optional note",
+    "submit": "Submit leave",
+    "toast": {
+      "created": "Leave created."
+    },
+    "type": {
+      "swap": "Swap",
+      "give_direct": "Direct colleague",
+      "give_pool": "Open pool"
+    },
+    "category": {
+      "sick": "Sick",
+      "personal": "Personal",
+      "bereavement": "Bereavement"
+    },
+    "state": {
+      "pending": "Pending",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "errors": {
+      "INVALID_OCCURRENCE_DATE": "Choose a valid future occurrence.",
+      "INVALID_REQUEST": "Invalid request",
+      "INTERNAL_ERROR": "Something went wrong. Please try again.",
+      "LEAVE_NOT_FOUND": "Leave not found",
+      "LEAVE_NOT_OWNER": "You are not allowed to cancel this leave.",
+      "PUBLICATION_NOT_ACTIVE": "Leave can only be requested for the active publication.",
+      "SHIFT_CHANGE_INVALID_TYPE": "Leave supports direct or pool coverage only.",
+      "SHIFT_CHANGE_NOT_OWNER": "You are not allowed to use that shift.",
+      "SHIFT_CHANGE_NOT_QUALIFIED": "The selected colleague is not qualified.",
+      "SHIFT_CHANGE_SELF": "You cannot choose yourself.",
+      "UNAUTHORIZED": "Unauthorized",
+      "USER_DISABLED": "The selected colleague is disabled."
+    }
+  },
+  "myLeaves": {
+    "title": "My Leaves",
+    "description": "Review leave requests you have submitted.",
+    "empty": "You have not submitted any leave requests.",
+    "open": "Open",
+    "previous": "Previous",
+    "next": "Next",
+    "page": "Page {{page}}"
+  },
+  "leaveDetail": {
+    "title": "Leave Detail",
+    "reason": "Reason",
+    "createdAt": "Created",
+    "expiresAt": "Expires",
+    "requester": "Requester",
+    "counterpart": "Counterpart",
+    "actionsTitle": "Actions",
+    "actions": {
+      "approve": "Approve",
+      "reject": "Reject",
+      "claim": "Claim",
+      "cancel": "Cancel"
+    },
+    "toast": {
+      "approved": "Leave request approved.",
+      "rejected": "Leave request rejected.",
+      "cancelled": "Leave cancelled."
     }
   }
 }

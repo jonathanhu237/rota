@@ -36,6 +36,7 @@ type CreateShiftChangeRequestParams struct {
 	CounterpartUserID         *int64
 	CounterpartAssignmentID   *int64
 	CounterpartOccurrenceDate *time.Time
+	LeaveID                   *int64
 	ExpiresAt                 time.Time
 	CreatedAt                 time.Time
 }
@@ -43,6 +44,22 @@ type CreateShiftChangeRequestParams struct {
 // Create inserts a new shift_change_request.
 func (r *ShiftChangeRepository) Create(
 	ctx context.Context,
+	params CreateShiftChangeRequestParams,
+) (*model.ShiftChangeRequest, error) {
+	return createShiftChangeRequest(ctx, r.db, params)
+}
+
+func (r *ShiftChangeRepository) CreateTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	params CreateShiftChangeRequestParams,
+) (*model.ShiftChangeRequest, error) {
+	return createShiftChangeRequest(ctx, tx, params)
+}
+
+func createShiftChangeRequest(
+	ctx context.Context,
+	db dbtx,
 	params CreateShiftChangeRequestParams,
 ) (*model.ShiftChangeRequest, error) {
 	const query = `
@@ -55,11 +72,12 @@ func (r *ShiftChangeRepository) Create(
 			counterpart_user_id,
 			counterpart_assignment_id,
 			counterpart_occurrence_date,
+			leave_id,
 			state,
 			created_at,
 			expires_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', $10, $11)
 		RETURNING
 			id,
 			publication_id,
@@ -71,6 +89,7 @@ func (r *ShiftChangeRepository) Create(
 			counterpart_assignment_id,
 			counterpart_occurrence_date,
 			state,
+			leave_id,
 			decided_by_user_id,
 			created_at,
 			decided_at,
@@ -89,8 +108,12 @@ func (r *ShiftChangeRepository) Create(
 	if params.CounterpartOccurrenceDate != nil {
 		counterpartOccurrence = sql.NullTime{Time: model.NormalizeOccurrenceDate(*params.CounterpartOccurrenceDate), Valid: true}
 	}
+	var leaveID sql.NullInt64
+	if params.LeaveID != nil {
+		leaveID = sql.NullInt64{Int64: *params.LeaveID, Valid: true}
+	}
 
-	return scanShiftChangeRequest(r.db.QueryRowContext(
+	return scanShiftChangeRequest(db.QueryRowContext(
 		ctx,
 		query,
 		params.PublicationID,
@@ -101,6 +124,7 @@ func (r *ShiftChangeRepository) Create(
 		counterpartUser,
 		counterpartAssignment,
 		counterpartOccurrence,
+		leaveID,
 		params.CreatedAt,
 		params.ExpiresAt,
 	))
@@ -123,6 +147,7 @@ func (r *ShiftChangeRepository) GetByID(
 			counterpart_assignment_id,
 			counterpart_occurrence_date,
 			state,
+			leave_id,
 			decided_by_user_id,
 			created_at,
 			decided_at,
@@ -177,6 +202,7 @@ func (r *ShiftChangeRepository) ListForPublication(
 				counterpart_assignment_id,
 				counterpart_occurrence_date,
 				state,
+				leave_id,
 				decided_by_user_id,
 				created_at,
 				decided_at,
@@ -199,6 +225,7 @@ func (r *ShiftChangeRepository) ListForPublication(
 				counterpart_assignment_id,
 				counterpart_occurrence_date,
 				state,
+				leave_id,
 				decided_by_user_id,
 				created_at,
 				decided_at,
@@ -233,6 +260,41 @@ func (r *ShiftChangeRepository) ListForPublication(
 		return nil, err
 	}
 	return out, nil
+}
+
+func (r *ShiftChangeRepository) SetLeaveIDTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	requestID int64,
+	leaveID int64,
+) (*model.ShiftChangeRequest, error) {
+	const query = `
+		UPDATE shift_change_requests
+		SET leave_id = $2
+		WHERE id = $1
+		RETURNING
+			id,
+			publication_id,
+			type,
+			requester_user_id,
+			requester_assignment_id,
+			occurrence_date,
+			counterpart_user_id,
+			counterpart_assignment_id,
+			counterpart_occurrence_date,
+			state,
+			leave_id,
+			decided_by_user_id,
+			created_at,
+			decided_at,
+			expires_at;
+	`
+
+	req, err := scanShiftChangeRequest(tx.QueryRowContext(ctx, query, requestID, leaveID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrShiftChangeNotFound
+	}
+	return req, err
 }
 
 // CountPendingForCounterpart returns the number of pending rows where the
@@ -656,6 +718,7 @@ func scanShiftChangeRequest(row scanner) (*model.ShiftChangeRequest, error) {
 		counterpartUser       sql.NullInt64
 		counterpartAssignment sql.NullInt64
 		counterpartOccurrence sql.NullTime
+		leaveID               sql.NullInt64
 		decidedBy             sql.NullInt64
 		decidedAt             sql.NullTime
 	)
@@ -670,6 +733,7 @@ func scanShiftChangeRequest(row scanner) (*model.ShiftChangeRequest, error) {
 		&counterpartAssignment,
 		&counterpartOccurrence,
 		&req.State,
+		&leaveID,
 		&decidedBy,
 		&req.CreatedAt,
 		&decidedAt,
@@ -691,6 +755,10 @@ func scanShiftChangeRequest(row scanner) (*model.ShiftChangeRequest, error) {
 	if counterpartOccurrence.Valid {
 		date := model.NormalizeOccurrenceDate(counterpartOccurrence.Time)
 		req.CounterpartOccurrenceDate = &date
+	}
+	if leaveID.Valid {
+		id := leaveID.Int64
+		req.LeaveID = &id
 	}
 	if decidedBy.Valid {
 		id := decidedBy.Int64

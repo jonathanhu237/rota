@@ -99,6 +99,7 @@ type CreateShiftChangeInput struct {
 	CounterpartUserID         *int64
 	CounterpartAssignmentID   *int64
 	CounterpartOccurrenceDate *time.Time
+	LeaveID                   *int64
 }
 
 // CreateShiftChangeRequest validates preconditions and persists a new row.
@@ -110,6 +111,9 @@ func (s *ShiftChangeService) CreateShiftChangeRequest(
 		input.RequesterUserID <= 0 ||
 		input.RequesterAssignmentID <= 0 ||
 		input.OccurrenceDate.IsZero() {
+		return nil, ErrInvalidInput
+	}
+	if input.LeaveID != nil {
 		return nil, ErrInvalidInput
 	}
 	if !isValidShiftChangeType(input.Type) {
@@ -124,6 +128,42 @@ func (s *ShiftChangeService) CreateShiftChangeRequest(
 	}
 	if model.ResolvePublicationState(publication, now) != model.PublicationStatePublished {
 		return nil, ErrPublicationNotPublished
+	}
+
+	prepared, err := s.prepareCreateShiftChangeRequest(ctx, input, publication, now)
+	if err != nil {
+		return nil, err
+	}
+
+	created, err := s.shiftChangeRepo.Create(ctx, prepared.params)
+	if err != nil {
+		return nil, err
+	}
+
+	s.recordShiftChangeCreated(ctx, created, prepared.requesterShift, prepared.counterpartShift)
+	return created, nil
+}
+
+type preparedShiftChangeCreate struct {
+	params           repository.CreateShiftChangeRequestParams
+	requesterShift   *model.PublicationShift
+	counterpartShift *model.PublicationShift
+}
+
+func (s *ShiftChangeService) prepareCreateShiftChangeRequest(
+	ctx context.Context,
+	input CreateShiftChangeInput,
+	publication *model.Publication,
+	now time.Time,
+) (*preparedShiftChangeCreate, error) {
+	if input.PublicationID <= 0 ||
+		input.RequesterUserID <= 0 ||
+		input.RequesterAssignmentID <= 0 ||
+		input.OccurrenceDate.IsZero() {
+		return nil, ErrInvalidInput
+	}
+	if !isValidShiftChangeType(input.Type) {
+		return nil, ErrShiftChangeInvalidType
 	}
 
 	requesterAssignment, err := s.publicationRepo.GetAssignment(ctx, input.RequesterAssignmentID)
@@ -216,9 +256,11 @@ func (s *ShiftChangeService) CreateShiftChangeRequest(
 		if input.CounterpartUserID != nil || input.CounterpartAssignmentID != nil {
 			return nil, ErrShiftChangeInvalidType
 		}
+	default:
+		return nil, ErrShiftChangeInvalidType
 	}
 
-	created, err := s.shiftChangeRepo.Create(ctx, repository.CreateShiftChangeRequestParams{
+	params := repository.CreateShiftChangeRequestParams{
 		PublicationID:             input.PublicationID,
 		Type:                      input.Type,
 		RequesterUserID:           input.RequesterUserID,
@@ -229,11 +271,22 @@ func (s *ShiftChangeService) CreateShiftChangeRequest(
 		CounterpartOccurrenceDate: input.CounterpartOccurrenceDate,
 		ExpiresAt:                 expiresAt,
 		CreatedAt:                 now,
-	})
-	if err != nil {
-		return nil, err
+		LeaveID:                   input.LeaveID,
 	}
 
+	return &preparedShiftChangeCreate{
+		params:           params,
+		requesterShift:   requesterShift,
+		counterpartShift: counterpartShift,
+	}, nil
+}
+
+func (s *ShiftChangeService) recordShiftChangeCreated(
+	ctx context.Context,
+	created *model.ShiftChangeRequest,
+	requesterShift *model.PublicationShift,
+	counterpartShift *model.PublicationShift,
+) {
 	targetID := created.ID
 	audit.Record(ctx, audit.Event{
 		Action:     audit.ActionShiftChangeCreate,
@@ -242,11 +295,9 @@ func (s *ShiftChangeService) CreateShiftChangeRequest(
 		Metadata:   shiftChangeCreateMetadata(created),
 	})
 
-	if input.Type == model.ShiftChangeTypeSwap || input.Type == model.ShiftChangeTypeGiveDirect {
+	if created.Type == model.ShiftChangeTypeSwap || created.Type == model.ShiftChangeTypeGiveDirect {
 		s.notifyRequestCreated(ctx, created, requesterShift, counterpartShift)
 	}
-
-	return created, nil
 }
 
 // GetShiftChangeRequest returns a single request, enforcing that the viewer
@@ -446,7 +497,12 @@ func (s *ShiftChangeService) ApproveShiftChangeRequest(
 	if err != nil {
 		return mapPublicationRepositoryError(err)
 	}
-	if model.ResolvePublicationState(publication, now) != model.PublicationStatePublished {
+	publicationState := model.ResolvePublicationState(publication, now)
+	if req.LeaveID != nil {
+		if publicationState != model.PublicationStatePublished && publicationState != model.PublicationStateActive {
+			return ErrPublicationNotPublished
+		}
+	} else if publicationState != model.PublicationStatePublished {
 		return ErrPublicationNotPublished
 	}
 
@@ -847,6 +903,9 @@ func shiftChangeCreateMetadata(req *model.ShiftChangeRequest) map[string]any {
 	}
 	if req.CounterpartOccurrenceDate != nil {
 		metadata["counterpart_occurrence_date"] = req.CounterpartOccurrenceDate.Format("2006-01-02")
+	}
+	if req.LeaveID != nil {
+		metadata["leave_id"] = *req.LeaveID
 	}
 	return metadata
 }

@@ -195,6 +195,7 @@ export type ShiftChangeRequest = {
   counterpart_assignment_id: number | null
   counterpart_occurrence_date: string | null
   state: ShiftChangeState
+  leave_id: number | null
   decided_by_user_id: number | null
   created_at: string
   decided_at: string | null
@@ -204,4 +205,31 @@ export type ShiftChangeRequest = {
 export type PublicationMember = {
   user_id: number
   name: string
+}
+
+export type LeaveCategory = "sick" | "personal" | "bereavement"
+
+export type LeaveState = "pending" | "completed" | "failed" | "cancelled"
+
+export type Leave = {
+  id: number
+  user_id: number
+  publication_id: number
+  shift_change_request_id: number
+  category: LeaveCategory
+  reason: string
+  state: LeaveState
+  share_url: string
+  created_at: string
+  updated_at: string
+  request: ShiftChangeRequest
+}
+
+export type LeavePreviewOccurrence = {
+  assignment_id: number
+  occurrence_date: string
+  slot: PublicationSlot
+  position: PublicationPosition
+  occurrence_start: string
+  occurrence_end: string
 }

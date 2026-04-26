@@ -5,6 +5,8 @@ import {
   CalendarCheck,
   CalendarDays,
   CalendarRange,
+  CalendarX,
+  ClipboardList,
   ChevronsUpDown,
   FileText,
   Globe,
@@ -94,6 +96,16 @@ export function AppSidebar() {
       url: "/requests",
       icon: Inbox,
       badge: showUnreadBadge ? unreadCount : undefined,
+    },
+    {
+      title: t("sidebar.leave"),
+      url: "/leave",
+      icon: CalendarX,
+    },
+    {
+      title: t("sidebar.myLeaves"),
+      url: "/my-leaves",
+      icon: ClipboardList,
     },
   ]
 

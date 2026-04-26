@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"sort"
@@ -69,6 +70,10 @@ func cloneShiftChangeRequest(r *model.ShiftChangeRequest) *model.ShiftChangeRequ
 		v := *r.CounterpartOccurrenceDate
 		cloned.CounterpartOccurrenceDate = &v
 	}
+	if r.LeaveID != nil {
+		v := *r.LeaveID
+		cloned.LeaveID = &v
+	}
 	if r.DecidedByUserID != nil {
 		v := *r.DecidedByUserID
 		cloned.DecidedByUserID = &v
@@ -98,11 +103,38 @@ func (m *shiftChangeRepositoryStatefulMock) Create(
 		CounterpartAssignmentID:   params.CounterpartAssignmentID,
 		CounterpartOccurrenceDate: params.CounterpartOccurrenceDate,
 		State:                     model.ShiftChangeStatePending,
+		LeaveID:                   params.LeaveID,
 		CreatedAt:                 params.CreatedAt,
 		ExpiresAt:                 params.ExpiresAt,
 	}
 	m.nextID++
 	m.requests[req.ID] = cloneShiftChangeRequest(req)
+	return cloneShiftChangeRequest(req), nil
+}
+
+func (m *shiftChangeRepositoryStatefulMock) CreateTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	params repository.CreateShiftChangeRequestParams,
+) (*model.ShiftChangeRequest, error) {
+	return m.Create(ctx, params)
+}
+
+func (m *shiftChangeRepositoryStatefulMock) SetLeaveIDTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	requestID int64,
+	leaveID int64,
+) (*model.ShiftChangeRequest, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	req, ok := m.requests[requestID]
+	if !ok {
+		return nil, repository.ErrShiftChangeNotFound
+	}
+	id := leaveID
+	req.LeaveID = &id
 	return cloneShiftChangeRequest(req), nil
 }
 
@@ -542,6 +574,30 @@ func TestShiftChangeServiceCreate(t *testing.T) {
 		assertNoMetadataLeak(t, stub.Events())
 	})
 
+	t.Run("public create rejects leave id", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+		pub, sc := buildShiftChangeFixture(now)
+		svc := newTestShiftChangeService(pub, sc, nil, now)
+
+		leaveID := int64(55)
+		_, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
+			PublicationID:         1,
+			RequesterUserID:       7,
+			Type:                  model.ShiftChangeTypeGivePool,
+			RequesterAssignmentID: 100,
+			OccurrenceDate:        mondayOccurrence(now),
+			LeaveID:               &leaveID,
+		})
+		if !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("expected ErrInvalidInput, got %v", err)
+		}
+		if len(sc.requests) != 0 {
+			t.Fatalf("expected no persisted request, got %d", len(sc.requests))
+		}
+	})
+
 	t.Run("swap counterpart not qualified for requester position", func(t *testing.T) {
 		t.Parallel()
 
@@ -922,6 +978,41 @@ func TestShiftChangeServiceApprove(t *testing.T) {
 		}
 		if !strings.Contains(strings.ToLower(msgs[0].Body), "claimed") {
 			t.Fatalf("expected outcome=claimed, got %q", msgs[0].Body)
+		}
+	})
+
+	t.Run("leave-bearing give_pool can be claimed while publication is active", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+		pub, sc := buildShiftChangeFixture(now)
+		svc := newTestShiftChangeService(pub, sc, &emailStub{}, now)
+
+		created, err := svc.CreateShiftChangeRequest(context.Background(), CreateShiftChangeInput{
+			PublicationID:         1,
+			RequesterUserID:       7,
+			Type:                  model.ShiftChangeTypeGivePool,
+			RequesterAssignmentID: 100,
+			OccurrenceDate:        mondayOccurrence(now),
+		})
+		if err != nil {
+			t.Fatalf("create setup failed: %v", err)
+		}
+
+		leaveID := int64(55)
+		sc.requests[created.ID].LeaveID = &leaveID
+		pub.publications[1] = activePublication(now)
+
+		if err := svc.ApproveShiftChangeRequest(context.Background(), created.ID, 8); err != nil {
+			t.Fatalf("ApproveShiftChangeRequest returned error: %v", err)
+		}
+
+		a100 := findAssignmentByID(pub, 100)
+		if a100 == nil || a100.UserID != 8 {
+			t.Fatalf("expected assignment 100 transferred to user 8, got %+v", a100)
+		}
+		if sc.requests[created.ID].State != model.ShiftChangeStateApproved {
+			t.Fatalf("expected approved state, got %s", sc.requests[created.ID].State)
 		}
 	})
 

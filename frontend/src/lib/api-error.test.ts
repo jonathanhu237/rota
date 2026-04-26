@@ -33,6 +33,19 @@ describe("getApiErrorDetails", () => {
       message: "Invalid request",
     })
   })
+
+  it("extracts leave error codes", () => {
+    const details = getApiErrorDetails(
+      createAxiosLikeError({
+        error: {
+          code: "LEAVE_NOT_OWNER",
+          message: "Not authorized for this leave",
+        },
+      }),
+    )
+
+    expect(details?.code).toBe("LEAVE_NOT_OWNER")
+  })
 })
 
 describe("getTranslatedApiError", () => {

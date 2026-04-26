@@ -4,6 +4,9 @@ import { isAxiosError } from "axios"
 import api from "./axios"
 import type {
   AssignmentBoard,
+  Leave,
+  LeaveCategory,
+  LeavePreviewOccurrence,
   Pagination,
   Position,
   Publication,
@@ -681,6 +684,18 @@ export type UnreadCountResponse = {
   count: number
 }
 
+export type LeaveResponse = {
+  leave: Leave
+}
+
+export type LeaveListResponse = {
+  leaves: Leave[]
+}
+
+export type LeavePreviewResponse = {
+  occurrences: LeavePreviewOccurrence[]
+}
+
 export type CreateShiftChangeInput = {
   type: ShiftChangeType
   requester_assignment_id: number
@@ -688,6 +703,15 @@ export type CreateShiftChangeInput = {
   counterpart_user_id?: number | null
   counterpart_assignment_id?: number | null
   counterpart_occurrence_date?: string | null
+}
+
+export type CreateLeaveInput = {
+  assignment_id: number
+  occurrence_date: string
+  type: Exclude<ShiftChangeType, "swap">
+  counterpart_user_id?: number | null
+  category: LeaveCategory
+  reason?: string
 }
 
 export const shiftChangeRequestsQueryOptions = (publicationID: number) =>
@@ -723,6 +747,66 @@ export const unreadNotificationsQueryOptions = queryOptions({
     return res.data.count
   },
 })
+
+export const myLeavesQueryOptions = (page: number, pageSize: number) =>
+  queryOptions({
+    queryKey: ["me", "leaves", page, pageSize] as const,
+    queryFn: async () => {
+      const res = await api.get<LeaveListResponse>("/users/me/leaves", {
+        params: {
+          page,
+          page_size: pageSize,
+        },
+      })
+      return res.data.leaves
+    },
+    placeholderData: keepPreviousData,
+  })
+
+export const leavePreviewQueryOptions = (from: string, to: string) =>
+  queryOptions({
+    queryKey: ["me", "leaves", "preview", from, to] as const,
+    queryFn: async () => {
+      const res = await api.get<LeavePreviewResponse>(
+        "/users/me/leaves/preview",
+        {
+          params: { from, to },
+        },
+      )
+      return res.data.occurrences
+    },
+    enabled: from !== "" && to !== "",
+  })
+
+export const leaveQueryOptions = (leaveID: number) =>
+  queryOptions({
+    queryKey: ["leaves", leaveID] as const,
+    queryFn: async () => {
+      const res = await api.get<LeaveResponse>(`/leaves/${leaveID}`)
+      return res.data.leave
+    },
+    enabled: leaveID > 0,
+  })
+
+export const publicationLeavesQueryOptions = (
+  publicationID: number,
+  page: number,
+  pageSize: number,
+) =>
+  queryOptions({
+    queryKey: ["publications", publicationID, "leaves", page, pageSize] as const,
+    queryFn: async () => {
+      const res = await api.get<LeaveListResponse>(
+        `/publications/${publicationID}/leaves`,
+        {
+          params: { page, page_size: pageSize },
+        },
+      )
+      return res.data.leaves
+    },
+    enabled: publicationID > 0,
+    placeholderData: keepPreviousData,
+  })
 
 export async function createShiftChangeRequest(
   publicationID: number,
@@ -760,4 +844,13 @@ export async function cancelShiftChangeRequest(
   await api.post(
     `/publications/${publicationID}/shift-changes/${requestID}/cancel`,
   )
+}
+
+export async function createLeave(input: CreateLeaveInput) {
+  const res = await api.post<LeaveResponse>("/leaves", input)
+  return res.data.leave
+}
+
+export async function cancelLeave(leaveID: number) {
+  await api.post(`/leaves/${leaveID}/cancel`)
 }

@@ -49,6 +49,9 @@ const (
 	ActionShiftChangeInvalidateCascade = "shift_change.invalidate.cascade"
 	ActionShiftChangeExpireBulk        = "shift_change.expire.bulk"
 
+	ActionLeaveCreate = "leave.create"
+	ActionLeaveCancel = "leave.cancel"
+
 	ActionSubmissionCreate = "submission.create"
 	ActionSubmissionDelete = "submission.delete"
 
@@ -72,6 +75,7 @@ const (
 	TargetTypeAvailabilitySubmission = "availability_submission"
 	TargetTypeAssignment             = "assignment"
 	TargetTypeShiftChangeRequest     = "shift_change_request"
+	TargetTypeLeave                  = "leave"
 )
 
 // Event captures a single audit record. Actor and ActorIP are taken from

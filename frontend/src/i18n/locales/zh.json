@@ -90,6 +90,8 @@
     "roster": "排班表",
     "availability": "可用性",
     "requests": "调班申请",
+    "leave": "请假",
+    "myLeaves": "我的请假",
     "users": "用户",
     "positions": "岗位",
     "templates": "模板",
@@ -800,6 +802,89 @@
       "SHIFT_CHANGE_TIME_CONFLICT": "该变更与您已有的其他班次存在时间冲突。",
       "SCHEDULING_RETRYABLE": "另一个排班变更同时完成，请重试。",
       "UNAUTHORIZED": "未授权"
+    }
+  },
+  "leave": {
+    "title": "请假",
+    "description": "选择未来班次并发起找人代班请求。",
+    "from": "开始日期",
+    "to": "结束日期",
+    "shareUrls": "分享链接",
+    "copy": "复制",
+    "emptyPreview": "该日期范围内没有可请假的未来班次。",
+    "typeLabel": "方式",
+    "typeGivePool": "公共池",
+    "typeGiveDirect": "指定同事",
+    "categoryLabel": "类别",
+    "categorySick": "病假",
+    "categoryPersonal": "事假",
+    "categoryBereavement": "丧假",
+    "counterpart": "代班同事",
+    "counterpartPlaceholder": "请选择同事",
+    "reason": "原因",
+    "reasonPlaceholder": "可选说明",
+    "submit": "提交请假",
+    "toast": {
+      "created": "请假已创建。"
+    },
+    "type": {
+      "swap": "互换",
+      "give_direct": "指定同事",
+      "give_pool": "公共池"
+    },
+    "category": {
+      "sick": "病假",
+      "personal": "事假",
+      "bereavement": "丧假"
+    },
+    "state": {
+      "pending": "待处理",
+      "completed": "已完成",
+      "failed": "未成功",
+      "cancelled": "已取消"
+    },
+    "errors": {
+      "INVALID_OCCURRENCE_DATE": "请选择有效且尚未开始的班次日期。",
+      "INVALID_REQUEST": "请求无效",
+      "INTERNAL_ERROR": "发生了错误，请稍后重试。",
+      "LEAVE_NOT_FOUND": "请假不存在",
+      "LEAVE_NOT_OWNER": "您无权取消该请假。",
+      "PUBLICATION_NOT_ACTIVE": "只能对当前启用的发布请假。",
+      "SHIFT_CHANGE_INVALID_TYPE": "请假仅支持指定同事或公共池代班。",
+      "SHIFT_CHANGE_NOT_OWNER": "您无权使用该班次。",
+      "SHIFT_CHANGE_NOT_QUALIFIED": "所选同事没有该岗位资格。",
+      "SHIFT_CHANGE_SELF": "不能选择自己。",
+      "UNAUTHORIZED": "未授权",
+      "USER_DISABLED": "所选同事已被禁用。"
+    }
+  },
+  "myLeaves": {
+    "title": "我的请假",
+    "description": "查看您已提交的请假记录。",
+    "empty": "您还没有提交过请假。",
+    "open": "打开",
+    "previous": "上一页",
+    "next": "下一页",
+    "page": "第 {{page}} 页"
+  },
+  "leaveDetail": {
+    "title": "请假详情",
+    "reason": "原因",
+    "createdAt": "创建时间",
+    "expiresAt": "截止时间",
+    "requester": "发起人",
+    "counterpart": "代班人",
+    "actionsTitle": "操作",
+    "actions": {
+      "approve": "同意",
+      "reject": "拒绝",
+      "claim": "认领",
+      "cancel": "取消请假"
+    },
+    "toast": {
+      "approved": "请假代班已同意。",
+      "rejected": "请假代班已拒绝。",
+      "cancelled": "请假已取消。"
     }
   }
 }

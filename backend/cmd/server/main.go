@@ -50,6 +50,7 @@ func main() {
 	templateRepo := repository.NewTemplateRepository(db)
 	publicationRepo := repository.NewPublicationRepository(db)
 	userPositionRepo := repository.NewUserPositionRepository(db)
+	leaveRepo := repository.NewLeaveRepository(db)
 	if err := service.EnsureBootstrapAdmin(ctx, service.BootstrapAdminInput{
 		Email:    cfg.BootstrapAdminEmail,
 		Password: cfg.BootstrapAdminPassword,
@@ -164,6 +165,14 @@ func main() {
 		slog.Default(),
 	)
 	shiftChangeHandler := handler.NewShiftChangeHandler(shiftChangeService)
+	leaveService := service.NewLeaveService(
+		leaveRepo,
+		shiftChangeRepo,
+		shiftChangeService,
+		publicationRepo,
+		nil,
+	)
+	leaveHandler := handler.NewLeaveHandler(leaveService)
 	loginRateLimitByIP := handler.NewRateLimitMiddleware(
 		handler.ClientIPRateLimitKey,
 		rate.Every(time.Minute/5),
@@ -246,6 +255,12 @@ func main() {
 	mux.HandleFunc("POST /publications/{id}/shift-changes/{request_id}/reject", authHandler.RequireAuth(shiftChangeHandler.Reject))
 	mux.HandleFunc("POST /publications/{id}/shift-changes/{request_id}/cancel", authHandler.RequireAuth(shiftChangeHandler.Cancel))
 	mux.HandleFunc("GET /publications/{id}/members", authHandler.RequireAuth(shiftChangeHandler.ListMembers))
+	mux.HandleFunc("GET /publications/{id}/leaves", authHandler.RequireAdmin(leaveHandler.ListForPublication))
+	mux.HandleFunc("POST /leaves", authHandler.RequireAuth(leaveHandler.Create))
+	mux.HandleFunc("GET /leaves/{id}", authHandler.RequireAuth(leaveHandler.GetByID))
+	mux.HandleFunc("POST /leaves/{id}/cancel", authHandler.RequireAuth(leaveHandler.Cancel))
+	mux.HandleFunc("GET /users/me/leaves", authHandler.RequireAuth(leaveHandler.ListMine))
+	mux.HandleFunc("GET /users/me/leaves/preview", authHandler.RequireAuth(leaveHandler.PreviewMine))
 	mux.HandleFunc("GET /users/me/notifications/unread-count", authHandler.RequireAuth(shiftChangeHandler.UnreadCount))
 
 	// Start server

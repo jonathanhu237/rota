@@ -91,6 +91,7 @@ function buildRequest(
     counterpart_assignment_id: 200,
     counterpart_occurrence_date: "2026-04-20",
     state: "pending",
+    leave_id: null,
     decided_by_user_id: null,
     created_at: "2026-04-18T09:00:00Z",
     decided_at: null,

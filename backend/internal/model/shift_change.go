@@ -54,6 +54,7 @@ type ShiftChangeRequest struct {
 	CounterpartAssignmentID   *int64
 	CounterpartOccurrenceDate *time.Time
 	State                     ShiftChangeState
+	LeaveID                   *int64
 	DecidedByUserID           *int64
 	CreatedAt                 time.Time
 	DecidedAt                 *time.Time

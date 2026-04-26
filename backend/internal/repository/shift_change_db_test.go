@@ -54,6 +54,7 @@ func seedShiftChangeRequest(
 			counterpart_assignment_id,
 			counterpart_occurrence_date,
 			state,
+			leave_id,
 			decided_by_user_id,
 			created_at,
 			decided_at,

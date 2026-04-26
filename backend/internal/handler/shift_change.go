@@ -52,6 +52,7 @@ type shiftChangeRequestResponse struct {
 	CounterpartAssignmentID   *int64  `json:"counterpart_assignment_id"`
 	CounterpartOccurrenceDate *string `json:"counterpart_occurrence_date"`
 	State                     string  `json:"state"`
+	LeaveID                   *int64  `json:"leave_id"`
 	DecidedByUserID           *int64  `json:"decided_by_user_id"`
 	CreatedAt                 string  `json:"created_at"`
 	DecidedAt                 *string `json:"decided_at"`
@@ -325,6 +326,7 @@ func newShiftChangeRequestResponse(req *model.ShiftChangeRequest) shiftChangeReq
 		CounterpartUserID:       req.CounterpartUserID,
 		CounterpartAssignmentID: req.CounterpartAssignmentID,
 		State:                   string(req.State),
+		LeaveID:                 req.LeaveID,
 		DecidedByUserID:         req.DecidedByUserID,
 		CreatedAt:               req.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		ExpiresAt:               req.ExpiresAt.Format("2006-01-02T15:04:05Z07:00"),

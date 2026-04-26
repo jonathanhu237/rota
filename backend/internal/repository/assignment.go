@@ -317,7 +317,7 @@ func (r *PublicationRepository) ActivatePublication(
 	const expireQuery = `
 		UPDATE shift_change_requests
 		SET state = 'expired', decided_at = $2
-		WHERE publication_id = $1 AND state = 'pending'
+		WHERE publication_id = $1 AND state = 'pending' AND leave_id IS NULL
 		RETURNING id;
 	`
 

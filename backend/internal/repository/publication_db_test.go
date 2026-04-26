@@ -154,6 +154,67 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		}
 	})
 
+	t.Run("ActivatePublication skips leave-bearing pending requests", func(t *testing.T) {
+		db := openIntegrationDB(t)
+		repo := NewPublicationRepository(db)
+		template, shift, position := seedPublicationPrerequisites(t, db)
+		requester := seedUser(t, db, userSeed{})
+		seedUserPosition(t, db, requester.ID, position.ID)
+		publication := seedPublication(t, db, publicationSeed{
+			TemplateID:        template.ID,
+			State:             model.PublicationStatePublished,
+			SubmissionStartAt: testTime().Add(1 * time.Hour),
+			SubmissionEndAt:   testTime().Add(2 * time.Hour),
+			PlannedActiveFrom: testTime().Add(3 * time.Hour),
+			CreatedAt:         testTime(),
+		})
+		assignment := seedAssignment(t, db, publication.ID, requester.ID, shift.ID, testTime())
+		regular := seedShiftChangeRequest(
+			t,
+			db,
+			publication.ID,
+			model.ShiftChangeTypeGivePool,
+			requester.ID,
+			assignment.ID,
+			nil,
+			nil,
+			model.ShiftChangeStatePending,
+			testTime(),
+			testTime().Add(24*time.Hour),
+		)
+		leaveBearing := seedShiftChangeRequest(
+			t,
+			db,
+			publication.ID,
+			model.ShiftChangeTypeGivePool,
+			requester.ID,
+			assignment.ID,
+			nil,
+			nil,
+			model.ShiftChangeStatePending,
+			testTime(),
+			testTime().Add(24*time.Hour),
+		)
+		seedLeaveForRequest(t, db, leaveBearing, model.LeaveCategoryPersonal)
+
+		result, err := repo.ActivatePublication(ctx, ActivatePublicationParams{
+			ID:  publication.ID,
+			Now: testTime().Add(4 * time.Hour),
+		})
+		if err != nil {
+			t.Fatalf("activate publication: %v", err)
+		}
+		if len(result.ExpiredRequestIDs) != 1 || result.ExpiredRequestIDs[0] != regular.ID {
+			t.Fatalf("expected only regular request expired, got %+v", result.ExpiredRequestIDs)
+		}
+		if got := fetchRequestState(t, db, regular.ID); got != model.ShiftChangeStateExpired {
+			t.Fatalf("expected regular request expired, got %q", got)
+		}
+		if got := fetchRequestState(t, db, leaveBearing.ID); got != model.ShiftChangeStatePending {
+			t.Fatalf("expected leave-bearing request pending, got %q", got)
+		}
+	})
+
 	t.Run("EndPublication only succeeds for active publications", func(t *testing.T) {
 		db := openIntegrationDB(t)
 		repo := NewPublicationRepository(db)
