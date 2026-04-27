@@ -10,6 +10,7 @@ type SetupTokenPurpose string
 const (
 	SetupTokenPurposeInvitation    SetupTokenPurpose = "invitation"
 	SetupTokenPurposePasswordReset SetupTokenPurpose = "password_reset"
+	SetupTokenPurposeEmailChange   SetupTokenPurpose = "email_change"
 )
 
 var (
@@ -25,6 +26,7 @@ type SetupToken struct {
 	UserID    int64
 	TokenHash string
 	Purpose   SetupTokenPurpose
+	NewEmail  *string
 	ExpiresAt time.Time
 	UsedAt    *time.Time
 	CreatedAt time.Time

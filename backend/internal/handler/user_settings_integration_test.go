@@ -94,6 +94,115 @@ func TestUserSettingsHandlerIntegration(t *testing.T) {
 			t.Fatalf("expected revoked_session_count=1, got %q", revokedCount)
 		}
 	})
+
+	t.Run("email change request and anonymous confirm swaps email and revokes sessions", func(t *testing.T) {
+		db := openHandlerIntegrationDB(t)
+		sessionExpires := 24 * time.Hour
+		userRepo := repository.NewUserRepository(db)
+		sessionStore := repository.NewSessionRepository(db, sessionExpires)
+		setupTxManager := repository.NewSetupTxManager(db)
+		setupTokenRepo := repository.NewSetupTokenRepository(db)
+		outboxRepo := repository.NewOutboxRepository(db)
+		authService := service.NewAuthService(
+			userRepo,
+			sessionStore,
+			service.WithAuthSetupFlows(service.SetupFlowConfig{
+				TxManager:             setupTxManager,
+				SetupTokenRepo:        setupTokenRepo,
+				OutboxRepo:            outboxRepo,
+				AppBaseURL:            "http://localhost:5173",
+				InvitationTokenTTL:    72 * time.Hour,
+				PasswordResetTokenTTL: time.Hour,
+			}),
+		)
+		userService := service.NewUserService(
+			userRepo,
+			sessionStore,
+			service.WithSetupFlows(service.SetupFlowConfig{
+				TxManager:          setupTxManager,
+				OutboxRepo:         outboxRepo,
+				AppBaseURL:         "http://localhost:5173",
+				InvitationTokenTTL: 72 * time.Hour,
+			}),
+		)
+		authHandler := NewAuthHandler(authService)
+		userHandler := NewUserHandler(userService)
+		auditRecorder := repository.NewAuditRecorder(db, nil)
+
+		userID := seedHandlerIntegrationUser(t, db, "alice@example.com", "Alice", "current-password")
+		sessionID, _, err := sessionStore.Create(context.Background(), userID)
+		if err != nil {
+			t.Fatalf("create session: %v", err)
+		}
+
+		req := jsonRequest(t, http.MethodPost, "/users/me/email-change-request", map[string]any{
+			"new_email":        "alice2@example.com",
+			"current_password": "current-password",
+		})
+		req = req.WithContext(audit.WithRecorder(req.Context(), auditRecorder))
+		req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sessionID})
+		recorder := httptest.NewRecorder()
+
+		authHandler.RequireAuth(userHandler.RequestEmailChange)(recorder, req)
+
+		if recorder.Code != http.StatusAccepted {
+			t.Fatalf("expected status 202, got %d body=%s", recorder.Code, recorder.Body.String())
+		}
+
+		var outboxRows int
+		if err := db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM email_outbox WHERE user_id = $1;`, userID).Scan(&outboxRows); err != nil {
+			t.Fatalf("count outbox rows: %v", err)
+		}
+		if outboxRows != 2 {
+			t.Fatalf("expected 2 outbox rows, got %d", outboxRows)
+		}
+
+		var confirmBody string
+		if err := db.QueryRowContext(
+			context.Background(),
+			`SELECT body FROM email_outbox WHERE recipient = 'alice2@example.com' ORDER BY id DESC LIMIT 1;`,
+		).Scan(&confirmBody); err != nil {
+			t.Fatalf("read confirmation email body: %v", err)
+		}
+		rawToken := extractEmailChangeToken(t, confirmBody)
+
+		confirmReq := jsonRequest(t, http.MethodPost, "/auth/confirm-email-change", map[string]any{
+			"token": rawToken,
+		})
+		confirmReq = confirmReq.WithContext(audit.WithRecorder(confirmReq.Context(), auditRecorder))
+		confirmRecorder := httptest.NewRecorder()
+
+		authHandler.ConfirmEmailChange(confirmRecorder, confirmReq)
+
+		if confirmRecorder.Code != http.StatusNoContent {
+			t.Fatalf("expected status 204, got %d body=%s", confirmRecorder.Code, confirmRecorder.Body.String())
+		}
+
+		var email string
+		if err := db.QueryRowContext(context.Background(), `SELECT email FROM users WHERE id = $1;`, userID).Scan(&email); err != nil {
+			t.Fatalf("read user email: %v", err)
+		}
+		if email != "alice2@example.com" {
+			t.Fatalf("expected updated email alice2@example.com, got %q", email)
+		}
+		var remainingSessions int
+		if err := db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM sessions WHERE user_id = $1;`, userID).Scan(&remainingSessions); err != nil {
+			t.Fatalf("count sessions: %v", err)
+		}
+		if remainingSessions != 0 {
+			t.Fatalf("expected all sessions revoked, got %d", remainingSessions)
+		}
+
+		for _, action := range []string{audit.ActionUserEmailChangeRequest, audit.ActionUserEmailChangeConfirm} {
+			var count int
+			if err := db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM audit_logs WHERE action = $1;`, action).Scan(&count); err != nil {
+				t.Fatalf("count audit action %s: %v", action, err)
+			}
+			if count != 1 {
+				t.Fatalf("expected one %s audit row, got %d", action, count)
+			}
+		}
+	})
 }
 
 func openHandlerIntegrationDB(t testing.TB) *sql.DB {
@@ -208,4 +317,24 @@ func handlerEnvOrDefault(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func extractEmailChangeToken(t testing.TB, body string) string {
+	t.Helper()
+
+	const marker = "/auth/confirm-email-change?token="
+	index := strings.Index(body, marker)
+	if index < 0 {
+		t.Fatalf("confirmation body did not contain token URL: %q", body)
+	}
+	start := index + len(marker)
+	end := start
+	for end < len(body) && body[end] != '\n' && body[end] != '\r' && body[end] != ' ' {
+		end++
+	}
+	token := strings.TrimSpace(body[start:end])
+	if token == "" {
+		t.Fatalf("empty token in confirmation body: %q", body)
+	}
+	return token
 }

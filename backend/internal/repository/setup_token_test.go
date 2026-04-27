@@ -51,6 +51,44 @@ func TestSetupTokenRepositoryIntegration(t *testing.T) {
 		}
 	})
 
+	t.Run("Create and GetByTokenHashAndPurpose round-trip email change new_email", func(t *testing.T) {
+		db := openIntegrationDB(t)
+		user := seedUser(t, db, userSeed{})
+		repo := NewSetupTokenRepository(db)
+		expiresAt := testTime().Add(24 * time.Hour)
+		newEmail := "new@example.com"
+
+		created, err := repo.Create(ctx, CreateSetupTokenParams{
+			UserID:    user.ID,
+			TokenHash: "token-hash-email-change",
+			Purpose:   model.SetupTokenPurposeEmailChange,
+			NewEmail:  &newEmail,
+			ExpiresAt: expiresAt,
+		})
+		if err != nil {
+			t.Fatalf("create email change setup token: %v", err)
+		}
+		if created.NewEmail == nil || *created.NewEmail != newEmail {
+			t.Fatalf("expected new_email %q, got %+v", newEmail, created.NewEmail)
+		}
+
+		found, err := repo.GetByTokenHashAndPurpose(ctx, "token-hash-email-change", model.SetupTokenPurposeEmailChange)
+		if err != nil {
+			t.Fatalf("get email change setup token by hash/purpose: %v", err)
+		}
+		if found.ID != created.ID {
+			t.Fatalf("expected token ID %d, got %d", created.ID, found.ID)
+		}
+		if found.NewEmail == nil || *found.NewEmail != newEmail {
+			t.Fatalf("expected found new_email %q, got %+v", newEmail, found.NewEmail)
+		}
+
+		_, err = repo.GetByTokenHashAndPurpose(ctx, "token-hash-email-change", model.SetupTokenPurposeInvitation)
+		if !errors.Is(err, model.ErrTokenNotFound) {
+			t.Fatalf("expected purpose-filtered lookup to return ErrTokenNotFound, got %v", err)
+		}
+	})
+
 	t.Run("Create maps duplicate token hash", func(t *testing.T) {
 		db := openIntegrationDB(t)
 		user := seedUser(t, db, userSeed{})
@@ -102,7 +140,7 @@ func TestSetupTokenRepositoryIntegration(t *testing.T) {
 		}
 	})
 
-	t.Run("InvalidateUnusedTokens marks only matching unused tokens", func(t *testing.T) {
+	t.Run("InvalidateUnusedTokens expires only matching unused tokens", func(t *testing.T) {
 		db := openIntegrationDB(t)
 		user := seedUser(t, db, userSeed{})
 		repo := NewSetupTokenRepository(db)
@@ -152,8 +190,11 @@ func TestSetupTokenRepositoryIntegration(t *testing.T) {
 		if targetAfter.ID != invalidationTarget.ID {
 			t.Fatalf("expected token ID %d, got %d", invalidationTarget.ID, targetAfter.ID)
 		}
-		if targetAfter.UsedAt == nil || !targetAfter.UsedAt.Equal(usedAt) {
-			t.Fatalf("expected used_at=%v, got %v", usedAt, targetAfter.UsedAt)
+		if targetAfter.UsedAt != nil {
+			t.Fatalf("expected invalidated token to remain unconsumed, got used_at=%v", *targetAfter.UsedAt)
+		}
+		if !targetAfter.ExpiresAt.Equal(usedAt) {
+			t.Fatalf("expected expires_at=%v, got %v", usedAt, targetAfter.ExpiresAt)
 		}
 
 		otherPurposeAfter, err := repo.GetByTokenHash(ctx, "token-hash-other-purpose")

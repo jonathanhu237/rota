@@ -18,6 +18,7 @@ type userService interface {
 	GetUserByID(ctx context.Context, id int64) (*model.User, error)
 	UpdateUser(ctx context.Context, input service.UpdateUserInput) (*model.User, error)
 	UpdateOwnProfile(ctx context.Context, input service.UpdateOwnProfileInput) (*model.User, error)
+	RequestEmailChange(ctx context.Context, input service.RequestEmailChangeInput) error
 	UpdateUserStatus(ctx context.Context, input service.UpdateUserStatusInput) (*model.User, error)
 }
 
@@ -61,6 +62,11 @@ type updateOwnProfileRequest struct {
 	Name               optionalStringRequestField `json:"name"`
 	LanguagePreference optionalStringRequestField `json:"language_preference"`
 	ThemePreference    optionalStringRequestField `json:"theme_preference"`
+}
+
+type emailChangeRequest struct {
+	NewEmail        string `json:"new_email"`
+	CurrentPassword string `json:"current_password"`
 }
 
 func (f *optionalStringRequestField) UnmarshalJSON(data []byte) error {
@@ -224,6 +230,41 @@ func (h *UserHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, userDetailResponse{
 		User: newUserResponse(updatedUser),
 	})
+}
+
+func (h *UserHandler) RequestEmailChange(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUserFromRequest(r)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+		return
+	}
+
+	var req emailChangeRequest
+	if err := readJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+
+	err := h.userService.RequestEmailChange(r.Context(), service.RequestEmailChangeInput{
+		UserID:          user.ID,
+		NewEmail:        req.NewEmail,
+		CurrentPassword: req.CurrentPassword,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidCurrentPassword):
+			writeError(w, http.StatusUnauthorized, "INVALID_CURRENT_PASSWORD", "Current password is incorrect")
+		case errors.Is(err, service.ErrInvalidInput):
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request")
+		case errors.Is(err, service.ErrEmailAlreadyExists):
+			writeError(w, http.StatusConflict, "EMAIL_ALREADY_EXISTS", "Email already exists")
+		default:
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
 }
 
 func (h *UserHandler) ResendInvitation(w http.ResponseWriter, r *http.Request) {

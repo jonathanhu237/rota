@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
+import { EmailForm } from "@/components/settings/email-form"
 import { PasswordForm } from "@/components/settings/password-form"
 import { PreferencesForm } from "@/components/settings/preferences-form"
 import { ProfileForm } from "@/components/settings/profile-form"
@@ -52,6 +53,16 @@ function SettingsPage() {
         </CardHeader>
         <CardContent>
           <ProfileForm user={user} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("settings.email.title")}</CardTitle>
+          <CardDescription>{t("settings.email.description")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <EmailForm user={user} />
         </CardContent>
       </Card>
 

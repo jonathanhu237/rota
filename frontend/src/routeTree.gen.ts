@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthConfirmEmailChangeRouteImport } from './routes/auth/confirm-email-change'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedRosterRouteImport } from './routes/_authenticated/roster'
 import { Route as AuthenticatedRequestsRouteImport } from './routes/_authenticated/requests'
@@ -53,6 +54,11 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthConfirmEmailChangeRoute = AuthConfirmEmailChangeRouteImport.update({
+  id: '/auth/confirm-email-change',
+  path: '/auth/confirm-email-change',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   id: '/settings',
@@ -150,6 +156,7 @@ export interface FileRoutesByFullPath {
   '/requests': typeof AuthenticatedRequestsRoute
   '/roster': typeof AuthenticatedRosterRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/auth/confirm-email-change': typeof AuthConfirmEmailChangeRoute
   '/leaves/$leaveId': typeof AuthenticatedLeavesLeaveIdRoute
   '/publications/$publicationId': typeof AuthenticatedPublicationsPublicationIdRouteWithChildren
   '/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRoute
@@ -170,6 +177,7 @@ export interface FileRoutesByTo {
   '/requests': typeof AuthenticatedRequestsRoute
   '/roster': typeof AuthenticatedRosterRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/auth/confirm-email-change': typeof AuthConfirmEmailChangeRoute
   '/': typeof AuthenticatedIndexRoute
   '/leaves/$leaveId': typeof AuthenticatedLeavesLeaveIdRoute
   '/publications/$publicationId': typeof AuthenticatedPublicationsPublicationIdRouteWithChildren
@@ -193,6 +201,7 @@ export interface FileRoutesById {
   '/_authenticated/requests': typeof AuthenticatedRequestsRoute
   '/_authenticated/roster': typeof AuthenticatedRosterRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/auth/confirm-email-change': typeof AuthConfirmEmailChangeRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/leaves/$leaveId': typeof AuthenticatedLeavesLeaveIdRoute
   '/_authenticated/publications/$publicationId': typeof AuthenticatedPublicationsPublicationIdRouteWithChildren
@@ -217,6 +226,7 @@ export interface FileRouteTypes {
     | '/requests'
     | '/roster'
     | '/settings'
+    | '/auth/confirm-email-change'
     | '/leaves/$leaveId'
     | '/publications/$publicationId'
     | '/templates/$templateId'
@@ -237,6 +247,7 @@ export interface FileRouteTypes {
     | '/requests'
     | '/roster'
     | '/settings'
+    | '/auth/confirm-email-change'
     | '/'
     | '/leaves/$leaveId'
     | '/publications/$publicationId'
@@ -259,6 +270,7 @@ export interface FileRouteTypes {
     | '/_authenticated/requests'
     | '/_authenticated/roster'
     | '/_authenticated/settings'
+    | '/auth/confirm-email-change'
     | '/_authenticated/'
     | '/_authenticated/leaves/$leaveId'
     | '/_authenticated/publications/$publicationId'
@@ -276,6 +288,7 @@ export interface RootRouteChildren {
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
   SetupPasswordRoute: typeof SetupPasswordRoute
+  AuthConfirmEmailChangeRoute: typeof AuthConfirmEmailChangeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -314,6 +327,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
+    }
+    '/auth/confirm-email-change': {
+      id: '/auth/confirm-email-change'
+      path: '/auth/confirm-email-change'
+      fullPath: '/auth/confirm-email-change'
+      preLoaderRoute: typeof AuthConfirmEmailChangeRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_authenticated/settings': {
       id: '/_authenticated/settings'
@@ -485,6 +505,7 @@ const rootRouteChildren: RootRouteChildren = {
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
   SetupPasswordRoute: SetupPasswordRoute,
+  AuthConfirmEmailChangeRoute: AuthConfirmEmailChangeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

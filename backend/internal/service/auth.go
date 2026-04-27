@@ -207,7 +207,7 @@ func (s *AuthService) PreviewSetupToken(ctx context.Context, rawToken string) (*
 		return nil, ErrInvalidInput
 	}
 
-	token, _, err := s.setupFlows.resolveToken(ctx, s.setupFlows.setupTokenRepo, rawToken)
+	token, _, err := s.setupFlows.resolvePasswordSetupToken(ctx, s.setupFlows.setupTokenRepo, rawToken)
 	if err != nil {
 		return nil, err
 	}
@@ -262,6 +262,89 @@ func (s *AuthService) SetupPassword(ctx context.Context, input SetupPasswordInpu
 		TargetID:   &targetID,
 		Metadata: map[string]any{
 			"purpose": purpose,
+		},
+	})
+	return nil
+}
+
+func (s *AuthService) ConfirmEmailChange(ctx context.Context, rawToken string) error {
+	if s.setupFlows == nil || s.setupFlows.txManager == nil {
+		return ErrInvalidInput
+	}
+
+	var (
+		confirmedToken *model.SetupToken
+		newEmail       string
+		revokedCount   int
+		commitError    error
+	)
+	err := s.setupFlows.txManager.WithinTx(ctx, func(
+		ctx context.Context,
+		tx *sql.Tx,
+		txUserRepo repository.SetupUserRepository,
+		txTokenRepo repository.SetupTokenRepositoryWriter,
+	) error {
+		token, _, err := s.setupFlows.resolveEmailChangeToken(ctx, txTokenRepo, rawToken)
+		if err != nil {
+			return err
+		}
+		if token.NewEmail == nil || *token.NewEmail == "" {
+			return model.ErrTokenNotFound
+		}
+
+		now := s.setupFlows.clock()
+		if err := txTokenRepo.MarkUsed(ctx, token.ID, now); err != nil {
+			return err
+		}
+
+		existing, err := txUserRepo.GetByEmail(ctx, *token.NewEmail)
+		switch {
+		case errors.Is(err, repository.ErrUserNotFound):
+		case err != nil:
+			return err
+		case existing.ID != token.UserID:
+			commitError = ErrEmailAlreadyExists
+			confirmedToken = token
+			newEmail = *token.NewEmail
+			return nil
+		}
+
+		if _, err := txUserRepo.UpdateEmail(ctx, token.UserID, *token.NewEmail); err != nil {
+			return mapRepositoryError(err)
+		}
+
+		count, err := s.setupFlows.sessionRepoFactory(tx).DeleteAllSessions(ctx, token.UserID)
+		if err != nil {
+			return err
+		}
+		if err := txTokenRepo.InvalidateAllUnusedTokensExcept(ctx, token.UserID, token.ID, now); err != nil {
+			return err
+		}
+
+		confirmedToken = token
+		newEmail = *token.NewEmail
+		revokedCount = count
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if commitError != nil {
+		return commitError
+	}
+	if confirmedToken == nil {
+		return ErrInvalidInput
+	}
+
+	targetID := confirmedToken.UserID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionUserEmailChangeConfirm,
+		TargetType: audit.TargetTypeUser,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"user_id":               confirmedToken.UserID,
+			"new_email_normalized":  newEmail,
+			"revoked_session_count": revokedCount,
 		},
 	})
 	return nil

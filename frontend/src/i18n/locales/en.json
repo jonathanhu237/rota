@@ -83,6 +83,24 @@
       "TOKEN_USED": "This link has already been used."
     }
   },
+  "confirmEmailChange": {
+    "title": "Confirm email change",
+    "description": "Checking your confirmation link.",
+    "loading": "Updating email...",
+    "successTitle": "Email updated",
+    "successDescription": "Please sign in again with your new email.",
+    "successBody": "Your email address has been changed and existing sessions were signed out.",
+    "backToLogin": "Back to login",
+    "unexpectedError": "An unexpected error occurred",
+    "errors": {
+      "INVALID_LINK": "This link is missing a token.",
+      "INVALID_TOKEN": "This link is invalid.",
+      "TOKEN_EXPIRED": "This link has expired.",
+      "TOKEN_NOT_FOUND": "This link is no longer valid.",
+      "TOKEN_USED": "This link has already been used.",
+      "EMAIL_ALREADY_EXISTS": "This email is already used by another account."
+    }
+  },
   "sidebar": {
     "appDescription": "Scheduling System",
     "navigation": "Navigation",
@@ -114,6 +132,29 @@
       "name": "Name",
       "saved": "Profile updated."
     },
+    "email": {
+      "title": "Email",
+      "description": "Change your sign-in email after confirming a link sent to the new address.",
+      "current": "Current email",
+      "changeButton": "Change email",
+      "dialog": {
+        "title": "Change email",
+        "description": "We'll send a confirmation link to the new address and notify your current address.",
+        "newEmail": "New email",
+        "newEmailPlaceholder": "new@example.com",
+        "currentPassword": "Current password",
+        "submit": "Send confirmation",
+        "submitting": "Sending...",
+        "sent": "Confirmation email sent to {{email}}.",
+        "sentDescription": "Open the link in that email within 24 hours to finish the change."
+      },
+      "errors": {
+        "default": "Could not request email change.",
+        "EMAIL_ALREADY_EXISTS": "Email already exists.",
+        "INVALID_CURRENT_PASSWORD": "Current password is incorrect.",
+        "INVALID_REQUEST": "Enter a different valid email address."
+      }
+    },
     "password": {
       "title": "Password",
       "description": "Change your password. Other signed-in sessions will be signed out.",
@@ -142,6 +183,8 @@
     "validation": {
       "nameRequired": "Name is required",
       "nameMax": "Name must be at most 100 characters",
+      "emailRequired": "Email is required",
+      "emailInvalid": "Please enter a valid email address",
       "currentPasswordRequired": "Current password is required",
       "newPasswordRequired": "New password is required",
       "confirmPasswordRequired": "Please confirm the new password",

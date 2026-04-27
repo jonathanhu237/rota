@@ -19,11 +19,13 @@ import (
 )
 
 type setupTokenRepositoryMock struct {
-	createFunc                 func(ctx context.Context, params repository.CreateSetupTokenParams) (*model.SetupToken, error)
-	getByTokenHashFunc         func(ctx context.Context, tokenHash string) (*model.SetupToken, error)
-	invalidateUnusedTokensFunc func(ctx context.Context, userID int64, purpose model.SetupTokenPurpose, usedAt time.Time) error
-	invalidateAllUnusedFunc    func(ctx context.Context, userID int64, usedAt time.Time) error
-	markUsedFunc               func(ctx context.Context, id int64, usedAt time.Time) error
+	createFunc                          func(ctx context.Context, params repository.CreateSetupTokenParams) (*model.SetupToken, error)
+	getByTokenHashFunc                  func(ctx context.Context, tokenHash string) (*model.SetupToken, error)
+	getByTokenHashAndPurposeFunc        func(ctx context.Context, tokenHash string, purpose model.SetupTokenPurpose) (*model.SetupToken, error)
+	invalidateUnusedTokensFunc          func(ctx context.Context, userID int64, purpose model.SetupTokenPurpose, usedAt time.Time) error
+	invalidateAllUnusedFunc             func(ctx context.Context, userID int64, usedAt time.Time) error
+	invalidateAllUnusedTokensExceptFunc func(ctx context.Context, userID int64, exceptTokenID int64, usedAt time.Time) error
+	markUsedFunc                        func(ctx context.Context, id int64, usedAt time.Time) error
 }
 
 func (m *setupTokenRepositoryMock) Create(ctx context.Context, params repository.CreateSetupTokenParams) (*model.SetupToken, error) {
@@ -34,12 +36,33 @@ func (m *setupTokenRepositoryMock) GetByTokenHash(ctx context.Context, tokenHash
 	return m.getByTokenHashFunc(ctx, tokenHash)
 }
 
+func (m *setupTokenRepositoryMock) GetByTokenHashAndPurpose(ctx context.Context, tokenHash string, purpose model.SetupTokenPurpose) (*model.SetupToken, error) {
+	if m.getByTokenHashAndPurposeFunc != nil {
+		return m.getByTokenHashAndPurposeFunc(ctx, tokenHash, purpose)
+	}
+	token, err := m.getByTokenHashFunc(ctx, tokenHash)
+	if err != nil {
+		return nil, err
+	}
+	if token.Purpose != purpose {
+		return nil, model.ErrTokenNotFound
+	}
+	return token, nil
+}
+
 func (m *setupTokenRepositoryMock) InvalidateUnusedTokens(ctx context.Context, userID int64, purpose model.SetupTokenPurpose, usedAt time.Time) error {
 	return m.invalidateUnusedTokensFunc(ctx, userID, purpose, usedAt)
 }
 
 func (m *setupTokenRepositoryMock) InvalidateAllUnusedTokens(ctx context.Context, userID int64, usedAt time.Time) error {
 	return m.invalidateAllUnusedFunc(ctx, userID, usedAt)
+}
+
+func (m *setupTokenRepositoryMock) InvalidateAllUnusedTokensExcept(ctx context.Context, userID int64, exceptTokenID int64, usedAt time.Time) error {
+	if m.invalidateAllUnusedTokensExceptFunc != nil {
+		return m.invalidateAllUnusedTokensExceptFunc(ctx, userID, exceptTokenID, usedAt)
+	}
+	return nil
 }
 
 func (m *setupTokenRepositoryMock) MarkUsed(ctx context.Context, id int64, usedAt time.Time) error {
@@ -842,12 +865,21 @@ func assertSingleAuditAction(t *testing.T, stub *audittest.Stub, action string) 
 
 type setupUserRepositoryMock struct {
 	getByIDFunc              func(ctx context.Context, id int64) (*model.User, error)
+	getByIDForUpdateFunc     func(ctx context.Context, id int64) (*model.User, error)
 	getByEmailFunc           func(ctx context.Context, email string) (*model.User, error)
 	createFunc               func(ctx context.Context, params repository.CreateUserParams) (*model.User, error)
+	updateEmailFunc          func(ctx context.Context, id int64, email string) (*model.User, error)
 	setPasswordAndStatusFunc func(ctx context.Context, params repository.SetUserPasswordParams) (*model.User, error)
 }
 
 func (m *setupUserRepositoryMock) GetByID(ctx context.Context, id int64) (*model.User, error) {
+	return m.getByIDFunc(ctx, id)
+}
+
+func (m *setupUserRepositoryMock) GetByIDForUpdate(ctx context.Context, id int64) (*model.User, error) {
+	if m.getByIDForUpdateFunc != nil {
+		return m.getByIDForUpdateFunc(ctx, id)
+	}
 	return m.getByIDFunc(ctx, id)
 }
 
@@ -857,6 +889,10 @@ func (m *setupUserRepositoryMock) GetByEmail(ctx context.Context, email string) 
 
 func (m *setupUserRepositoryMock) Create(ctx context.Context, params repository.CreateUserParams) (*model.User, error) {
 	return m.createFunc(ctx, params)
+}
+
+func (m *setupUserRepositoryMock) UpdateEmail(ctx context.Context, id int64, email string) (*model.User, error) {
+	return m.updateEmailFunc(ctx, id, email)
 }
 
 func (m *setupUserRepositoryMock) SetPasswordAndStatus(ctx context.Context, params repository.SetUserPasswordParams) (*model.User, error) {

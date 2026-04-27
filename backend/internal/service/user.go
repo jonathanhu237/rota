@@ -11,6 +11,7 @@ import (
 	"github.com/jonathanhu237/rota/backend/internal/audit"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
+	"golang.org/x/crypto/bcrypt"
 )
 
 const (
@@ -91,6 +92,12 @@ type UpdateOwnProfileInput struct {
 	Name               OptionalStringField
 	LanguagePreference OptionalStringField
 	ThemePreference    OptionalStringField
+}
+
+type RequestEmailChangeInput struct {
+	UserID          int64
+	NewEmail        string
+	CurrentPassword string
 }
 
 func WithSetupFlows(config SetupFlowConfig) UserServiceOption {
@@ -439,6 +446,72 @@ func (s *UserService) UpdateOwnProfile(ctx context.Context, input UpdateOwnProfi
 	return user, nil
 }
 
+func (s *UserService) RequestEmailChange(ctx context.Context, input RequestEmailChangeInput) error {
+	if s.setupFlows == nil || s.setupFlows.txManager == nil || input.UserID <= 0 {
+		return ErrInvalidInput
+	}
+
+	newEmail, err := normalizeEmailAddress(input.NewEmail)
+	if err != nil {
+		return err
+	}
+
+	var viewer *model.User
+	err = s.setupFlows.txManager.WithinTx(ctx, func(
+		ctx context.Context,
+		tx *sql.Tx,
+		txUserRepo repository.SetupUserRepository,
+		txTokenRepo repository.SetupTokenRepositoryWriter,
+	) error {
+		var err error
+		viewer, err = txUserRepo.GetByIDForUpdate(ctx, input.UserID)
+		if err != nil {
+			return mapRepositoryError(err)
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(viewer.PasswordHash), []byte(input.CurrentPassword)); err != nil {
+			return ErrInvalidCurrentPassword
+		}
+		if strings.EqualFold(viewer.Email, newEmail) {
+			return ErrInvalidInput
+		}
+
+		existing, err := txUserRepo.GetByEmail(ctx, newEmail)
+		switch {
+		case errors.Is(err, repository.ErrUserNotFound):
+		case err != nil:
+			return err
+		case existing.ID != input.UserID:
+			return ErrEmailAlreadyExists
+		default:
+			return ErrInvalidInput
+		}
+
+		rawToken, err := s.setupFlows.issueEmailChangeToken(ctx, txTokenRepo, viewer.ID, newEmail)
+		if err != nil {
+			return err
+		}
+		if err := s.setupFlows.enqueueEmailChangeConfirmTx(ctx, tx, viewer, newEmail, rawToken); err != nil {
+			return err
+		}
+		return s.setupFlows.enqueueEmailChangeNoticeTx(ctx, tx, viewer, newEmail)
+	})
+	if err != nil {
+		return err
+	}
+
+	targetID := input.UserID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionUserEmailChangeRequest,
+		TargetType: audit.TargetTypeUser,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"user_id":              input.UserID,
+			"new_email_normalized": newEmail,
+		},
+	})
+	return nil
+}
+
 func (s *UserService) ensureEmailAvailable(ctx context.Context, email string, excludeID int64) error {
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	switch {
@@ -467,12 +540,20 @@ func normalizePagination(page, pageSize int) (int, int, error) {
 }
 
 func normalizeUserProfileInput(email, name string) (string, string, error) {
-	normalizedEmail := strings.TrimSpace(email)
+	normalizedEmail, err := normalizeEmailAddress(email)
 	normalizedName := strings.TrimSpace(name)
-	if normalizedName == "" || !isValidEmail(normalizedEmail) {
+	if normalizedName == "" || err != nil {
 		return "", "", ErrInvalidInput
 	}
 	return normalizedEmail, normalizedName, nil
+}
+
+func normalizeEmailAddress(email string) (string, error) {
+	normalizedEmail := strings.TrimSpace(email)
+	if !isValidEmail(normalizedEmail) {
+		return "", ErrInvalidInput
+	}
+	return normalizedEmail, nil
 }
 
 func isValidEmail(email string) bool {

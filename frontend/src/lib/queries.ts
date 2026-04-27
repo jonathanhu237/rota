@@ -116,9 +116,18 @@ export type SetupPasswordInput = {
   password: string
 }
 
+export type ConfirmEmailChangeInput = {
+  token: string
+}
+
 export type ChangeOwnPasswordInput = {
   current_password: string
   new_password: string
+}
+
+export type RequestEmailChangeInput = {
+  new_email: string
+  current_password: string
 }
 
 export type UpdateOwnProfileInput = {
@@ -458,8 +467,16 @@ export async function setupPassword(input: SetupPasswordInput) {
   await api.post("/auth/setup-password", input)
 }
 
+export async function confirmEmailChange(input: ConfirmEmailChangeInput) {
+  await api.post("/auth/confirm-email-change", input)
+}
+
 export async function changeOwnPassword(input: ChangeOwnPasswordInput) {
   await api.post("/auth/change-password", input)
+}
+
+export async function requestEmailChange(input: RequestEmailChangeInput) {
+  await api.post("/users/me/email-change-request", input)
 }
 
 export async function updateOwnProfile(input: UpdateOwnProfileInput) {

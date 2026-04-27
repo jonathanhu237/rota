@@ -33,6 +33,7 @@ vi.mock("./axios", () => ({
 import {
   autoAssignPublication,
   activatePublication,
+  confirmEmailChange,
   createAvailabilitySubmission,
   createAssignment,
   createPublication,
@@ -40,6 +41,7 @@ import {
   deleteAssignment,
   endPublication,
   previewSetupToken,
+  requestEmailChange,
   requestPasswordReset,
   replaceUserPositions,
   resendInvitation,
@@ -357,6 +359,32 @@ describe("password setup queries", () => {
     expect(postMock).toHaveBeenCalledWith("/auth/setup-password", {
       token: "token-123",
       password: "pa55word",
+    })
+  })
+
+  it("submits email change confirmation payload unchanged", async () => {
+    postMock.mockResolvedValue({ data: undefined })
+
+    await confirmEmailChange({
+      token: "token-123",
+    })
+
+    expect(postMock).toHaveBeenCalledWith("/auth/confirm-email-change", {
+      token: "token-123",
+    })
+  })
+
+  it("requests an email change with the new email and password payload", async () => {
+    postMock.mockResolvedValue({ data: undefined })
+
+    await requestEmailChange({
+      new_email: "new@example.com",
+      current_password: "pa55word",
+    })
+
+    expect(postMock).toHaveBeenCalledWith("/users/me/email-change-request", {
+      new_email: "new@example.com",
+      current_password: "pa55word",
     })
   })
 

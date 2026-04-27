@@ -83,6 +83,24 @@
       "TOKEN_USED": "该链接已被使用。"
     }
   },
+  "confirmEmailChange": {
+    "title": "确认邮箱变更",
+    "description": "正在检查确认链接。",
+    "loading": "正在更新邮箱...",
+    "successTitle": "邮箱已更新",
+    "successDescription": "请使用新邮箱重新登录。",
+    "successBody": "您的邮箱地址已变更，现有会话已退出。",
+    "backToLogin": "返回登录",
+    "unexpectedError": "发生了意外错误",
+    "errors": {
+      "INVALID_LINK": "该链接缺少令牌。",
+      "INVALID_TOKEN": "该链接无效。",
+      "TOKEN_EXPIRED": "该链接已过期。",
+      "TOKEN_NOT_FOUND": "该链接已失效。",
+      "TOKEN_USED": "该链接已被使用。",
+      "EMAIL_ALREADY_EXISTS": "该邮箱已被其他账号使用。"
+    }
+  },
   "sidebar": {
     "appDescription": "排班系统",
     "navigation": "导航",
@@ -114,6 +132,29 @@
       "name": "姓名",
       "saved": "个人资料已更新。"
     },
+    "email": {
+      "title": "邮箱",
+      "description": "通过发送到新邮箱的确认链接来修改登录邮箱。",
+      "current": "当前邮箱",
+      "changeButton": "更改邮箱",
+      "dialog": {
+        "title": "更改邮箱",
+        "description": "我们会向新邮箱发送确认链接，并通知当前邮箱。",
+        "newEmail": "新邮箱",
+        "newEmailPlaceholder": "new@example.com",
+        "currentPassword": "当前密码",
+        "submit": "发送确认邮件",
+        "submitting": "发送中...",
+        "sent": "确认邮件已发送至 {{email}}。",
+        "sentDescription": "请在 24 小时内打开邮件中的链接完成变更。"
+      },
+      "errors": {
+        "default": "邮箱变更请求失败。",
+        "EMAIL_ALREADY_EXISTS": "邮箱已存在。",
+        "INVALID_CURRENT_PASSWORD": "当前密码不正确。",
+        "INVALID_REQUEST": "请输入另一个有效邮箱地址。"
+      }
+    },
     "password": {
       "title": "密码",
       "description": "修改密码后，其他已登录会话会退出。",
@@ -142,6 +183,8 @@
     "validation": {
       "nameRequired": "请输入姓名",
       "nameMax": "姓名最多 100 个字符",
+      "emailRequired": "请输入邮箱",
+      "emailInvalid": "请输入有效的邮箱地址",
       "currentPasswordRequired": "请输入当前密码",
       "newPasswordRequired": "请输入新密码",
       "confirmPasswordRequired": "请确认新密码",

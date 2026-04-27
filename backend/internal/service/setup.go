@@ -20,6 +20,7 @@ import (
 )
 
 const setupTokenSizeBytes = 32
+const emailChangeTokenTTL = 24 * time.Hour
 
 type setupUserRepository = repository.SetupUserRepository
 type setupTokenRepository = repository.SetupTokenRepositoryWriter
@@ -27,6 +28,10 @@ type setupTxManager = repository.SetupTxRunner
 
 type setupOutboxRepository interface {
 	EnqueueTx(ctx context.Context, tx *sql.Tx, msg email.Message, opts ...repository.OutboxOption) error
+}
+
+type emailChangeSessionRepository interface {
+	DeleteAllSessions(ctx context.Context, userID int64) (int, error)
 }
 
 type setupLogger interface {
@@ -67,6 +72,7 @@ type setupFlowHelper struct {
 	passwordResetTokenTTL time.Duration
 	clock                 func() time.Time
 	randomReader          io.Reader
+	sessionRepoFactory    func(repository.DBTX) emailChangeSessionRepository
 }
 
 func newSetupFlowHelper(config SetupFlowConfig) *setupFlowHelper {
@@ -95,6 +101,9 @@ func newSetupFlowHelper(config SetupFlowConfig) *setupFlowHelper {
 		passwordResetTokenTTL: config.PasswordResetTokenTTL,
 		clock:                 clock,
 		randomReader:          randomReader,
+		sessionRepoFactory: func(db repository.DBTX) emailChangeSessionRepository {
+			return repository.NewSessionRepositoryWithDBTX(db, 0)
+		},
 	}
 }
 
@@ -120,6 +129,36 @@ func (h *setupFlowHelper) issueToken(
 		TokenHash: tokenHash,
 		Purpose:   purpose,
 		ExpiresAt: now.Add(ttl),
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return rawToken, nil
+}
+
+func (h *setupFlowHelper) issueEmailChangeToken(
+	ctx context.Context,
+	tokenRepo setupTokenRepository,
+	userID int64,
+	newEmail string,
+) (string, error) {
+	rawToken, tokenHash, err := generateSetupToken(h.randomReader)
+	if err != nil {
+		return "", err
+	}
+
+	now := h.clock()
+	if err := tokenRepo.InvalidateUnusedTokens(ctx, userID, model.SetupTokenPurposeEmailChange, now); err != nil {
+		return "", err
+	}
+
+	_, err = tokenRepo.Create(ctx, repository.CreateSetupTokenParams{
+		UserID:    userID,
+		TokenHash: tokenHash,
+		Purpose:   model.SetupTokenPurposeEmailChange,
+		NewEmail:  &newEmail,
+		ExpiresAt: now.Add(emailChangeTokenTTL),
 	})
 	if err != nil {
 		return "", err
@@ -157,6 +196,37 @@ func (h *setupFlowHelper) enqueuePasswordResetTx(
 		Token:      rawToken,
 		Language:   "en",
 		Expiration: h.passwordResetTokenTTL,
+	}), repository.WithOutboxUserID(user.ID))
+}
+
+func (h *setupFlowHelper) enqueueEmailChangeConfirmTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	user *model.User,
+	newEmail string,
+	rawToken string,
+) error {
+	return h.enqueueEmailTx(ctx, tx, email.BuildEmailChangeConfirmMessage(email.TemplateData{
+		To:         newEmail,
+		Name:       user.Name,
+		BaseURL:    h.appBaseURL,
+		Token:      rawToken,
+		Language:   "en",
+		Expiration: emailChangeTokenTTL,
+	}), repository.WithOutboxUserID(user.ID))
+}
+
+func (h *setupFlowHelper) enqueueEmailChangeNoticeTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	user *model.User,
+	newEmail string,
+) error {
+	return h.enqueueEmailTx(ctx, tx, email.BuildEmailChangeNoticeMessage(email.TemplateData{
+		To:              user.Email,
+		Name:            user.Name,
+		Language:        "en",
+		NewEmailPartial: email.PartialMaskEmail(newEmail),
 	}), repository.WithOutboxUserID(user.ID))
 }
 
@@ -198,6 +268,45 @@ func (h *setupFlowHelper) resolveToken(
 	return token, tokenHash, nil
 }
 
+func (h *setupFlowHelper) resolveEmailChangeToken(
+	ctx context.Context,
+	tokenRepo setupTokenRepository,
+	rawToken string,
+) (*model.SetupToken, string, error) {
+	tokenHash, err := validateAndHashSetupToken(rawToken)
+	if err != nil {
+		return nil, "", err
+	}
+
+	token, err := tokenRepo.GetByTokenHashAndPurpose(ctx, tokenHash, model.SetupTokenPurposeEmailChange)
+	if err != nil {
+		return nil, "", err
+	}
+	if token.UsedAt != nil {
+		return nil, tokenHash, model.ErrTokenUsed
+	}
+	if !token.ExpiresAt.After(h.clock()) {
+		return nil, tokenHash, model.ErrTokenExpired
+	}
+	return token, tokenHash, nil
+}
+
+func (h *setupFlowHelper) resolvePasswordSetupToken(
+	ctx context.Context,
+	tokenRepo setupTokenRepository,
+	rawToken string,
+) (*model.SetupToken, string, error) {
+	token, tokenHash, err := h.resolveToken(ctx, tokenRepo, rawToken)
+	if err != nil {
+		return nil, "", err
+	}
+	if token.Purpose != model.SetupTokenPurposeInvitation &&
+		token.Purpose != model.SetupTokenPurposePasswordReset {
+		return nil, tokenHash, model.ErrTokenNotFound
+	}
+	return token, tokenHash, nil
+}
+
 func (h *setupFlowHelper) activatePassword(
 	ctx context.Context,
 	userRepo setupUserRepository,
@@ -208,7 +317,7 @@ func (h *setupFlowHelper) activatePassword(
 		return nil, err
 	}
 
-	token, _, err := h.resolveToken(ctx, tokenRepo, input.Token)
+	token, _, err := h.resolvePasswordSetupToken(ctx, tokenRepo, input.Token)
 	if err != nil {
 		return nil, err
 	}

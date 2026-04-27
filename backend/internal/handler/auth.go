@@ -21,6 +21,7 @@ type authService interface {
 	PreviewSetupToken(ctx context.Context, rawToken string) (*service.SetupTokenPreview, error)
 	SetupPassword(ctx context.Context, input service.SetupPasswordInput) error
 	ChangeOwnPassword(ctx context.Context, viewerID int64, currentSessionID, currentPassword, newPassword string) (int, error)
+	ConfirmEmailChange(ctx context.Context, rawToken string) error
 	Authenticate(ctx context.Context, sessionID string) (*service.AuthenticateResult, error)
 	Logout(ctx context.Context, sessionID string) error
 }
@@ -46,6 +47,10 @@ type setupPasswordRequest struct {
 type changePasswordRequest struct {
 	CurrentPassword string `json:"current_password"`
 	NewPassword     string `json:"new_password"`
+}
+
+type confirmEmailChangeRequest struct {
+	Token string `json:"token"`
 }
 
 type authUserResponse struct {
@@ -206,6 +211,35 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "PASSWORD_TOO_SHORT", "Password must have at least 8 characters")
 		case errors.Is(err, service.ErrInvalidInput):
 			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request")
+		default:
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *AuthHandler) ConfirmEmailChange(w http.ResponseWriter, r *http.Request) {
+	var req confirmEmailChangeRequest
+	if err := readJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+
+	err := h.authService.ConfirmEmailChange(r.Context(), req.Token)
+	if err != nil {
+		switch {
+		case errors.Is(err, model.ErrInvalidToken):
+			writeError(w, http.StatusBadRequest, "INVALID_TOKEN", "Invalid token")
+		case errors.Is(err, model.ErrTokenNotFound):
+			writeError(w, http.StatusNotFound, "TOKEN_NOT_FOUND", "Token not found")
+		case errors.Is(err, model.ErrTokenExpired):
+			writeError(w, http.StatusGone, "TOKEN_EXPIRED", "Token expired")
+		case errors.Is(err, model.ErrTokenUsed):
+			writeError(w, http.StatusGone, "TOKEN_USED", "Token already used")
+		case errors.Is(err, service.ErrEmailAlreadyExists):
+			writeError(w, http.StatusConflict, "EMAIL_ALREADY_EXISTS", "Email already exists")
 		default:
 			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
 		}

@@ -24,12 +24,13 @@ type Message struct {
 }
 
 type TemplateData struct {
-	To         string
-	Name       string
-	BaseURL    string
-	Token      string
-	Language   string
-	Expiration time.Duration
+	To              string
+	Name            string
+	BaseURL         string
+	Token           string
+	Language        string
+	Expiration      time.Duration
+	NewEmailPartial string
 }
 
 type SMTPConfig struct {
@@ -145,6 +146,14 @@ func BuildPasswordResetMessage(data TemplateData) Message {
 	return renderTemplate("password_reset", data)
 }
 
+func BuildEmailChangeConfirmMessage(data TemplateData) Message {
+	return renderTemplate("email_change_confirm", data)
+}
+
+func BuildEmailChangeNoticeMessage(data TemplateData) Message {
+	return renderTemplate("email_change_notice", data)
+}
+
 type localizedTemplate struct {
 	subject string
 	body    func(TemplateData) string
@@ -160,6 +169,14 @@ var templates = map[string]map[string]localizedTemplate{
 			subject: "Rota password reset",
 			body:    passwordResetBody,
 		},
+		"email_change_confirm": {
+			subject: "Confirm your email change",
+			body:    emailChangeConfirmBody,
+		},
+		"email_change_notice": {
+			subject: "Email change requested",
+			body:    emailChangeNoticeBody,
+		},
 	},
 	"zh": {
 		"invitation": {
@@ -169,6 +186,14 @@ var templates = map[string]map[string]localizedTemplate{
 		"password_reset": {
 			subject: "Rota password reset",
 			body:    passwordResetBody,
+		},
+		"email_change_confirm": {
+			subject: "确认邮箱变更",
+			body:    emailChangeConfirmBody,
+		},
+		"email_change_notice": {
+			subject: "邮箱变更请求",
+			body:    emailChangeNoticeBody,
 		},
 	},
 }
@@ -197,6 +222,10 @@ func setupPasswordLink(baseURL, token string) string {
 	return strings.TrimRight(baseURL, "/") + "/setup-password?token=" + token
 }
 
+func emailChangeConfirmLink(baseURL, token string) string {
+	return strings.TrimRight(baseURL, "/") + "/auth/confirm-email-change?token=" + token
+}
+
 func invitationBody(data TemplateData) string {
 	return fmt.Sprintf(
 		"Hi %s,\n\nAn administrator has added you to Rota. Set your password here:\n%s\n\nThis link expires in %s.\n",
@@ -213,6 +242,36 @@ func passwordResetBody(data TemplateData) string {
 		setupPasswordLink(data.BaseURL, data.Token),
 		humanizeDuration(data.Expiration),
 	)
+}
+
+func emailChangeConfirmBody(data TemplateData) string {
+	return fmt.Sprintf(
+		"Hi %s,\n\nConfirm your Rota email change here:\n%s\n\nThis link expires in %s.\nIf this was not you, you can ignore this email.\n",
+		data.Name,
+		emailChangeConfirmLink(data.BaseURL, data.Token),
+		humanizeDuration(data.Expiration),
+	)
+}
+
+func emailChangeNoticeBody(data TemplateData) string {
+	return fmt.Sprintf(
+		"Hi %s,\n\nAn email-change request was made for your Rota account. The requested new address is %s.\n\nIf this was not you, change your password immediately.\n",
+		data.Name,
+		data.NewEmailPartial,
+	)
+}
+
+func PartialMaskEmail(value string) string {
+	parts := strings.Split(strings.TrimSpace(value), "@")
+	if len(parts) != 2 || parts[0] == "" {
+		return "***"
+	}
+
+	local := []rune(parts[0])
+	if len(local) == 0 {
+		return "***@" + parts[1]
+	}
+	return string(local[0]) + "***@" + parts[1]
 }
 
 func humanizeDuration(duration time.Duration) string {

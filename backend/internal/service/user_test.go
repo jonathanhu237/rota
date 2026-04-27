@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
@@ -676,6 +677,235 @@ func TestUserServiceUpdateOwnProfile(t *testing.T) {
 		}
 		if !reflect.DeepEqual(fields, []string{"name", "theme_preference"}) {
 			t.Fatalf("unexpected fields metadata: %+v", fields)
+		}
+	})
+}
+
+func TestUserServiceRequestEmailChange(t *testing.T) {
+	t.Run("wrong current password is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		tokenCreated := false
+		emailQueued := false
+		txUserRepo := &setupUserRepositoryMock{
+			getByIDForUpdateFunc: func(ctx context.Context, id int64) (*model.User, error) {
+				return &model.User{ID: id, Email: "alice@example.com", PasswordHash: mustHashPassword(t, "right-password")}, nil
+			},
+		}
+		txTokenRepo := &setupTokenRepositoryMock{
+			createFunc: func(ctx context.Context, params repository.CreateSetupTokenParams) (*model.SetupToken, error) {
+				tokenCreated = true
+				return nil, nil
+			},
+		}
+		service := NewUserService(
+			&userRepositoryMock{},
+			&userSessionStoreMock{},
+			WithSetupFlows(SetupFlowConfig{
+				TxManager: &setupTxManagerMock{withinTxFunc: withSetupRepos(txUserRepo, txTokenRepo)},
+				OutboxRepo: &emailerMock{sendFunc: func(ctx context.Context, msg email.Message) error {
+					emailQueued = true
+					return nil
+				}},
+			}),
+		)
+		stub := audittest.New()
+
+		err := service.RequestEmailChange(stub.ContextWith(context.Background()), RequestEmailChangeInput{
+			UserID:          7,
+			NewEmail:        "alice2@example.com",
+			CurrentPassword: "wrong-password",
+		})
+		if !errors.Is(err, ErrInvalidCurrentPassword) {
+			t.Fatalf("expected ErrInvalidCurrentPassword, got %v", err)
+		}
+		if tokenCreated || emailQueued {
+			t.Fatalf("token/email side effects should not run on wrong password")
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events, got %v", stub.Actions())
+		}
+	})
+
+	t.Run("same as current email is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		txUserRepo := &setupUserRepositoryMock{
+			getByIDForUpdateFunc: func(ctx context.Context, id int64) (*model.User, error) {
+				return &model.User{ID: id, Email: "alice@example.com", PasswordHash: mustHashPassword(t, "pa55word")}, nil
+			},
+		}
+		service := NewUserService(
+			&userRepositoryMock{},
+			&userSessionStoreMock{},
+			WithSetupFlows(SetupFlowConfig{
+				TxManager: &setupTxManagerMock{withinTxFunc: withSetupRepos(txUserRepo, &setupTokenRepositoryMock{})},
+			}),
+		)
+
+		err := service.RequestEmailChange(context.Background(), RequestEmailChangeInput{
+			UserID:          7,
+			NewEmail:        "ALICE@example.com",
+			CurrentPassword: "pa55word",
+		})
+		if !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("expected ErrInvalidInput, got %v", err)
+		}
+	})
+
+	t.Run("invalid email shape is rejected before transaction", func(t *testing.T) {
+		t.Parallel()
+
+		txCalled := false
+		service := NewUserService(
+			&userRepositoryMock{},
+			&userSessionStoreMock{},
+			WithSetupFlows(SetupFlowConfig{
+				TxManager: &setupTxManagerMock{withinTxFunc: func(ctx context.Context, fn func(context.Context, *sql.Tx, setupUserRepository, setupTokenRepository) error) error {
+					txCalled = true
+					return nil
+				}},
+			}),
+		)
+
+		err := service.RequestEmailChange(context.Background(), RequestEmailChangeInput{
+			UserID:          7,
+			NewEmail:        "not-an-email",
+			CurrentPassword: "pa55word",
+		})
+		if !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("expected ErrInvalidInput, got %v", err)
+		}
+		if txCalled {
+			t.Fatalf("transaction should not run for invalid email shape")
+		}
+	})
+
+	t.Run("new email collision is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		txUserRepo := &setupUserRepositoryMock{
+			getByIDForUpdateFunc: func(ctx context.Context, id int64) (*model.User, error) {
+				return &model.User{ID: id, Email: "alice@example.com", PasswordHash: mustHashPassword(t, "pa55word")}, nil
+			},
+			getByEmailFunc: func(ctx context.Context, email string) (*model.User, error) {
+				return &model.User{ID: 99, Email: email}, nil
+			},
+		}
+		tokenCreated := false
+		service := NewUserService(
+			&userRepositoryMock{},
+			&userSessionStoreMock{},
+			WithSetupFlows(SetupFlowConfig{
+				TxManager: &setupTxManagerMock{withinTxFunc: withSetupRepos(txUserRepo, &setupTokenRepositoryMock{
+					createFunc: func(ctx context.Context, params repository.CreateSetupTokenParams) (*model.SetupToken, error) {
+						tokenCreated = true
+						return nil, nil
+					},
+				})},
+			}),
+		)
+
+		err := service.RequestEmailChange(context.Background(), RequestEmailChangeInput{
+			UserID:          7,
+			NewEmail:        "bob@example.com",
+			CurrentPassword: "pa55word",
+		})
+		if !errors.Is(err, ErrEmailAlreadyExists) {
+			t.Fatalf("expected ErrEmailAlreadyExists, got %v", err)
+		}
+		if tokenCreated {
+			t.Fatalf("token should not be created on collision")
+		}
+	})
+
+	t.Run("success invalidates prior token, creates new token, queues two emails, and emits audit", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 26, 14, 0, 0, 0, time.UTC)
+		newEmail := "alice2@example.com"
+		var invalidatedPurpose model.SetupTokenPurpose
+		var createdParams repository.CreateSetupTokenParams
+		var messages []email.Message
+		txUserRepo := &setupUserRepositoryMock{
+			getByIDForUpdateFunc: func(ctx context.Context, id int64) (*model.User, error) {
+				return &model.User{
+					ID:           id,
+					Email:        "alice@example.com",
+					Name:         "Alice",
+					PasswordHash: mustHashPassword(t, "pa55word"),
+				}, nil
+			},
+			getByEmailFunc: func(ctx context.Context, email string) (*model.User, error) {
+				return nil, repository.ErrUserNotFound
+			},
+		}
+		txTokenRepo := &setupTokenRepositoryMock{
+			invalidateUnusedTokensFunc: func(ctx context.Context, userID int64, purpose model.SetupTokenPurpose, usedAt time.Time) error {
+				if userID != 7 || !usedAt.Equal(now) {
+					t.Fatalf("unexpected invalidation input: user=%d at=%s", userID, usedAt)
+				}
+				invalidatedPurpose = purpose
+				return nil
+			},
+			createFunc: func(ctx context.Context, params repository.CreateSetupTokenParams) (*model.SetupToken, error) {
+				createdParams = params
+				return &model.SetupToken{ID: 123, UserID: params.UserID, NewEmail: params.NewEmail}, nil
+			},
+		}
+		service := NewUserService(
+			&userRepositoryMock{},
+			&userSessionStoreMock{},
+			WithSetupFlows(SetupFlowConfig{
+				TxManager: &setupTxManagerMock{withinTxFunc: withSetupRepos(txUserRepo, txTokenRepo)},
+				OutboxRepo: &emailerMock{sendFunc: func(ctx context.Context, msg email.Message) error {
+					messages = append(messages, msg)
+					return nil
+				}},
+				AppBaseURL:   "https://app.example.com",
+				Clock:        func() time.Time { return now },
+				RandomReader: strings.NewReader(strings.Repeat("e", 32)),
+			}),
+		)
+		stub := audittest.New()
+		ctx := audit.WithActor(stub.ContextWith(context.Background()), 7)
+
+		err := service.RequestEmailChange(ctx, RequestEmailChangeInput{
+			UserID:          7,
+			NewEmail:        newEmail,
+			CurrentPassword: "pa55word",
+		})
+		if err != nil {
+			t.Fatalf("RequestEmailChange returned error: %v", err)
+		}
+		if invalidatedPurpose != model.SetupTokenPurposeEmailChange {
+			t.Fatalf("expected email_change invalidation, got %q", invalidatedPurpose)
+		}
+		if createdParams.Purpose != model.SetupTokenPurposeEmailChange {
+			t.Fatalf("expected email_change token, got %+v", createdParams)
+		}
+		if createdParams.NewEmail == nil || *createdParams.NewEmail != newEmail {
+			t.Fatalf("expected token new_email %q, got %+v", newEmail, createdParams.NewEmail)
+		}
+		if !createdParams.ExpiresAt.Equal(now.Add(24 * time.Hour)) {
+			t.Fatalf("expected expiry %s, got %s", now.Add(24*time.Hour), createdParams.ExpiresAt)
+		}
+		if len(messages) != 2 {
+			t.Fatalf("expected 2 outbox messages, got %d", len(messages))
+		}
+		if messages[0].To != newEmail || !strings.Contains(messages[0].Body, "/auth/confirm-email-change?token=") {
+			t.Fatalf("unexpected confirm message: %+v", messages[0])
+		}
+		if messages[1].To != "alice@example.com" || strings.Contains(messages[1].Body, "?token=") {
+			t.Fatalf("unexpected notice message: %+v", messages[1])
+		}
+
+		event := stub.FindByAction(audit.ActionUserEmailChangeRequest)
+		if event == nil {
+			t.Fatalf("expected email change request audit event, got %v", stub.Actions())
+		}
+		if event.Metadata["new_email_normalized"] != newEmail {
+			t.Fatalf("unexpected audit metadata: %+v", event.Metadata)
 		}
 	})
 }

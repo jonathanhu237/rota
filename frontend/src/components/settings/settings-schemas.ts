@@ -34,6 +34,21 @@ export function createPasswordSchema(
     })
 }
 
+export function createEmailChangeSchema(
+  t: (key: string, options?: Record<string, unknown>) => string,
+) {
+  return z.object({
+    new_email: z
+      .string()
+      .trim()
+      .min(1, t("settings.validation.emailRequired"))
+      .email(t("settings.validation.emailInvalid")),
+    current_password: z
+      .string()
+      .min(1, t("settings.validation.currentPasswordRequired")),
+  })
+}
+
 export function createPreferencesSchema() {
   return z.object({
     language_preference: z.enum(["zh", "en"]),
@@ -43,6 +58,9 @@ export function createPreferencesSchema() {
 
 export type ProfileFormValues = z.infer<ReturnType<typeof createProfileSchema>>
 export type PasswordFormValues = z.infer<ReturnType<typeof createPasswordSchema>>
+export type EmailChangeFormValues = z.infer<
+  ReturnType<typeof createEmailChangeSchema>
+>
 export type PreferencesFormValues = z.infer<
   ReturnType<typeof createPreferencesSchema>
 >

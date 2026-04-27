@@ -97,13 +97,25 @@ func (r *SessionRepository) Delete(ctx context.Context, sessionID string) error 
 }
 
 func (r *SessionRepository) DeleteUserSessions(ctx context.Context, userID int64) error {
+	_, err := r.DeleteAllSessions(ctx, userID)
+	return err
+}
+
+func (r *SessionRepository) DeleteAllSessions(ctx context.Context, userID int64) (int, error) {
 	const query = `
 		DELETE FROM sessions
 		WHERE user_id = $1;
 	`
 
-	_, err := r.db.ExecContext(ctx, query, userID)
-	return err
+	result, err := r.db.ExecContext(ctx, query, userID)
+	if err != nil {
+		return 0, err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return int(count), nil
 }
 
 func (r *SessionRepository) DeleteOtherSessions(ctx context.Context, userID int64, currentSessionID string) (int, error) {

@@ -342,6 +342,29 @@ func (r *UserRepository) UpdatePasswordByID(ctx context.Context, id int64, passw
 	return user, nil
 }
 
+func (r *UserRepository) UpdateEmail(ctx context.Context, id int64, email string) (*model.User, error) {
+	const query = `
+		UPDATE users
+		SET email = $2, version = version + 1
+		WHERE id = $1
+		RETURNING id, email, password_hash, name, is_admin, status, version, language_preference, theme_preference;
+	`
+
+	user := &model.User{}
+	err := scanUser(r.db.QueryRowContext(ctx, query, id, email), user)
+	if err != nil {
+		switch {
+		case isUniqueViolation(err):
+			return nil, ErrEmailAlreadyExists
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, ErrUserNotFound
+		default:
+			return nil, err
+		}
+	}
+	return user, nil
+}
+
 func (r *UserRepository) UpdatePreferencesAndName(
 	ctx context.Context,
 	params UpdateOwnProfileParams,

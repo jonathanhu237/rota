@@ -64,6 +64,8 @@ const (
 	ActionAuthPasswordResetRequest = "auth.password_reset.request"
 	ActionAuthPasswordSet          = "auth.password.set"
 	ActionAuthPasswordChange       = "user.password_change"
+	ActionUserEmailChangeRequest   = "user.email_change.request"
+	ActionUserEmailChangeConfirm   = "user.email_change.confirm"
 )
 
 // TargetType constants name the entity kinds referenced in audit rows.

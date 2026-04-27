@@ -105,6 +105,90 @@ func TestBuildPasswordResetMessage(t *testing.T) {
 	}
 }
 
+func TestBuildEmailChangeConfirmMessage(t *testing.T) {
+	t.Parallel()
+
+	msg := BuildEmailChangeConfirmMessage(TemplateData{
+		To:         "alice2@example.com",
+		Name:       "Alice",
+		BaseURL:    "https://app.example.com",
+		Token:      "email-token",
+		Language:   "en",
+		Expiration: 24 * time.Hour,
+	})
+
+	if msg.To != "alice2@example.com" {
+		t.Fatalf("expected recipient to match, got %q", msg.To)
+	}
+	if msg.Subject != "Confirm your email change" {
+		t.Fatalf("unexpected subject: %q", msg.Subject)
+	}
+	for _, want := range []string{
+		"Hi Alice,",
+		"https://app.example.com/auth/confirm-email-change?token=email-token",
+		"24 hours",
+	} {
+		if !strings.Contains(msg.Body, want) {
+			t.Fatalf("expected body to contain %q, got %q", want, msg.Body)
+		}
+	}
+}
+
+func TestBuildEmailChangeNoticeMessage(t *testing.T) {
+	t.Parallel()
+
+	msg := BuildEmailChangeNoticeMessage(TemplateData{
+		To:              "alice@example.com",
+		Name:            "Alice",
+		Language:        "en",
+		NewEmailPartial: PartialMaskEmail("alice2@example.com"),
+	})
+
+	if msg.To != "alice@example.com" {
+		t.Fatalf("expected recipient to match, got %q", msg.To)
+	}
+	if msg.Subject != "Email change requested" {
+		t.Fatalf("unexpected subject: %q", msg.Subject)
+	}
+	for _, want := range []string{
+		"Hi Alice,",
+		"a***@example.com",
+		"change your password",
+	} {
+		if !strings.Contains(msg.Body, want) {
+			t.Fatalf("expected body to contain %q, got %q", want, msg.Body)
+		}
+	}
+	if strings.Contains(msg.Body, "/auth/confirm-email-change") || strings.Contains(msg.Body, "?token=") {
+		t.Fatalf("notice body must not contain an actionable confirmation link: %q", msg.Body)
+	}
+}
+
+func TestPartialMaskEmail(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "standard", in: "alice@example.com", want: "a***@example.com"},
+		{name: "single rune", in: "a@example.com", want: "a***@example.com"},
+		{name: "invalid", in: "not-an-email", want: "***"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := PartialMaskEmail(tt.in); got != tt.want {
+				t.Fatalf("expected %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
 func TestNewSMTPEmailerRejectsPlainAuthWithoutTLS(t *testing.T) {
 	t.Parallel()
 

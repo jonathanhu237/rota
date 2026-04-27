@@ -12,13 +12,14 @@ import (
 )
 
 type stubUserService struct {
-	listUsersFunc        func(ctx context.Context, input service.ListUsersInput) (*service.ListUsersResult, error)
-	createUserFunc       func(ctx context.Context, input service.CreateUserInput) (*model.User, error)
-	resendInvitationFunc func(ctx context.Context, userID int64) error
-	getUserByIDFunc      func(ctx context.Context, id int64) (*model.User, error)
-	updateUserFunc       func(ctx context.Context, input service.UpdateUserInput) (*model.User, error)
-	updateOwnProfileFunc func(ctx context.Context, input service.UpdateOwnProfileInput) (*model.User, error)
-	updateUserStatusFunc func(ctx context.Context, input service.UpdateUserStatusInput) (*model.User, error)
+	listUsersFunc          func(ctx context.Context, input service.ListUsersInput) (*service.ListUsersResult, error)
+	createUserFunc         func(ctx context.Context, input service.CreateUserInput) (*model.User, error)
+	resendInvitationFunc   func(ctx context.Context, userID int64) error
+	getUserByIDFunc        func(ctx context.Context, id int64) (*model.User, error)
+	updateUserFunc         func(ctx context.Context, input service.UpdateUserInput) (*model.User, error)
+	updateOwnProfileFunc   func(ctx context.Context, input service.UpdateOwnProfileInput) (*model.User, error)
+	requestEmailChangeFunc func(ctx context.Context, input service.RequestEmailChangeInput) error
+	updateUserStatusFunc   func(ctx context.Context, input service.UpdateUserStatusInput) (*model.User, error)
 }
 
 func (s *stubUserService) ListUsers(ctx context.Context, input service.ListUsersInput) (*service.ListUsersResult, error) {
@@ -43,6 +44,10 @@ func (s *stubUserService) UpdateUser(ctx context.Context, input service.UpdateUs
 
 func (s *stubUserService) UpdateOwnProfile(ctx context.Context, input service.UpdateOwnProfileInput) (*model.User, error) {
 	return s.updateOwnProfileFunc(ctx, input)
+}
+
+func (s *stubUserService) RequestEmailChange(ctx context.Context, input service.RequestEmailChangeInput) error {
+	return s.requestEmailChangeFunc(ctx, input)
 }
 
 func (s *stubUserService) UpdateUserStatus(ctx context.Context, input service.UpdateUserStatusInput) (*model.User, error) {
@@ -284,6 +289,90 @@ func TestUserHandler(t *testing.T) {
 		handler.UpdateMe(recorder, req)
 
 		assertErrorResponse(t, recorder, http.StatusBadRequest, "INVALID_REQUEST")
+	})
+
+	t.Run("RequestEmailChange returns accepted", func(t *testing.T) {
+		t.Parallel()
+
+		var received service.RequestEmailChangeInput
+		handler := NewUserHandler(&stubUserService{
+			requestEmailChangeFunc: func(ctx context.Context, input service.RequestEmailChangeInput) error {
+				received = input
+				return nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithUser(jsonRequest(t, http.MethodPost, "/users/me/email-change-request", map[string]any{
+			"new_email":        "alice2@example.com",
+			"current_password": "pa55word",
+		}), sampleUser())
+
+		handler.RequestEmailChange(recorder, req)
+
+		if recorder.Code != http.StatusAccepted {
+			t.Fatalf("expected status 202, got %d", recorder.Code)
+		}
+		if received.UserID != 1 || received.NewEmail != "alice2@example.com" || received.CurrentPassword != "pa55word" {
+			t.Fatalf("unexpected service input: %+v", received)
+		}
+	})
+
+	t.Run("RequestEmailChange rejects unknown fields", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewUserHandler(&stubUserService{
+			requestEmailChangeFunc: func(ctx context.Context, input service.RequestEmailChangeInput) error {
+				t.Fatalf("service should not be called for unknown field")
+				return nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithUser(jsonRequest(t, http.MethodPost, "/users/me/email-change-request", map[string]any{
+			"new_email":        "alice2@example.com",
+			"current_password": "pa55word",
+			"is_admin":         true,
+		}), sampleUser())
+
+		handler.RequestEmailChange(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusBadRequest, "INVALID_REQUEST")
+	})
+
+	t.Run("RequestEmailChange maps service errors", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name   string
+			err    error
+			status int
+			code   string
+		}{
+			{name: "wrong current password", err: service.ErrInvalidCurrentPassword, status: http.StatusUnauthorized, code: "INVALID_CURRENT_PASSWORD"},
+			{name: "invalid request", err: service.ErrInvalidInput, status: http.StatusBadRequest, code: "INVALID_REQUEST"},
+			{name: "email collision", err: service.ErrEmailAlreadyExists, status: http.StatusConflict, code: "EMAIL_ALREADY_EXISTS"},
+		}
+
+		for _, tt := range tests {
+			tt := tt
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				handler := NewUserHandler(&stubUserService{
+					requestEmailChangeFunc: func(ctx context.Context, input service.RequestEmailChangeInput) error {
+						return tt.err
+					},
+				})
+				recorder := httptest.NewRecorder()
+				req := requestWithUser(jsonRequest(t, http.MethodPost, "/users/me/email-change-request", map[string]any{
+					"new_email":        "alice2@example.com",
+					"current_password": "pa55word",
+				}), sampleUser())
+
+				handler.RequestEmailChange(recorder, req)
+
+				assertErrorResponse(t, recorder, tt.status, tt.code)
+			})
+		}
 	})
 
 	t.Run("ResendInvitation returns no content", func(t *testing.T) {

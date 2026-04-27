@@ -19,6 +19,7 @@ type stubAuthService struct {
 	previewSetupTokenFunc    func(ctx context.Context, rawToken string) (*service.SetupTokenPreview, error)
 	setupPasswordFunc        func(ctx context.Context, input service.SetupPasswordInput) error
 	changeOwnPasswordFunc    func(ctx context.Context, viewerID int64, currentSessionID, currentPassword, newPassword string) (int, error)
+	confirmEmailChangeFunc   func(ctx context.Context, rawToken string) error
 	authenticateFunc         func(ctx context.Context, sessionID string) (*service.AuthenticateResult, error)
 	logoutFunc               func(ctx context.Context, sessionID string) error
 }
@@ -41,6 +42,10 @@ func (s *stubAuthService) SetupPassword(ctx context.Context, input service.Setup
 
 func (s *stubAuthService) ChangeOwnPassword(ctx context.Context, viewerID int64, currentSessionID, currentPassword, newPassword string) (int, error) {
 	return s.changeOwnPasswordFunc(ctx, viewerID, currentSessionID, currentPassword, newPassword)
+}
+
+func (s *stubAuthService) ConfirmEmailChange(ctx context.Context, rawToken string) error {
+	return s.confirmEmailChangeFunc(ctx, rawToken)
 }
 
 func (s *stubAuthService) Authenticate(ctx context.Context, sessionID string) (*service.AuthenticateResult, error) {
@@ -475,6 +480,69 @@ func TestAuthHandler(t *testing.T) {
 		handler.ChangePassword(recorder, req)
 
 		assertErrorResponse(t, recorder, http.StatusBadRequest, "PASSWORD_TOO_SHORT")
+	})
+
+	t.Run("ConfirmEmailChange returns no content without auth", func(t *testing.T) {
+		t.Parallel()
+
+		var receivedToken string
+		handler := NewAuthHandler(&stubAuthService{
+			confirmEmailChangeFunc: func(ctx context.Context, rawToken string) error {
+				receivedToken = rawToken
+				return nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := jsonRequest(t, http.MethodPost, "/auth/confirm-email-change", map[string]any{
+			"token": "raw-token",
+		})
+
+		handler.ConfirmEmailChange(recorder, req)
+
+		if recorder.Code != http.StatusNoContent {
+			t.Fatalf("expected status 204, got %d", recorder.Code)
+		}
+		if receivedToken != "raw-token" {
+			t.Fatalf("expected token to be passed through, got %q", receivedToken)
+		}
+	})
+
+	t.Run("ConfirmEmailChange maps token errors and collision", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name   string
+			err    error
+			status int
+			code   string
+		}{
+			{name: "invalid", err: model.ErrInvalidToken, status: http.StatusBadRequest, code: "INVALID_TOKEN"},
+			{name: "not found", err: model.ErrTokenNotFound, status: http.StatusNotFound, code: "TOKEN_NOT_FOUND"},
+			{name: "used", err: model.ErrTokenUsed, status: http.StatusGone, code: "TOKEN_USED"},
+			{name: "expired", err: model.ErrTokenExpired, status: http.StatusGone, code: "TOKEN_EXPIRED"},
+			{name: "collision", err: service.ErrEmailAlreadyExists, status: http.StatusConflict, code: "EMAIL_ALREADY_EXISTS"},
+		}
+
+		for _, tt := range tests {
+			tt := tt
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				handler := NewAuthHandler(&stubAuthService{
+					confirmEmailChangeFunc: func(ctx context.Context, rawToken string) error {
+						return tt.err
+					},
+				})
+				recorder := httptest.NewRecorder()
+				req := jsonRequest(t, http.MethodPost, "/auth/confirm-email-change", map[string]any{
+					"token": "raw-token",
+				})
+
+				handler.ConfirmEmailChange(recorder, req)
+
+				assertErrorResponse(t, recorder, tt.status, tt.code)
+			})
+		}
 	})
 
 	t.Run("Me returns the current user from request context", func(t *testing.T) {

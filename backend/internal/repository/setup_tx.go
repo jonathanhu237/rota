@@ -14,16 +14,20 @@ type SetupTxManager struct {
 
 type SetupUserRepository interface {
 	GetByID(ctx context.Context, id int64) (*model.User, error)
+	GetByIDForUpdate(ctx context.Context, id int64) (*model.User, error)
 	GetByEmail(ctx context.Context, email string) (*model.User, error)
 	Create(ctx context.Context, params CreateUserParams) (*model.User, error)
+	UpdateEmail(ctx context.Context, id int64, email string) (*model.User, error)
 	SetPasswordAndStatus(ctx context.Context, params SetUserPasswordParams) (*model.User, error)
 }
 
 type SetupTokenRepositoryWriter interface {
 	Create(ctx context.Context, params CreateSetupTokenParams) (*model.SetupToken, error)
 	GetByTokenHash(ctx context.Context, tokenHash string) (*model.SetupToken, error)
+	GetByTokenHashAndPurpose(ctx context.Context, tokenHash string, purpose model.SetupTokenPurpose) (*model.SetupToken, error)
 	InvalidateUnusedTokens(ctx context.Context, userID int64, purpose model.SetupTokenPurpose, usedAt time.Time) error
 	InvalidateAllUnusedTokens(ctx context.Context, userID int64, usedAt time.Time) error
+	InvalidateAllUnusedTokensExcept(ctx context.Context, userID int64, exceptTokenID int64, usedAt time.Time) error
 	MarkUsed(ctx context.Context, id int64, usedAt time.Time) error
 }
 
