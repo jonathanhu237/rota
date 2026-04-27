@@ -653,7 +653,9 @@
       "sortByHours": "按工时",
       "sortByName": "按姓名",
       "empty": "没有匹配的员工。",
-      "hours": "{{hours}} 小时"
+      "hours": "{{hours}} 小时",
+      "fairness": "平均 {{avg}}h · 范围 {{min}}h–{{max}}h · 标准差 {{stddev}}h",
+      "zeroCount": "{{count}} 人无班"
     },
     "seat": {
       "empty": "空缺",

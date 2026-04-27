@@ -1322,6 +1322,8 @@ The page SHALL be a two-pane layout: the grid on the left, a fixed-width employe
 
 The directory SHALL provide a name search box (case-insensitive substring filter) and a sort toggle between **hours-ascending (default)** and **name-ascending**. A small banner above the directory SHALL show the count of cells where `X < N` (e.g., `仍缺 3 个 cell`); when all on-schedule cells are full, the banner SHALL show a "全部 cell 已满" indicator.
 
+Below the gap banner the directory SHALL display a **fairness summary** computed across every employee in the directory: the average, minimum, maximum, and population standard deviation of total hours (sum across applied + draft assignments), plus the count of employees with zero hours when that count is non-zero. The summary SHALL update live as drafts mutate.
+
 The admin SHALL stage assignment changes via two input modalities, both producing entries in a single deferred-submission draft:
 
 - **Drag** an employee — either from a directory row or from a filled seat in the grid — onto a seat in the grid. During the drag, every on-schedule seat SHALL recolor based on whether the dragged employee's `user_positions` contains the seat's `position_id`: **green border** when qualified, **yellow border** when not qualified. Off-schedule cells render no seats and never highlight. Drop semantics:

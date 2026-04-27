@@ -654,7 +654,9 @@
       "sortByHours": "By hours",
       "sortByName": "By name",
       "empty": "No employees match this search.",
-      "hours": "{{hours}}h"
+      "hours": "{{hours}}h",
+      "fairness": "avg {{avg}}h · range {{min}}–{{max}}h · σ {{stddev}}h",
+      "zeroCount": "{{count}} unassigned"
     },
     "seat": {
       "empty": "Empty",

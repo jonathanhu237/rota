@@ -1,11 +1,15 @@
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
-import type { Employee } from "@/components/assignments/assignment-board-directory"
+import {
+  computeDirectoryStats,
+  type Employee,
+} from "@/components/assignments/assignment-board-directory"
 import { AssignmentBoardEmployeeRow } from "@/components/assignments/assignment-board-employee-row"
 import { pivotIntoGridCells } from "@/components/assignments/assignment-board-grid-cells"
 import {
   computeUserHours,
+  formatHours,
   type DraftState,
   type ProjectedAssignmentBoardSlot,
 } from "@/components/assignments/draft-state"
@@ -33,6 +37,14 @@ export function AssignmentBoardSidePanel({
   const [sortMode, setSortMode] = useState<SortMode>("hours")
   const positionNames = useMemo(() => derivePositionNames(slots), [slots])
   const gapCount = useMemo(() => getGapCount(projectedSlots), [projectedSlots])
+  const allHours = useMemo(
+    () =>
+      [...directory.values()].map((employee) =>
+        computeUserHours(slots, renderDraftState, employee.user_id),
+      ),
+    [directory, renderDraftState, slots],
+  )
+  const stats = useMemo(() => computeDirectoryStats(allHours), [allHours])
   const employees = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase()
 
@@ -67,6 +79,29 @@ export function AssignmentBoardSidePanel({
               ? t("assignments.directory.gaps", { count: gapCount })
               : t("assignments.directory.noGaps")}
           </p>
+          {stats.total > 0 && (
+            <p
+              className="text-xs text-muted-foreground"
+              data-testid="directory-fairness"
+            >
+              {t("assignments.directory.fairness", {
+                avg: formatHours(stats.avg),
+                min: formatHours(stats.min),
+                max: formatHours(stats.max),
+                stddev: formatHours(stats.stddev),
+              })}
+              {stats.zeroCount > 0 && (
+                <>
+                  {" · "}
+                  <span className="text-amber-700 dark:text-amber-300">
+                    {t("assignments.directory.zeroCount", {
+                      count: stats.zeroCount,
+                    })}
+                  </span>
+                </>
+              )}
+            </p>
+          )}
         </div>
 
         <Input

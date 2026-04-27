@@ -7,6 +7,15 @@ export type Employee = {
   position_ids: Set<number>
 }
 
+export type DirectoryStats = {
+  total: number
+  min: number
+  avg: number
+  max: number
+  stddev: number
+  zeroCount: number
+}
+
 export function deriveEmployeeDirectory(
   employees: AssignmentBoardEmployee[],
 ): Map<number, Employee> {
@@ -22,4 +31,31 @@ export function deriveEmployeeDirectory(
   }
 
   return directory
+}
+
+export function computeDirectoryStats(hours: number[]): DirectoryStats {
+  if (hours.length === 0) {
+    return { total: 0, min: 0, avg: 0, max: 0, stddev: 0, zeroCount: 0 }
+  }
+
+  let min = hours[0]
+  let max = hours[0]
+  let sum = 0
+  let zeroCount = 0
+  for (const value of hours) {
+    if (value < min) min = value
+    if (value > max) max = value
+    sum += value
+    if (value === 0) zeroCount += 1
+  }
+
+  const avg = sum / hours.length
+  let varianceSum = 0
+  for (const value of hours) {
+    const diff = value - avg
+    varianceSum += diff * diff
+  }
+  const stddev = Math.sqrt(varianceSum / hours.length)
+
+  return { total: hours.length, min, avg, max, stddev, zeroCount }
 }
