@@ -833,12 +833,15 @@
     "descriptionWithPublication": "Showing the active weekly roster for {{name}}.",
     "loadError": "The roster could not be loaded right now.",
     "empty": "There is no active publication right now.",
+    "emptyWeek": "No shifts are scheduled this week.",
     "previousWeek": "Previous week",
     "nextWeek": "Next week",
     "today": "Today",
-    "emptyWeekday": "No shifts are scheduled for this weekday.",
-    "emptyAssignments": "No employees are assigned to this shift yet.",
-    "shiftSummary": "{{startTime}}-{{endTime}} · {{required}} staff needed"
+    "offSchedule": "Off-schedule",
+    "cell": {
+      "summary": "Assigned {{assigned}} of {{required}}",
+      "empty": "Empty"
+    }
   },
   "availability": {
     "title": "Availability",

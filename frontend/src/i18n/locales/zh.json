@@ -832,12 +832,15 @@
     "descriptionWithPublication": "正在显示 {{name}} 的当前每周排班。",
     "loadError": "当前无法加载排班表。",
     "empty": "当前没有已生效的发布。",
+    "emptyWeek": "本周没有排班班次。",
     "previousWeek": "上一周",
     "nextWeek": "下一周",
     "today": "今天",
-    "emptyWeekday": "这一天没有排班班次。",
-    "emptyAssignments": "这个班次还没有分配员工。",
-    "shiftSummary": "{{startTime}}-{{endTime}} · 需要 {{required}} 人"
+    "offSchedule": "排班外",
+    "cell": {
+      "summary": "已分配 {{assigned}} / 需求 {{required}}",
+      "empty": "空缺"
+    }
   },
   "availability": {
     "title": "可用性",
