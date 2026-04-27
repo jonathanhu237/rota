@@ -18,15 +18,15 @@ import { Route as AuthConfirmEmailChangeRouteImport } from './routes/auth/confir
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedRosterRouteImport } from './routes/_authenticated/roster'
 import { Route as AuthenticatedRequestsRouteImport } from './routes/_authenticated/requests'
-import { Route as AuthenticatedMyLeavesRouteImport } from './routes/_authenticated/my-leaves'
-import { Route as AuthenticatedLeaveRouteImport } from './routes/_authenticated/leave'
 import { Route as AuthenticatedAvailabilityRouteImport } from './routes/_authenticated/availability'
 import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
 import { Route as AuthenticatedTemplatesIndexRouteImport } from './routes/_authenticated/templates/index'
 import { Route as AuthenticatedPublicationsIndexRouteImport } from './routes/_authenticated/publications/index'
 import { Route as AuthenticatedPositionsIndexRouteImport } from './routes/_authenticated/positions/index'
+import { Route as AuthenticatedLeavesIndexRouteImport } from './routes/_authenticated/leaves/index'
 import { Route as AuthenticatedTemplatesTemplateIdRouteImport } from './routes/_authenticated/templates/$templateId'
 import { Route as AuthenticatedPublicationsPublicationIdRouteImport } from './routes/_authenticated/publications/$publicationId'
+import { Route as AuthenticatedLeavesNewRouteImport } from './routes/_authenticated/leaves/new'
 import { Route as AuthenticatedLeavesLeaveIdRouteImport } from './routes/_authenticated/leaves/$leaveId'
 import { Route as AuthenticatedPublicationsPublicationIdShiftChangesRouteImport } from './routes/_authenticated/publications/$publicationId/shift-changes'
 import { Route as AuthenticatedPublicationsPublicationIdAssignmentsRouteImport } from './routes/_authenticated/publications/$publicationId/assignments'
@@ -75,16 +75,6 @@ const AuthenticatedRequestsRoute = AuthenticatedRequestsRouteImport.update({
   path: '/requests',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedMyLeavesRoute = AuthenticatedMyLeavesRouteImport.update({
-  id: '/my-leaves',
-  path: '/my-leaves',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedLeaveRoute = AuthenticatedLeaveRouteImport.update({
-  id: '/leave',
-  path: '/leave',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 const AuthenticatedAvailabilityRoute =
   AuthenticatedAvailabilityRouteImport.update({
     id: '/availability',
@@ -114,6 +104,12 @@ const AuthenticatedPositionsIndexRoute =
     path: '/positions/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedLeavesIndexRoute =
+  AuthenticatedLeavesIndexRouteImport.update({
+    id: '/leaves/',
+    path: '/leaves/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedTemplatesTemplateIdRoute =
   AuthenticatedTemplatesTemplateIdRouteImport.update({
     id: '/templates/$templateId',
@@ -126,6 +122,11 @@ const AuthenticatedPublicationsPublicationIdRoute =
     path: '/publications/$publicationId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedLeavesNewRoute = AuthenticatedLeavesNewRouteImport.update({
+  id: '/leaves/new',
+  path: '/leaves/new',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedLeavesLeaveIdRoute =
   AuthenticatedLeavesLeaveIdRouteImport.update({
     id: '/leaves/$leaveId',
@@ -151,15 +152,15 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/setup-password': typeof SetupPasswordRoute
   '/availability': typeof AuthenticatedAvailabilityRoute
-  '/leave': typeof AuthenticatedLeaveRoute
-  '/my-leaves': typeof AuthenticatedMyLeavesRoute
   '/requests': typeof AuthenticatedRequestsRoute
   '/roster': typeof AuthenticatedRosterRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/auth/confirm-email-change': typeof AuthConfirmEmailChangeRoute
   '/leaves/$leaveId': typeof AuthenticatedLeavesLeaveIdRoute
+  '/leaves/new': typeof AuthenticatedLeavesNewRoute
   '/publications/$publicationId': typeof AuthenticatedPublicationsPublicationIdRouteWithChildren
   '/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRoute
+  '/leaves/': typeof AuthenticatedLeavesIndexRoute
   '/positions/': typeof AuthenticatedPositionsIndexRoute
   '/publications/': typeof AuthenticatedPublicationsIndexRoute
   '/templates/': typeof AuthenticatedTemplatesIndexRoute
@@ -172,16 +173,16 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/setup-password': typeof SetupPasswordRoute
   '/availability': typeof AuthenticatedAvailabilityRoute
-  '/leave': typeof AuthenticatedLeaveRoute
-  '/my-leaves': typeof AuthenticatedMyLeavesRoute
   '/requests': typeof AuthenticatedRequestsRoute
   '/roster': typeof AuthenticatedRosterRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/auth/confirm-email-change': typeof AuthConfirmEmailChangeRoute
   '/': typeof AuthenticatedIndexRoute
   '/leaves/$leaveId': typeof AuthenticatedLeavesLeaveIdRoute
+  '/leaves/new': typeof AuthenticatedLeavesNewRoute
   '/publications/$publicationId': typeof AuthenticatedPublicationsPublicationIdRouteWithChildren
   '/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRoute
+  '/leaves': typeof AuthenticatedLeavesIndexRoute
   '/positions': typeof AuthenticatedPositionsIndexRoute
   '/publications': typeof AuthenticatedPublicationsIndexRoute
   '/templates': typeof AuthenticatedTemplatesIndexRoute
@@ -196,16 +197,16 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/setup-password': typeof SetupPasswordRoute
   '/_authenticated/availability': typeof AuthenticatedAvailabilityRoute
-  '/_authenticated/leave': typeof AuthenticatedLeaveRoute
-  '/_authenticated/my-leaves': typeof AuthenticatedMyLeavesRoute
   '/_authenticated/requests': typeof AuthenticatedRequestsRoute
   '/_authenticated/roster': typeof AuthenticatedRosterRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/auth/confirm-email-change': typeof AuthConfirmEmailChangeRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/leaves/$leaveId': typeof AuthenticatedLeavesLeaveIdRoute
+  '/_authenticated/leaves/new': typeof AuthenticatedLeavesNewRoute
   '/_authenticated/publications/$publicationId': typeof AuthenticatedPublicationsPublicationIdRouteWithChildren
   '/_authenticated/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRoute
+  '/_authenticated/leaves/': typeof AuthenticatedLeavesIndexRoute
   '/_authenticated/positions/': typeof AuthenticatedPositionsIndexRoute
   '/_authenticated/publications/': typeof AuthenticatedPublicationsIndexRoute
   '/_authenticated/templates/': typeof AuthenticatedTemplatesIndexRoute
@@ -221,15 +222,15 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup-password'
     | '/availability'
-    | '/leave'
-    | '/my-leaves'
     | '/requests'
     | '/roster'
     | '/settings'
     | '/auth/confirm-email-change'
     | '/leaves/$leaveId'
+    | '/leaves/new'
     | '/publications/$publicationId'
     | '/templates/$templateId'
+    | '/leaves/'
     | '/positions/'
     | '/publications/'
     | '/templates/'
@@ -242,16 +243,16 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup-password'
     | '/availability'
-    | '/leave'
-    | '/my-leaves'
     | '/requests'
     | '/roster'
     | '/settings'
     | '/auth/confirm-email-change'
     | '/'
     | '/leaves/$leaveId'
+    | '/leaves/new'
     | '/publications/$publicationId'
     | '/templates/$templateId'
+    | '/leaves'
     | '/positions'
     | '/publications'
     | '/templates'
@@ -265,16 +266,16 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup-password'
     | '/_authenticated/availability'
-    | '/_authenticated/leave'
-    | '/_authenticated/my-leaves'
     | '/_authenticated/requests'
     | '/_authenticated/roster'
     | '/_authenticated/settings'
     | '/auth/confirm-email-change'
     | '/_authenticated/'
     | '/_authenticated/leaves/$leaveId'
+    | '/_authenticated/leaves/new'
     | '/_authenticated/publications/$publicationId'
     | '/_authenticated/templates/$templateId'
+    | '/_authenticated/leaves/'
     | '/_authenticated/positions/'
     | '/_authenticated/publications/'
     | '/_authenticated/templates/'
@@ -356,20 +357,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRequestsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/my-leaves': {
-      id: '/_authenticated/my-leaves'
-      path: '/my-leaves'
-      fullPath: '/my-leaves'
-      preLoaderRoute: typeof AuthenticatedMyLeavesRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/leave': {
-      id: '/_authenticated/leave'
-      path: '/leave'
-      fullPath: '/leave'
-      preLoaderRoute: typeof AuthenticatedLeaveRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/availability': {
       id: '/_authenticated/availability'
       path: '/availability'
@@ -405,6 +392,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPositionsIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/leaves/': {
+      id: '/_authenticated/leaves/'
+      path: '/leaves'
+      fullPath: '/leaves/'
+      preLoaderRoute: typeof AuthenticatedLeavesIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/templates/$templateId': {
       id: '/_authenticated/templates/$templateId'
       path: '/templates/$templateId'
@@ -417,6 +411,13 @@ declare module '@tanstack/react-router' {
       path: '/publications/$publicationId'
       fullPath: '/publications/$publicationId'
       preLoaderRoute: typeof AuthenticatedPublicationsPublicationIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/leaves/new': {
+      id: '/_authenticated/leaves/new'
+      path: '/leaves/new'
+      fullPath: '/leaves/new'
+      preLoaderRoute: typeof AuthenticatedLeavesNewRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/leaves/$leaveId': {
@@ -463,15 +464,15 @@ const AuthenticatedPublicationsPublicationIdRouteWithChildren =
 
 interface AuthenticatedRouteChildren {
   AuthenticatedAvailabilityRoute: typeof AuthenticatedAvailabilityRoute
-  AuthenticatedLeaveRoute: typeof AuthenticatedLeaveRoute
-  AuthenticatedMyLeavesRoute: typeof AuthenticatedMyLeavesRoute
   AuthenticatedRequestsRoute: typeof AuthenticatedRequestsRoute
   AuthenticatedRosterRoute: typeof AuthenticatedRosterRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedLeavesLeaveIdRoute: typeof AuthenticatedLeavesLeaveIdRoute
+  AuthenticatedLeavesNewRoute: typeof AuthenticatedLeavesNewRoute
   AuthenticatedPublicationsPublicationIdRoute: typeof AuthenticatedPublicationsPublicationIdRouteWithChildren
   AuthenticatedTemplatesTemplateIdRoute: typeof AuthenticatedTemplatesTemplateIdRoute
+  AuthenticatedLeavesIndexRoute: typeof AuthenticatedLeavesIndexRoute
   AuthenticatedPositionsIndexRoute: typeof AuthenticatedPositionsIndexRoute
   AuthenticatedPublicationsIndexRoute: typeof AuthenticatedPublicationsIndexRoute
   AuthenticatedTemplatesIndexRoute: typeof AuthenticatedTemplatesIndexRoute
@@ -480,16 +481,16 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAvailabilityRoute: AuthenticatedAvailabilityRoute,
-  AuthenticatedLeaveRoute: AuthenticatedLeaveRoute,
-  AuthenticatedMyLeavesRoute: AuthenticatedMyLeavesRoute,
   AuthenticatedRequestsRoute: AuthenticatedRequestsRoute,
   AuthenticatedRosterRoute: AuthenticatedRosterRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedLeavesLeaveIdRoute: AuthenticatedLeavesLeaveIdRoute,
+  AuthenticatedLeavesNewRoute: AuthenticatedLeavesNewRoute,
   AuthenticatedPublicationsPublicationIdRoute:
     AuthenticatedPublicationsPublicationIdRouteWithChildren,
   AuthenticatedTemplatesTemplateIdRoute: AuthenticatedTemplatesTemplateIdRoute,
+  AuthenticatedLeavesIndexRoute: AuthenticatedLeavesIndexRoute,
   AuthenticatedPositionsIndexRoute: AuthenticatedPositionsIndexRoute,
   AuthenticatedPublicationsIndexRoute: AuthenticatedPublicationsIndexRoute,
   AuthenticatedTemplatesIndexRoute: AuthenticatedTemplatesIndexRoute,

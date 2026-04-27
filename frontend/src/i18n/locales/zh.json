@@ -103,13 +103,15 @@
   },
   "sidebar": {
     "appDescription": "排班系统",
-    "navigation": "导航",
+    "groups": {
+      "mySchedule": "我的排班",
+      "manage": "管理"
+    },
     "dashboard": "仪表盘",
     "roster": "排班表",
     "availability": "可用性",
     "requests": "调班申请",
-    "leave": "请假",
-    "myLeaves": "我的请假",
+    "leaves": "请假",
     "users": "用户",
     "positions": "岗位",
     "templates": "模板",
@@ -194,7 +196,47 @@
   },
   "dashboard": {
     "welcome": "欢迎，{{name}}",
-    "description": "这是您的排班系统概览。"
+    "description": "这是您的排班系统概览。",
+    "currentPublication": {
+      "title": "当前发布",
+      "description": "当前排班周期和下一步操作。",
+      "empty": "暂无活跃发布。",
+      "window": "{{from}} - {{until}}",
+      "copy": {
+        "preparing": "排班还在筹备中。",
+        "awaiting": "可用性收集已结束，等待排班。"
+      },
+      "cta": {
+        "collectingEmployee": "提交可用性",
+        "collectingAdmin": "查看发布详情",
+        "assigningAdmin": "打开分配面板",
+        "published": "查看排班表",
+        "draftAdmin": "查看发布详情",
+        "noneAdmin": "新建发布"
+      }
+    },
+    "todo": {
+      "title": "待办",
+      "description": "需要你处理的调班申请。",
+      "unreadRequests": "您有 {{count}} 条调班待处理",
+      "cta": "查看申请"
+    },
+    "recentLeaves": {
+      "title": "最近请假",
+      "description": "你最近提交的请假记录。",
+      "viewAll": "查看全部",
+      "empty": "你还没有提交过请假。"
+    },
+    "manage": {
+      "title": "管理快捷入口",
+      "description": "快速进入管理工作区。",
+      "links": {
+        "users": "用户",
+        "positions": "岗位",
+        "templates": "模板",
+        "publications": "发布"
+      }
+    }
   },
   "users": {
     "title": "用户管理",
@@ -938,6 +980,19 @@
       "UNAUTHORIZED": "未授权"
     }
   },
+  "leaves": {
+    "requestCta": "申请请假",
+    "backToHistory": "返回请假记录",
+    "history": {
+      "title": "我的请假",
+      "description": "查看您已提交的请假记录。",
+      "empty": "您还没有提交过请假。",
+      "open": "打开",
+      "previous": "上一页",
+      "next": "下一页",
+      "page": "第 {{page}} 页"
+    }
+  },
   "leave": {
     "title": "请假",
     "description": "选择未来班次并发起找人代班请求。",
@@ -991,15 +1046,6 @@
       "UNAUTHORIZED": "未授权",
       "USER_DISABLED": "所选同事已被禁用。"
     }
-  },
-  "myLeaves": {
-    "title": "我的请假",
-    "description": "查看您已提交的请假记录。",
-    "empty": "您还没有提交过请假。",
-    "open": "打开",
-    "previous": "上一页",
-    "next": "下一页",
-    "page": "第 {{page}} 页"
   },
   "leaveDetail": {
     "title": "请假详情",

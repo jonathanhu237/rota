@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen } from "@testing-library/react"
+import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { AnchorHTMLAttributes, ForwardedRef, ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -55,7 +55,7 @@ vi.mock("@/components/theme-context", () => ({
   }),
 }))
 
-function makeUser(): User {
+function makeUser(overrides: Partial<User> = {}): User {
   return {
     id: 1,
     email: "alice@example.com",
@@ -65,6 +65,7 @@ function makeUser(): User {
     version: 1,
     language_preference: null,
     theme_preference: "system",
+    ...overrides,
   }
 }
 
@@ -84,7 +85,7 @@ function mockMatchMedia() {
   })
 }
 
-function renderAppSidebar() {
+function renderAppSidebar(user: User = makeUser()) {
   const client = new QueryClient({
     defaultOptions: {
       queries: {
@@ -93,7 +94,7 @@ function renderAppSidebar() {
       },
     },
   })
-  client.setQueryData(["auth", "me"], makeUser())
+  client.setQueryData(["auth", "me"], user)
   client.setQueryData(["me", "notifications", "unread-count"], 0)
 
   return render(
@@ -129,5 +130,71 @@ describe("AppSidebar", () => {
     await user.click(screen.getByText("sidebar.settings"))
 
     expect(routerMocks.navigate).toHaveBeenCalledWith({ to: "/settings" })
+  })
+
+  it("renders employee schedule navigation without admin management links", () => {
+    renderAppSidebar()
+
+    const myScheduleGroup = screen
+      .getByText("sidebar.groups.mySchedule")
+      .closest("[data-slot='sidebar-group']")
+    expect(myScheduleGroup).not.toBeNull()
+
+    const navItems = [
+      ["sidebar.dashboard", "/"],
+      ["sidebar.roster", "/roster"],
+      ["sidebar.availability", "/availability"],
+      ["sidebar.requests", "/requests"],
+      ["sidebar.leaves", "/leaves"],
+    ] as const
+
+    for (const [label, href] of navItems) {
+      expect(
+        within(myScheduleGroup as HTMLElement).getByText(label).closest("a"),
+      ).toHaveAttribute("href", href)
+    }
+
+    expect(screen.queryByText("sidebar.groups.manage")).not.toBeInTheDocument()
+    expect(screen.queryByText("sidebar.users")).not.toBeInTheDocument()
+    expect(screen.queryByText("sidebar.publications")).not.toBeInTheDocument()
+  })
+
+  it("renders admin management navigation as a separate group", () => {
+    renderAppSidebar(makeUser({ is_admin: true }))
+
+    const manageGroup = screen
+      .getByText("sidebar.groups.manage")
+      .closest("[data-slot='sidebar-group']")
+    expect(manageGroup).not.toBeNull()
+
+    const adminItems = [
+      ["sidebar.users", "/users"],
+      ["sidebar.positions", "/positions"],
+      ["sidebar.templates", "/templates"],
+      ["sidebar.publications", "/publications"],
+    ] as const
+
+    for (const [label, href] of adminItems) {
+      expect(
+        within(manageGroup as HTMLElement).getByText(label).closest("a"),
+      ).toHaveAttribute("href", href)
+    }
+  })
+
+  it("uses the consolidated leaves entry point", () => {
+    const { container } = renderAppSidebar()
+    const legacyRequestPath = "/lea" + "ve"
+    const legacyHistoryPath = "/my-" + "leaves"
+
+    expect(screen.getByText("sidebar.leaves").closest("a")).toHaveAttribute(
+      "href",
+      "/leaves",
+    )
+    expect(
+      container.querySelector(`a[href="${legacyRequestPath}"]`),
+    ).not.toBeInTheDocument()
+    expect(
+      container.querySelector(`a[href="${legacyHistoryPath}"]`),
+    ).not.toBeInTheDocument()
   })
 })

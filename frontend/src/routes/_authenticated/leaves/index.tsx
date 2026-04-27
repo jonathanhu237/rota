@@ -1,10 +1,11 @@
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
+import { Plus } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -17,8 +18,8 @@ import { getTranslatedApiError } from "@/lib/api-error"
 import { myLeavesQueryOptions } from "@/lib/queries"
 import type { Leave, LeaveState } from "@/lib/types"
 
-export const Route = createFileRoute("/_authenticated/my-leaves")({
-  component: MyLeavesPage,
+export const Route = createFileRoute("/_authenticated/leaves/")({
+  component: LeavesHistoryPage,
 })
 
 const pageSize = 10
@@ -33,7 +34,7 @@ const stateVariant: Record<
   cancelled: "secondary",
 }
 
-function MyLeavesPage() {
+export function LeavesHistoryPage() {
   const { t, i18n } = useTranslation()
   const [page, setPage] = useState(1)
   const leavesQuery = useQuery(myLeavesQueryOptions(page, pageSize))
@@ -46,8 +47,18 @@ function MyLeavesPage() {
     <div className="grid gap-6">
       <Card>
         <CardHeader>
-          <CardTitle>{t("myLeaves.title")}</CardTitle>
-          <CardDescription>{t("myLeaves.description")}</CardDescription>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="grid gap-1">
+              <CardTitle>{t("leaves.history.title")}</CardTitle>
+              <CardDescription>
+                {t("leaves.history.description")}
+              </CardDescription>
+            </div>
+            <Link to="/leaves/new" className={buttonVariants()}>
+              <Plus />
+              {t("leaves.requestCta")}
+            </Link>
+          </div>
         </CardHeader>
       </Card>
 
@@ -87,10 +98,10 @@ function MyLeavesPage() {
               disabled={page === 1}
               onClick={() => setPage((current) => Math.max(1, current - 1))}
             >
-              {t("myLeaves.previous")}
+              {t("leaves.history.previous")}
             </Button>
             <div className="text-sm text-muted-foreground">
-              {t("myLeaves.page", { page })}
+              {t("leaves.history.page", { page })}
             </div>
             <Button
               type="button"
@@ -98,7 +109,7 @@ function MyLeavesPage() {
               disabled={leavesQuery.data.length < pageSize}
               onClick={() => setPage((current) => current + 1)}
             >
-              {t("myLeaves.next")}
+              {t("leaves.history.next")}
             </Button>
           </div>
         </>
@@ -106,7 +117,7 @@ function MyLeavesPage() {
         <Card>
           <CardContent className="pt-4">
             <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-              {t("myLeaves.empty")}
+              {t("leaves.history.empty")}
             </div>
           </CardContent>
         </Card>
@@ -141,9 +152,13 @@ function LeaveHistoryCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap items-center gap-2">
-        <Button type="button" variant="outline" render={<Link to="/leaves/$leaveId" params={{ leaveId: String(leave.id) }} />}>
-          {t("myLeaves.open")}
-        </Button>
+        <Link
+          to="/leaves/$leaveId"
+          params={{ leaveId: String(leave.id) }}
+          className={buttonVariants({ variant: "outline" })}
+        >
+          {t("leaves.history.open")}
+        </Link>
       </CardContent>
     </Card>
   )

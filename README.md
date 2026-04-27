@@ -50,7 +50,7 @@ Scenarios:
 
 ### Leave Workflow
 
-Employees create leave requests from `/leave` by selecting a date range, choosing an upcoming assigned occurrence, and submitting either a direct give-away or a pool give-away with a leave category and optional reason. Successful submissions return `/leaves/:id`, which is the share URL for the leave detail page. Employees can review their own requests at `/my-leaves`, and admins can list leave requests for a publication through `GET /api/publications/{id}/leaves`.
+Employees create leave requests from `/leaves/new` by selecting a date range, choosing an upcoming assigned occurrence, and submitting either a direct give-away or a pool give-away with a leave category and optional reason. Successful submissions return `/leaves/:id`, which is the share URL for the leave detail page. Employees can review their own requests at `/leaves`, and admins can list leave requests for a publication through `GET /api/publications/{id}/leaves`.
 
 ## Testing
 

@@ -103,13 +103,15 @@
   },
   "sidebar": {
     "appDescription": "Scheduling System",
-    "navigation": "Navigation",
+    "groups": {
+      "mySchedule": "My schedule",
+      "manage": "Manage"
+    },
     "dashboard": "Dashboard",
     "roster": "Roster",
     "availability": "Availability",
     "requests": "Requests",
-    "leave": "Leave",
-    "myLeaves": "My Leaves",
+    "leaves": "Leaves",
     "users": "Users",
     "positions": "Positions",
     "templates": "Templates",
@@ -194,7 +196,47 @@
   },
   "dashboard": {
     "welcome": "Welcome, {{name}}",
-    "description": "Here is an overview of your scheduling system."
+    "description": "Here is an overview of your scheduling system.",
+    "currentPublication": {
+      "title": "Current publication",
+      "description": "The active scheduling cycle and next action.",
+      "empty": "No active publication.",
+      "window": "{{from}} - {{until}}",
+      "copy": {
+        "preparing": "Scheduling is still being prepared.",
+        "awaiting": "Availability collection has ended. Waiting for assignments."
+      },
+      "cta": {
+        "collectingEmployee": "Submit availability",
+        "collectingAdmin": "Open publication",
+        "assigningAdmin": "Open assignment board",
+        "published": "View roster",
+        "draftAdmin": "View publication",
+        "noneAdmin": "Create publication"
+      }
+    },
+    "todo": {
+      "title": "To-do",
+      "description": "Shift-change requests needing your attention.",
+      "unreadRequests": "You have {{count}} pending shift changes",
+      "cta": "View requests"
+    },
+    "recentLeaves": {
+      "title": "Recent leaves",
+      "description": "Your latest leave requests.",
+      "viewAll": "View all",
+      "empty": "You have no leave requests yet."
+    },
+    "manage": {
+      "title": "Quick links",
+      "description": "Jump to administrative work areas.",
+      "links": {
+        "users": "Users",
+        "positions": "Positions",
+        "templates": "Templates",
+        "publications": "Publications"
+      }
+    }
   },
   "users": {
     "title": "User Management",
@@ -939,6 +981,19 @@
       "UNAUTHORIZED": "Unauthorized"
     }
   },
+  "leaves": {
+    "requestCta": "Request leave",
+    "backToHistory": "Back to leaves",
+    "history": {
+      "title": "My Leaves",
+      "description": "Review leave requests you have submitted.",
+      "empty": "You have not submitted any leave requests.",
+      "open": "Open",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {{page}}"
+    }
+  },
   "leave": {
     "title": "Leave",
     "description": "Select upcoming shifts and request coverage.",
@@ -992,15 +1047,6 @@
       "UNAUTHORIZED": "Unauthorized",
       "USER_DISABLED": "The selected colleague is disabled."
     }
-  },
-  "myLeaves": {
-    "title": "My Leaves",
-    "description": "Review leave requests you have submitted.",
-    "empty": "You have not submitted any leave requests.",
-    "open": "Open",
-    "previous": "Previous",
-    "next": "Next",
-    "page": "Page {{page}}"
   },
   "leaveDetail": {
     "title": "Leave Detail",

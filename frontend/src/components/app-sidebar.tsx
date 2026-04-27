@@ -6,7 +6,6 @@ import {
   CalendarDays,
   CalendarRange,
   CalendarX,
-  ClipboardList,
   ChevronsUpDown,
   FileText,
   Home,
@@ -88,7 +87,7 @@ export function AppSidebar() {
     badge?: number
   }
 
-  const navItems: NavItem[] = [
+  const employeeItems: NavItem[] = [
     {
       title: t("sidebar.dashboard"),
       url: "/",
@@ -111,38 +110,56 @@ export function AppSidebar() {
       badge: showUnreadBadge ? unreadCount : undefined,
     },
     {
-      title: t("sidebar.leave"),
-      url: "/leave",
+      title: t("sidebar.leaves"),
+      url: "/leaves",
       icon: CalendarX,
-    },
-    {
-      title: t("sidebar.myLeaves"),
-      url: "/my-leaves",
-      icon: ClipboardList,
     },
   ]
 
-  if (user?.is_admin) {
-    navItems.push({
+  const adminItems: NavItem[] = [
+    {
       title: t("sidebar.users"),
       url: "/users",
       icon: Users,
-    })
-    navItems.push({
+    },
+    {
       title: t("sidebar.positions"),
       url: "/positions",
       icon: Briefcase,
-    })
-    navItems.push({
+    },
+    {
       title: t("sidebar.templates"),
       url: "/templates",
       icon: CalendarDays,
-    })
-    navItems.push({
+    },
+    {
       title: t("sidebar.publications"),
       url: "/publications",
       icon: FileText,
-    })
+    },
+  ]
+
+  const renderItem = (item: NavItem) => {
+    const isActive =
+      routerState.location.pathname === item.url ||
+      routerState.location.pathname.startsWith(`${item.url}/`)
+
+    return (
+      <SidebarMenuItem key={item.url}>
+        <SidebarMenuButton render={<Link to={item.url} />} isActive={isActive}>
+          <item.icon />
+          <span>{item.title}</span>
+          {item.badge !== undefined && item.badge > 0 && (
+            <span
+              data-testid={`sidebar-badge-${item.url}`}
+              className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground"
+            >
+              {item.badge}
+            </span>
+          )}
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    )
   }
 
   // Get the initials from the user's name
@@ -175,34 +192,21 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>{t("sidebar.navigation")}</SidebarGroupLabel>
+          <SidebarGroupLabel>
+            {t("sidebar.groups.mySchedule")}
+          </SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.url}>
-                  <SidebarMenuButton
-                    render={<Link to={item.url} />}
-                    isActive={
-                      routerState.location.pathname === item.url ||
-                      routerState.location.pathname.startsWith(`${item.url}/`)
-                    }
-                  >
-                    <item.icon />
-                    <span>{item.title}</span>
-                    {item.badge !== undefined && item.badge > 0 && (
-                      <span
-                        data-testid={`sidebar-badge-${item.url}`}
-                        className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground"
-                      >
-                        {item.badge}
-                      </span>
-                    )}
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
+            <SidebarMenu>{employeeItems.map(renderItem)}</SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        {user?.is_admin && (
+          <SidebarGroup>
+            <SidebarGroupLabel>{t("sidebar.groups.manage")}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>{adminItems.map(renderItem)}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>

@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { createFileRoute } from "@tanstack/react-router"
-import { Copy, Send } from "lucide-react"
+import { createFileRoute, Link } from "@tanstack/react-router"
+import { ArrowLeft, Copy, Send } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -32,7 +32,7 @@ import type {
   ShiftChangeType,
 } from "@/lib/types"
 
-export const Route = createFileRoute("/_authenticated/leave")({
+export const Route = createFileRoute("/_authenticated/leaves/new")({
   component: LeavePage,
 })
 
@@ -50,7 +50,7 @@ const defaultDraft: RowDraft = {
   reason: "",
 }
 
-function LeavePage() {
+export function LeavePage() {
   const { t, i18n } = useTranslation()
   const queryClient = useQueryClient()
   const { toast } = useToast()
@@ -143,8 +143,19 @@ function LeavePage() {
     <div className="grid gap-6">
       <Card>
         <CardHeader>
-          <CardTitle>{t("leave.title")}</CardTitle>
-          <CardDescription>{t("leave.description")}</CardDescription>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="grid gap-1">
+              <CardTitle>{t("leave.title")}</CardTitle>
+              <CardDescription>{t("leave.description")}</CardDescription>
+            </div>
+            <Link
+              to="/leaves"
+              className={buttonVariants({ variant: "outline" })}
+            >
+              <ArrowLeft />
+              {t("leaves.backToHistory")}
+            </Link>
+          </div>
         </CardHeader>
         <CardContent className="grid gap-4">
           <div className="grid gap-4 sm:grid-cols-[minmax(0,180px)_minmax(0,180px)]">
