@@ -630,7 +630,7 @@
   },
   "assignments": {
     "title": "Assignment Board",
-    "descriptionEditable": "Click candidates to assign them to {{name}}. Click assigned employees to remove them.",
+    "descriptionEditable": "Scan coverage by weekday and time, then stage assignment edits for {{name}}.",
     "descriptionReadOnly": "{{name}} is already active. The board is read-only.",
     "autoAssign": "Auto-assign",
     "backToPublication": "Back to publication",
@@ -638,6 +638,22 @@
     "emptyWeekday": "No shifts are scheduled for this weekday.",
     "shiftSummary": "{{startTime}}-{{endTime}}",
     "headcount": "{{assigned}} / {{required}} assigned",
+    "grid": {
+      "time": "Time"
+    },
+    "status": {
+      "full": "Full",
+      "partial": "Partial",
+      "empty": "Empty"
+    },
+    "panel": {
+      "close": "Close cell"
+    },
+    "summary": {
+      "title": "Coverage summary",
+      "coverageGaps": "Coverage gaps ({{count}})",
+      "noGaps": "All scheduled cells are fully covered."
+    },
     "understaffed": "Understaffed",
     "candidates": "Candidates",
     "assigned": "Assigned",
@@ -650,14 +666,17 @@
       "confirmAndSubmit": "Confirm and submit",
       "cancel": "Cancel",
       "changed": "Draft",
+      "added": "Added",
+      "toRemove": "Remove",
+      "warning": "Warning",
       "userHoursLabel": "{{user}} ({{hours}}h)",
       "submitFailed": "Could not submit {{user}}. Fix the draft or retry.",
       "submitFailedUnknown": "Unable to submit this draft operation.",
       "confirmDialog": {
         "title": "Confirm qualification overrides",
-        "description": "These draft assignments bypass the default qualification match.",
+        "description": "These draft assignments bypass the default qualification or cell match.",
         "warningTitle": "{{user}} -> {{slot}} / {{position}}",
-        "warningReason": "{{user}} is not qualified for {{position}} in this publication."
+        "warningReason": "{{user}} is not a default match for {{position}} in this cell."
       }
     },
     "autoAssignDialog": {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import type { AssignmentBoardSlot } from "@/lib/types"
 
+import { resolveAssignmentBoardDrop } from "./assignment-board-dnd"
 import {
   applyDraftToBoard,
   computeUserHours,
@@ -9,6 +10,7 @@ import {
   emptyDraftState,
   enqueueAdd,
   enqueueMove,
+  enqueueRemove,
   enqueueReplace,
   enqueueSwap,
   getBoardCellKey,
@@ -87,6 +89,26 @@ const slots: AssignmentBoardSlot[] = [
             email: "dana@example.com",
           },
         ],
+      },
+    ],
+  },
+  {
+    slot: {
+      id: 3,
+      weekday: 2,
+      start_time: "12:00",
+      end_time: "15:30",
+    },
+    positions: [
+      {
+        position: {
+          id: 102,
+          name: "Kitchen",
+        },
+        required_headcount: 1,
+        candidates: [],
+        non_candidate_qualified: [],
+        assignments: [],
       },
     ],
   },
@@ -222,6 +244,90 @@ describe("draft state reducers", () => {
       },
     )
 
+    expect(state.ops).toHaveLength(1)
+    expect(state.ops[0]).toMatchObject({
+      kind: "assign",
+      userID: 10,
+      slotID: 2,
+      weekday: 1,
+      positionID: 101,
+    })
+  })
+
+  it("enqueues a REMOVE as one unassign", () => {
+    const state = enqueueRemove(emptyDraftState, {
+      assignmentID: 20,
+      userID: 11,
+      name: "Bob",
+      email: "bob@example.com",
+      slotID: 1,
+      weekday: 1,
+      positionID: 101,
+    })
+
+    expect(state.ops).toHaveLength(1)
+    expect(state.ops[0]).toMatchObject({
+      kind: "unassign",
+      assignmentID: 20,
+      userID: 11,
+      slotID: 1,
+      weekday: 1,
+      positionID: 101,
+    })
+  })
+
+  it("marks a cross-cell assign as unqualified when the target cell lacks the source position", () => {
+    const state = resolveAssignmentBoardDrop({
+      slots,
+      draftState: emptyDraftState,
+      selection: { slotID: 1, weekday: 1 },
+      source: {
+        kind: "assigned",
+        assignment: {
+          assignment_id: 20,
+          user_id: 11,
+          name: "Bob",
+          email: "bob@example.com",
+        },
+        slotID: 1,
+        weekday: 1,
+        positionID: 101,
+      },
+      target: {
+        kind: "cell",
+        slotID: 3,
+        weekday: 2,
+      },
+    })
+
+    expect(state.ops).toHaveLength(2)
+    expect(state.ops[1]).toMatchObject({
+      kind: "assign",
+      userID: 11,
+      slotID: 3,
+      weekday: 2,
+      positionID: 101,
+      isUnqualified: true,
+    })
+  })
+
+  it("keeps draft entries independent from selection changes", () => {
+    const state = enqueueAdd(
+      emptyDraftState,
+      {
+        userID: 10,
+        name: "Alice",
+        email: "alice@example.com",
+      },
+      {
+        slotID: 2,
+        weekday: 1,
+        positionID: 101,
+      },
+    )
+    const nextSelection = { slotID: 1, weekday: 1 }
+
+    expect(nextSelection).toEqual({ slotID: 1, weekday: 1 })
     expect(state.ops).toHaveLength(1)
     expect(state.ops[0]).toMatchObject({
       kind: "assign",

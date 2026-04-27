@@ -57,6 +57,7 @@ export type DraftCellInput = {
 
 export type ProjectedAssignment = AssignmentBoardAssignment & {
   isDraft?: boolean
+  isRemoved?: boolean
   isUnqualified?: boolean
   draftOpID?: string
   error?: string
@@ -129,6 +130,13 @@ export function enqueueUnassign(
       positionID: input.positionID,
     },
   ])
+}
+
+export function enqueueRemove(
+  state: DraftState,
+  input: DraftAssignmentInput,
+): DraftState {
+  return enqueueUnassign(state, input)
 }
 
 export function enqueueMove(

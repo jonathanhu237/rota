@@ -1,5 +1,6 @@
 import userEvent from "@testing-library/user-event"
-import { screen } from "@testing-library/react"
+import { screen, within } from "@testing-library/react"
+import type { ComponentProps } from "react"
 import { describe, expect, it, vi } from "vitest"
 
 import type { AssignmentBoardSlot } from "@/lib/types"
@@ -82,81 +83,171 @@ const slots: AssignmentBoardSlot[] = [
       },
     ],
   },
+  {
+    slot: {
+      id: 3,
+      weekday: 2,
+      start_time: "09:00",
+      end_time: "11:00",
+    },
+    positions: [
+      {
+        position: {
+          id: 102,
+          name: "Kitchen",
+        },
+        required_headcount: 1,
+        candidates: [
+          { user_id: 10, name: "Alice", email: "alice@example.com" },
+        ],
+        non_candidate_qualified: [],
+        assignments: [],
+      },
+    ],
+  },
 ]
 
+const fullSlots: AssignmentBoardSlot[] = [
+  {
+    slot: {
+      id: 1,
+      weekday: 1,
+      start_time: "09:00",
+      end_time: "11:00",
+    },
+    positions: [
+      {
+        position: { id: 101, name: "Front Desk" },
+        required_headcount: 1,
+        candidates: [],
+        non_candidate_qualified: [],
+        assignments: [
+          {
+            assignment_id: 20,
+            user_id: 11,
+            name: "Bob",
+            email: "bob@example.com",
+          },
+        ],
+      },
+    ],
+  },
+]
+
+type AssignmentBoardProps = ComponentProps<typeof AssignmentBoard>
+
 describe("AssignmentBoard", () => {
-  it("renders candidates and assigned users with hours and supports immediate actions", async () => {
+  it("shows the summary first and selecting a grid cell opens the editor", async () => {
     const user = userEvent.setup()
-    const onAssign = vi.fn()
-    const onUnassign = vi.fn()
+    const { container } = renderBoard()
 
-    const { container, getAllByText, getByRole, getByText, queryByText } =
-      renderWithProviders(
-        <AssignmentBoard
-          isPending={false}
-          isReadOnly={false}
-          onAssign={onAssign}
-          onUnassign={onUnassign}
-          slots={slots}
-        />,
-      )
+    expect(screen.getByText("assignments.summary.title")).toBeInTheDocument()
 
-    expect(getAllByText("assignments.understaffed")).toHaveLength(2)
-    expect(
-      getAllByText("assignments.understaffed")[0].closest("section"),
-    ).toHaveClass("border-amber-300")
-    expect(getByText("Alice (2h)")).toBeInTheDocument()
-    expect(getByText("Bob (2h)")).toBeInTheDocument()
-    expect(queryByText("Dana")).not.toBeInTheDocument()
+    const firstCell = getGridButtons(container)[0]
+    await user.click(firstCell)
 
-    await user.click(getActualButtonByText(container, "Alice (2h)"))
-    await user.click(getActualButtonByText(container, "Bob (2h)"))
-    await user.click(
-      getByRole("switch", {
-        name: "publications.assignmentBoard.showAllQualified",
-      }),
-    )
-
-    const danaButton = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent?.includes("Dana"),
-    )
-
-    expect(danaButton).toBeTruthy()
-
-    await user.click(danaButton as HTMLElement)
-
-    expect(onAssign).toHaveBeenCalledWith(10, 1, 1, 101)
-    expect(onAssign).toHaveBeenCalledWith(12, 1, 1, 101)
-    expect(onUnassign).toHaveBeenCalledWith(20)
+    expect(firstCell).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByText("Front Desk")).toBeInTheDocument()
+    expect(screen.queryByText("assignments.summary.title")).not.toBeInTheDocument()
   })
 
-  it("disables mutations in read-only mode", async () => {
+  it("click-stages a candidate and cancels the inverse staged chip", async () => {
+    const user = userEvent.setup()
+    const onAssign = vi.fn()
+    renderBoard({ onAssign })
+
+    await user.click(getGridButtons(document.body)[0])
+    await user.click(getButtonForText("Alice (2h)"))
+
+    expect(onAssign).not.toHaveBeenCalled()
+    expect(screen.getByText("assignments.drafts.added")).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: "assignments.drafts.submit" }),
+    ).toBeEnabled()
+
+    await user.click(getButtonForText("Alice (2h)"))
+
+    expect(screen.queryByText("assignments.drafts.added")).not.toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: "assignments.drafts.submit" }),
+    ).toBeDisabled()
+  })
+
+  it("click-stages an assigned chip for removal", async () => {
+    const user = userEvent.setup()
+    const onUnassign = vi.fn()
+    renderBoard({ onUnassign })
+
+    await user.click(getGridButtons(document.body)[0])
+    await user.click(getButtonForText("Bob (2h)"))
+
+    expect(onUnassign).not.toHaveBeenCalled()
+    expect(screen.getByText("assignments.drafts.toRemove")).toBeInTheDocument()
+  })
+
+  it("keeps staged drafts visible after changing selection", async () => {
+    const user = userEvent.setup()
+    renderBoard()
+
+    await user.click(getGridButtons(document.body)[0])
+    await user.click(getButtonForText("Alice (2h)"))
+    await user.click(getGridButtons(document.body)[1])
+    await user.click(getGridButtons(document.body)[0])
+
+    expect(screen.getByText("assignments.drafts.added")).toBeInTheDocument()
+  })
+
+  it("lists summary gaps in weekday then start-time order and jumps to a gap", async () => {
+    const user = userEvent.setup()
+    renderBoard()
+
+    const summary = screen.getByText("assignments.summary.title").closest("aside")
+    if (!summary) {
+      throw new Error("Missing summary side panel")
+    }
+    const gapButtons = within(summary).getAllByRole("button")
+
+    expect(gapButtons.map((button) => button.textContent)).toEqual([
+      "templates.weekday.mon assignments.shiftSummaryassignments.headcount",
+      "templates.weekday.mon assignments.shiftSummaryassignments.headcount",
+      "templates.weekday.tue assignments.shiftSummaryassignments.headcount",
+    ])
+
+    await user.click(gapButtons[2])
+
+    expect(screen.getByText("Kitchen")).toBeInTheDocument()
+  })
+
+  it("shows an empty summary state when every cell is full", () => {
+    renderBoard({ slots: fullSlots })
+
+    expect(screen.getByText("assignments.summary.noGaps")).toBeInTheDocument()
+  })
+
+  it("disables staging in read-only mode", async () => {
     const user = userEvent.setup()
     const onAssign = vi.fn()
     const onUnassign = vi.fn()
+    renderBoard({ isReadOnly: true, onAssign, onUnassign })
 
-    const { container } = renderWithProviders(
-      <AssignmentBoard
-        isPending={false}
-        isReadOnly
-        onAssign={onAssign}
-        onUnassign={onUnassign}
-        slots={slots}
-      />,
-    )
-
-    await user.click(getActualButtonByText(container, "Alice (2h)"))
+    await user.click(getGridButtons(document.body)[0])
+    await user.click(getButtonForText("Alice (2h)"))
+    await user.click(getButtonForText("Bob (2h)"))
 
     expect(onAssign).not.toHaveBeenCalled()
     expect(onUnassign).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole("button", { name: "assignments.drafts.submit" }),
+    ).toBeDisabled()
   })
 
-  it("resolves a drag MOVE from one cell to an open cell", () => {
+  it("resolves a cross-cell drag from assigned chip as remove plus add", () => {
     const state = resolveAssignmentBoardDrop({
       slots,
       draftState: emptyDraftState,
+      selection: { slotID: 1, weekday: 1 },
       source: {
-        kind: "assignment",
+        kind: "assigned",
         assignment: {
           assignment_id: 20,
           user_id: 11,
@@ -171,88 +262,17 @@ describe("AssignmentBoard", () => {
         kind: "cell",
         slotID: 2,
         weekday: 1,
-        positionID: 101,
       },
     })
 
     expect(state.ops.map((op) => op.kind)).toEqual(["unassign", "assign"])
   })
 
-  it("resolves a drag SWAP when an assigned user is dropped on a full cell user", () => {
+  it("resolves a cross-cell drag from candidate chip as one add", () => {
     const state = resolveAssignmentBoardDrop({
       slots,
       draftState: emptyDraftState,
-      source: {
-        kind: "assignment",
-        assignment: {
-          assignment_id: 20,
-          user_id: 11,
-          name: "Bob",
-          email: "bob@example.com",
-        },
-        slotID: 1,
-        weekday: 1,
-        positionID: 101,
-      },
-      target: {
-        kind: "assignment",
-        assignment: {
-          assignment_id: 21,
-          user_id: 13,
-          name: "Cara",
-          email: "cara@example.com",
-        },
-        slotID: 1,
-        weekday: 1,
-        positionID: 102,
-      },
-    })
-
-    expect(state.ops.map((op) => op.kind)).toEqual([
-      "unassign",
-      "unassign",
-      "assign",
-      "assign",
-    ])
-  })
-
-  it("resolves a candidate drag REPLACE when dropped on an assigned user", () => {
-    const state = resolveAssignmentBoardDrop({
-      slots,
-      draftState: emptyDraftState,
-      source: {
-        kind: "candidate",
-        candidate: {
-          user_id: 10,
-          name: "Alice",
-          email: "alice@example.com",
-        },
-        slotID: 1,
-        weekday: 1,
-        positionID: 101,
-      },
-      target: {
-        kind: "assignment",
-        assignment: {
-          assignment_id: 20,
-          user_id: 11,
-          name: "Bob",
-          email: "bob@example.com",
-        },
-        slotID: 1,
-        weekday: 1,
-        positionID: 101,
-      },
-    })
-
-    expect(state.ops.map((op) => op.kind)).toEqual(["unassign", "assign"])
-    expect(state.ops[1]).toMatchObject({ kind: "assign", userID: 10 })
-  })
-
-  it("resolves a candidate drag ADD when dropped on an open cell", () => {
-    const state = resolveAssignmentBoardDrop({
-      slots,
-      draftState: emptyDraftState,
+      selection: { slotID: 1, weekday: 1 },
       source: {
         kind: "candidate",
         candidate: {
@@ -268,12 +288,37 @@ describe("AssignmentBoard", () => {
         kind: "cell",
         slotID: 2,
         weekday: 1,
-        positionID: 101,
       },
     })
 
     expect(state.ops).toHaveLength(1)
     expect(state.ops[0]).toMatchObject({ kind: "assign", userID: 10 })
+  })
+
+  it("rejects drops on off-schedule cells", () => {
+    const state = resolveAssignmentBoardDrop({
+      slots,
+      draftState: emptyDraftState,
+      selection: { slotID: 1, weekday: 1 },
+      source: {
+        kind: "candidate",
+        candidate: {
+          user_id: 10,
+          name: "Alice",
+          email: "alice@example.com",
+        },
+        slotID: 1,
+        weekday: 1,
+        positionID: 101,
+      },
+      target: {
+        kind: "cell",
+        slotID: 999,
+        weekday: 6,
+      },
+    })
+
+    expect(state.ops).toHaveLength(0)
   })
 
   it("stops draft submit on the first failure and keeps the rest queued", async () => {
@@ -282,21 +327,16 @@ describe("AssignmentBoard", () => {
     const onDraftAssign = vi.fn().mockRejectedValueOnce(new Error("request failed"))
     const onDraftRefresh = vi.fn().mockResolvedValue(undefined)
 
-    renderWithProviders(
-      <AssignmentBoard
-        isPending={false}
-        isReadOnly={false}
-        initialDraftState={makeSubmitDraftState()}
-        onAssign={vi.fn()}
-        onDraftAssign={onDraftAssign}
-        onDraftRefresh={onDraftRefresh}
-        onDraftUnassign={onDraftUnassign}
-        onUnassign={vi.fn()}
-        slots={slots}
-      />,
-    )
+    renderBoard({
+      initialDraftState: makeSubmitDraftState(),
+      onDraftAssign,
+      onDraftRefresh,
+      onDraftUnassign,
+    })
 
-    await user.click(screen.getByRole("button", { name: "assignments.drafts.submit" }))
+    await user.click(
+      screen.getByRole("button", { name: "assignments.drafts.submit" }),
+    )
 
     await screen.findByText("request failed")
 
@@ -311,32 +351,25 @@ describe("AssignmentBoard", () => {
     const onDraftAssign = vi.fn().mockResolvedValue(undefined)
     const onDraftRefresh = vi.fn().mockResolvedValue(undefined)
 
-    renderWithProviders(
-      <AssignmentBoard
-        isPending={false}
-        isReadOnly={false}
-        initialDraftState={{
-          ops: [
-            {
-              id: "assign-1",
-              kind: "assign",
-              slotID: 2,
-              weekday: 1,
-              positionID: 101,
-              userID: 10,
-              userName: "Alice",
-              userEmail: "alice@example.com",
-              isUnqualified: false,
-            },
-          ],
-        }}
-        onAssign={vi.fn()}
-        onDraftAssign={onDraftAssign}
-        onDraftRefresh={onDraftRefresh}
-        onUnassign={vi.fn()}
-        slots={slots}
-      />,
-    )
+    renderBoard({
+      initialDraftState: {
+        ops: [
+          {
+            id: "assign-1",
+            kind: "assign",
+            slotID: 2,
+            weekday: 1,
+            positionID: 101,
+            userID: 10,
+            userName: "Alice",
+            userEmail: "alice@example.com",
+            isUnqualified: false,
+          },
+        ],
+      },
+      onDraftAssign,
+      onDraftRefresh,
+    })
 
     const submitButton = screen.getByRole("button", {
       name: "assignments.drafts.submit",
@@ -352,6 +385,46 @@ describe("AssignmentBoard", () => {
     expect(submitButton).toBeDisabled()
   })
 })
+
+function renderBoard({
+  slots: boardSlots = slots,
+  isReadOnly = false,
+  initialDraftState,
+  onAssign = vi.fn(),
+  onDraftAssign,
+  onDraftRefresh,
+  onDraftUnassign,
+  onUnassign = vi.fn(),
+}: {
+  slots?: AssignmentBoardSlot[]
+  isReadOnly?: boolean
+  initialDraftState?: DraftState
+  onAssign?: ReturnType<typeof vi.fn>
+  onDraftAssign?: ReturnType<typeof vi.fn>
+  onDraftRefresh?: ReturnType<typeof vi.fn>
+  onDraftUnassign?: ReturnType<typeof vi.fn>
+  onUnassign?: ReturnType<typeof vi.fn>
+} = {}) {
+  return renderWithProviders(
+    <AssignmentBoard
+      isPending={false}
+      isReadOnly={isReadOnly}
+      initialDraftState={initialDraftState}
+      onAssign={onAssign as AssignmentBoardProps["onAssign"]}
+      onDraftAssign={
+        onDraftAssign as AssignmentBoardProps["onDraftAssign"] | undefined
+      }
+      onDraftRefresh={
+        onDraftRefresh as AssignmentBoardProps["onDraftRefresh"] | undefined
+      }
+      onDraftUnassign={
+        onDraftUnassign as AssignmentBoardProps["onDraftUnassign"] | undefined
+      }
+      onUnassign={onUnassign as AssignmentBoardProps["onUnassign"]}
+      slots={boardSlots}
+    />,
+  )
+}
 
 function makeSubmitDraftState(): DraftState {
   return {
@@ -392,13 +465,20 @@ function makeSubmitDraftState(): DraftState {
   }
 }
 
-function getActualButtonByText(container: HTMLElement, text: string) {
-  const button = Array.from(container.querySelectorAll("button")).find(
-    (element) => element.textContent === text,
-  )
+function getGridButtons(container: HTMLElement) {
+  const table = container.querySelector("table")
+  if (!table) {
+    throw new Error("Missing assignment grid")
+  }
 
+  return within(table).getAllByRole("button")
+}
+
+function getButtonForText(text: string) {
+  const node = screen.getByText(text)
+  const button = node.closest("button")
   if (!button) {
-    throw new Error(`Unable to find button: ${text}`)
+    throw new Error(`Unable to find button for text: ${text}`)
   }
 
   return button

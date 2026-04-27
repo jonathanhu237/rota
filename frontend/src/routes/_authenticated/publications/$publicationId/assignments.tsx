@@ -4,7 +4,6 @@ import { Link, createFileRoute, redirect } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
 import { AssignmentBoard } from "@/components/assignments/assignment-board"
-import { isAssignmentBoardMutable } from "@/components/assignments/assignment-board-state"
 import { AutoAssignDialog } from "@/components/publications/auto-assign-dialog"
 import {
   Card,
@@ -145,7 +144,11 @@ function PublicationAssignmentsPage() {
     )
   }
 
-  const isReadOnly = !isAssignmentBoardMutable(board.publication.state)
+  const publicationState = board.publication.state
+  const isReadOnly =
+    publicationState !== "ASSIGNING" &&
+    publicationState !== "PUBLISHED" &&
+    publicationState !== "ACTIVE"
   const canAutoAssign = board.publication.state === "ASSIGNING"
   const isPending =
     updateAssignmentMutation.isPending || autoAssignMutation.isPending

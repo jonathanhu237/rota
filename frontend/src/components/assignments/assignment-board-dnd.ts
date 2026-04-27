@@ -1,10 +1,8 @@
 import {
-  applyDraftToBoard,
   enqueueAdd,
   enqueueMove,
-  enqueueReplace,
-  enqueueSwap,
-  getBoardCellKey,
+  enqueueRemove,
+  removeDraftOp,
   type DraftAssignmentInput,
   type DraftState,
   type DraftUserInput,
@@ -15,9 +13,14 @@ import type {
   AssignmentBoardSlot,
 } from "@/lib/types"
 
+export type AssignmentBoardSelection = {
+  slotID: number
+  weekday: number
+}
+
 export type AssignmentBoardDragSource =
   | {
-      kind: "assignment"
+      kind: "assigned"
       assignment: ProjectedAssignment
       slotID: number
       weekday: number
@@ -31,163 +34,117 @@ export type AssignmentBoardDragSource =
       positionID: number
     }
 
-export type AssignmentBoardDropTarget =
-  | {
-      kind: "cell"
-      slotID: number
-      weekday: number
-      positionID: number
-    }
-  | {
-      kind: "assignment"
-      assignment: ProjectedAssignment
-      slotID: number
-      weekday: number
-      positionID: number
-    }
+export type AssignmentBoardDropTarget = {
+  kind: "cell"
+  slotID: number
+  weekday: number
+}
 
 export function resolveAssignmentBoardDrop({
   slots,
   draftState,
+  selection,
   source,
   target,
 }: {
   slots: AssignmentBoardSlot[]
   draftState: DraftState
+  selection: AssignmentBoardSelection | null
   source: AssignmentBoardDragSource
   target: AssignmentBoardDropTarget
 }) {
-  const projected = applyDraftToBoard(slots, draftState)
-  const targetCell = findBoardPosition(
-    slots,
-    target.slotID,
-    target.weekday,
-    target.positionID,
-  )
-
-  if (!targetCell) {
+  const targetSlot = findBoardSlot(slots, target.slotID, target.weekday)
+  if (!targetSlot) {
     return draftState
   }
 
-  const targetAssignments =
-    projected.get(
-      getBoardCellKey(target.slotID, target.weekday, target.positionID),
-    ) ?? []
-  const hasOpenHeadcount =
-    targetAssignments.length < targetCell.position.required_headcount
+  const targetCell = getTargetCell(slots, target, source)
 
-  if (source.kind === "assignment") {
-    if (
-      source.slotID === target.slotID &&
-      source.weekday === target.weekday &&
-      source.positionID === target.positionID
-    ) {
-      return draftState
-    }
+  if (
+    selection?.slotID === target.slotID &&
+    selection.weekday === target.weekday
+  ) {
+    return stageSourceAsClick(draftState, source, targetCell)
+  }
 
-    const dragged = assignmentToDraftInput(
+  if (source.kind === "assigned") {
+    return enqueueMove(
+      draftState,
+      assignmentToDraftInput(
+        source.assignment,
+        source.slotID,
+        source.weekday,
+        source.positionID,
+      ),
+      targetCell,
+    )
+  }
+
+  return enqueueAdd(draftState, candidateToDraftUser(source.candidate), targetCell)
+}
+
+function stageSourceAsClick(
+  draftState: DraftState,
+  source: AssignmentBoardDragSource,
+  targetCell: {
+    slotID: number
+    weekday: number
+    positionID: number
+    isUnqualified: boolean
+  },
+) {
+  if (source.kind === "candidate") {
+    return enqueueAdd(draftState, candidateToDraftUser(source.candidate), {
+      ...targetCell,
+      positionID: source.positionID,
+    })
+  }
+
+  if (source.assignment.draftOpID) {
+    return removeDraftOp(draftState, source.assignment.draftOpID)
+  }
+
+  return enqueueRemove(
+    draftState,
+    assignmentToDraftInput(
       source.assignment,
       source.slotID,
       source.weekday,
       source.positionID,
-    )
+    ),
+  )
+}
 
-    if (target.kind === "assignment" && !hasOpenHeadcount) {
-      return enqueueSwap(
-        draftState,
-        dragged,
-        assignmentToDraftInput(
-          target.assignment,
-          target.slotID,
-          target.weekday,
-          target.positionID,
-        ),
-        {
-          slotID: target.slotID,
-          weekday: target.weekday,
-          positionID: target.positionID,
-          isUnqualified: !isUserQualifiedForCell(
-            slots,
-            target.slotID,
-            target.weekday,
-            target.positionID,
-            source.assignment.user_id,
-          ),
-        },
-        {
-          slotID: source.slotID,
-          weekday: source.weekday,
-          positionID: source.positionID,
-          isUnqualified: !isUserQualifiedForCell(
-            slots,
-            source.slotID,
-            source.weekday,
-            source.positionID,
-            target.assignment.user_id,
-          ),
-        },
-      )
-    }
+function getTargetCell(
+  slots: AssignmentBoardSlot[],
+  target: AssignmentBoardDropTarget,
+  source: AssignmentBoardDragSource,
+) {
+  const userID =
+    source.kind === "assigned"
+      ? source.assignment.user_id
+      : source.candidate.user_id
+  const hasPosition = cellHasPosition(
+    slots,
+    target.slotID,
+    target.weekday,
+    source.positionID,
+  )
 
-    if (!hasOpenHeadcount) {
-      return draftState
-    }
-
-    return enqueueMove(draftState, dragged, {
-      slotID: target.slotID,
-      weekday: target.weekday,
-      positionID: target.positionID,
-      isUnqualified: !isUserQualifiedForCell(
+  return {
+    slotID: target.slotID,
+    weekday: target.weekday,
+    positionID: source.positionID,
+    isUnqualified:
+      !hasPosition ||
+      !isUserQualifiedForCell(
         slots,
         target.slotID,
         target.weekday,
-        target.positionID,
-        source.assignment.user_id,
+        source.positionID,
+        userID,
       ),
-    })
   }
-
-  if (target.kind === "assignment") {
-    return enqueueReplace(
-      draftState,
-      assignmentToDraftInput(
-        target.assignment,
-        target.slotID,
-        target.weekday,
-        target.positionID,
-      ),
-      candidateToDraftUser(source.candidate),
-      {
-        slotID: target.slotID,
-        weekday: target.weekday,
-        positionID: target.positionID,
-        isUnqualified: !isUserQualifiedForCell(
-          slots,
-          target.slotID,
-          target.weekday,
-          target.positionID,
-          source.candidate.user_id,
-        ),
-      },
-    )
-  }
-
-  if (!hasOpenHeadcount) {
-    return draftState
-  }
-
-  return enqueueAdd(draftState, candidateToDraftUser(source.candidate), {
-    slotID: target.slotID,
-    weekday: target.weekday,
-    positionID: target.positionID,
-    isUnqualified: !isUserQualifiedForCell(
-      slots,
-      target.slotID,
-      target.weekday,
-      target.positionID,
-      source.candidate.user_id,
-    ),
-  })
 }
 
 function assignmentToDraftInput(
@@ -218,27 +175,34 @@ function candidateToDraftUser(
   }
 }
 
+function findBoardSlot(
+  slots: AssignmentBoardSlot[],
+  slotID: number,
+  weekday: number,
+) {
+  return slots.find(
+    (entry) => entry.slot.id === slotID && entry.slot.weekday === weekday,
+  )
+}
+
+function cellHasPosition(
+  slots: AssignmentBoardSlot[],
+  slotID: number,
+  weekday: number,
+  positionID: number,
+) {
+  return Boolean(findBoardPosition(slots, slotID, weekday, positionID))
+}
+
 function findBoardPosition(
   slots: AssignmentBoardSlot[],
   slotID: number,
   weekday: number,
   positionID: number,
 ) {
-  const slotEntry = slots.find(
-    (entry) => entry.slot.id === slotID && entry.slot.weekday === weekday,
-  )
-  const positionEntry = slotEntry?.positions.find(
+  return findBoardSlot(slots, slotID, weekday)?.positions.find(
     (entry) => entry.position.id === positionID,
   )
-
-  if (!slotEntry || !positionEntry) {
-    return null
-  }
-
-  return {
-    slot: slotEntry,
-    position: positionEntry,
-  }
 }
 
 function isUserQualifiedForCell(
@@ -253,7 +217,7 @@ function isUserQualifiedForCell(
     slotID,
     weekday,
     positionID,
-  )?.position
+  )
   if (!positionEntry) {
     return false
   }
