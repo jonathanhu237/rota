@@ -22,6 +22,8 @@ describe("UsersTable", () => {
             is_admin: false,
             status: "pending",
             version: 1,
+            language_preference: null,
+            theme_preference: null,
           },
           {
             id: 2,
@@ -30,6 +32,8 @@ describe("UsersTable", () => {
             is_admin: false,
             status: "active",
             version: 1,
+            language_preference: null,
+            theme_preference: null,
           },
         ]}
         isLoading={false}

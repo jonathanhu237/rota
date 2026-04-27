@@ -48,6 +48,18 @@ type UpdateUserPasswordParams struct {
 	Version      int
 }
 
+type NullableStringField struct {
+	Set   bool
+	Value *string
+}
+
+type UpdateOwnProfileParams struct {
+	ID                 int64
+	Name               NullableStringField
+	LanguagePreference NullableStringField
+	ThemePreference    NullableStringField
+}
+
 type SetUserPasswordParams struct {
 	ID           int64
 	PasswordHash string
@@ -70,7 +82,7 @@ func NewUserRepository(db DBTX) *UserRepository {
 
 func (r *UserRepository) GetByID(ctx context.Context, id int64) (*model.User, error) {
 	const query = `
-		SELECT id, email, password_hash, name, is_admin, status, version
+		SELECT id, email, password_hash, name, is_admin, status, version, language_preference, theme_preference
 		FROM users
 		WHERE id = $1;
 	`
@@ -88,7 +100,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*model.User, er
 
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*model.User, error) {
 	const query = `
-		SELECT id, email, password_hash, name, is_admin, status, version
+		SELECT id, email, password_hash, name, is_admin, status, version, language_preference, theme_preference
 		FROM users
 		WHERE email = $1;
 	`
@@ -121,7 +133,7 @@ func (r *UserRepository) ListPaginated(ctx context.Context, params ListUsersPara
 	}
 
 	const query = `
-		SELECT id, email, password_hash, name, is_admin, status, version
+		SELECT id, email, password_hash, name, is_admin, status, version, language_preference, theme_preference
 		FROM users
 		ORDER BY id ASC
 		LIMIT $1 OFFSET $2;
@@ -174,7 +186,7 @@ func (r *UserRepository) Create(ctx context.Context, params CreateUserParams) (*
 	const query = `
 		INSERT INTO users (email, password_hash, name, is_admin, status)
 		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, email, password_hash, name, is_admin, status, version;
+		RETURNING id, email, password_hash, name, is_admin, status, version, language_preference, theme_preference;
 	`
 
 	user := &model.User{}
@@ -204,7 +216,7 @@ func (r *UserRepository) Update(ctx context.Context, params UpdateUserParams) (*
 		UPDATE users
 		SET email = $2, name = $3, is_admin = $4, version = version + 1
 		WHERE id = $1 AND version = $5
-		RETURNING id, email, password_hash, name, is_admin, status, version;
+		RETURNING id, email, password_hash, name, is_admin, status, version, language_preference, theme_preference;
 	`
 
 	user := &model.User{}
@@ -239,7 +251,7 @@ func (r *UserRepository) UpdateStatus(ctx context.Context, params UpdateUserStat
 		UPDATE users
 		SET status = $2, version = version + 1
 		WHERE id = $1 AND version = $3
-		RETURNING id, email, password_hash, name, is_admin, status, version;
+		RETURNING id, email, password_hash, name, is_admin, status, version, language_preference, theme_preference;
 	`
 
 	user := &model.User{}
@@ -268,7 +280,7 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, params UpdateUserPa
 		UPDATE users
 		SET password_hash = $2, version = version + 1
 		WHERE id = $1 AND version = $3
-		RETURNING id, email, password_hash, name, is_admin, status, version;
+		RETURNING id, email, password_hash, name, is_admin, status, version, language_preference, theme_preference;
 	`
 
 	user := &model.User{}
@@ -292,12 +304,93 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, params UpdateUserPa
 	return user, nil
 }
 
+func (r *UserRepository) GetByIDForUpdate(ctx context.Context, id int64) (*model.User, error) {
+	const query = `
+		SELECT id, email, password_hash, name, is_admin, status, version, language_preference, theme_preference
+		FROM users
+		WHERE id = $1
+		FOR UPDATE;
+	`
+
+	user := &model.User{}
+	err := scanUser(r.db.QueryRowContext(ctx, query, id), user)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrUserNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+func (r *UserRepository) UpdatePasswordByID(ctx context.Context, id int64, passwordHash string) (*model.User, error) {
+	const query = `
+		UPDATE users
+		SET password_hash = $2, version = version + 1
+		WHERE id = $1
+		RETURNING id, email, password_hash, name, is_admin, status, version, language_preference, theme_preference;
+	`
+
+	user := &model.User{}
+	err := scanUser(r.db.QueryRowContext(ctx, query, id, passwordHash), user)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrUserNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+func (r *UserRepository) UpdatePreferencesAndName(
+	ctx context.Context,
+	params UpdateOwnProfileParams,
+) (*model.User, error) {
+	if !params.Name.Set && !params.LanguagePreference.Set && !params.ThemePreference.Set {
+		return r.GetByID(ctx, params.ID)
+	}
+
+	const query = `
+		UPDATE users
+		SET
+			name = CASE WHEN $2 THEN $3 ELSE name END,
+			language_preference = CASE WHEN $4 THEN $5 ELSE language_preference END,
+			theme_preference = CASE WHEN $6 THEN $7 ELSE theme_preference END,
+			version = version + 1
+		WHERE id = $1
+		RETURNING id, email, password_hash, name, is_admin, status, version, language_preference, theme_preference;
+	`
+
+	user := &model.User{}
+	err := scanUser(
+		r.db.QueryRowContext(
+			ctx,
+			query,
+			params.ID,
+			params.Name.Set,
+			sqlNullableString(params.Name.Value),
+			params.LanguagePreference.Set,
+			sqlNullableString(params.LanguagePreference.Value),
+			params.ThemePreference.Set,
+			sqlNullableString(params.ThemePreference.Value),
+		),
+		user,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrUserNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
 func (r *UserRepository) SetPasswordAndStatus(ctx context.Context, params SetUserPasswordParams) (*model.User, error) {
 	const query = `
 		UPDATE users
 		SET password_hash = $2, status = $3, version = version + 1
 		WHERE id = $1
-		RETURNING id, email, password_hash, name, is_admin, status, version;
+		RETURNING id, email, password_hash, name, is_admin, status, version, language_preference, theme_preference;
 	`
 
 	user := &model.User{}
@@ -344,6 +437,8 @@ type userScanner interface {
 
 func scanUser(scanner userScanner, user *model.User) error {
 	var passwordHash sql.NullString
+	var languagePreference sql.NullString
+	var themePreference sql.NullString
 	if err := scanner.Scan(
 		&user.ID,
 		&user.Email,
@@ -352,6 +447,8 @@ func scanUser(scanner userScanner, user *model.User) error {
 		&user.IsAdmin,
 		&user.Status,
 		&user.Version,
+		&languagePreference,
+		&themePreference,
 	); err != nil {
 		return err
 	}
@@ -360,5 +457,22 @@ func scanUser(scanner userScanner, user *model.User) error {
 	if passwordHash.Valid {
 		user.PasswordHash = passwordHash.String
 	}
+	user.LanguagePreference = nil
+	if languagePreference.Valid {
+		value := model.LanguagePreference(languagePreference.String)
+		user.LanguagePreference = &value
+	}
+	user.ThemePreference = nil
+	if themePreference.Valid {
+		value := model.ThemePreference(themePreference.String)
+		user.ThemePreference = &value
+	}
 	return nil
+}
+
+func sqlNullableString(value *string) sql.NullString {
+	if value == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: *value, Valid: true}
 }

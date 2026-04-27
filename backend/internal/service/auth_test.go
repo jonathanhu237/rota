@@ -10,6 +10,7 @@ import (
 	"github.com/jonathanhu237/rota/backend/internal/audit/audittest"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type authUserRepositoryMock struct {
@@ -54,6 +55,43 @@ func (m *authSessionStoreMock) DeleteUserSessions(ctx context.Context, userID in
 		return nil
 	}
 	return m.deleteUserSessionsFunc(ctx, userID)
+}
+
+type authPasswordTxRunnerMock struct {
+	userRepo    repository.AuthPasswordUserRepository
+	sessionRepo repository.AuthPasswordSessionRepository
+}
+
+func (m *authPasswordTxRunnerMock) WithinTx(
+	ctx context.Context,
+	fn func(
+		ctx context.Context,
+		userRepo repository.AuthPasswordUserRepository,
+		sessionRepo repository.AuthPasswordSessionRepository,
+	) error,
+) error {
+	return fn(ctx, m.userRepo, m.sessionRepo)
+}
+
+type authPasswordUserRepositoryMock struct {
+	getByIDForUpdateFunc func(ctx context.Context, id int64) (*model.User, error)
+	updatePasswordFunc   func(ctx context.Context, id int64, passwordHash string) (*model.User, error)
+}
+
+func (m *authPasswordUserRepositoryMock) GetByIDForUpdate(ctx context.Context, id int64) (*model.User, error) {
+	return m.getByIDForUpdateFunc(ctx, id)
+}
+
+func (m *authPasswordUserRepositoryMock) UpdatePasswordByID(ctx context.Context, id int64, passwordHash string) (*model.User, error) {
+	return m.updatePasswordFunc(ctx, id, passwordHash)
+}
+
+type authPasswordSessionRepositoryMock struct {
+	deleteOtherSessionsFunc func(ctx context.Context, userID int64, currentSessionID string) (int, error)
+}
+
+func (m *authPasswordSessionRepositoryMock) DeleteOtherSessions(ctx context.Context, userID int64, currentSessionID string) (int, error) {
+	return m.deleteOtherSessionsFunc(ctx, userID, currentSessionID)
 }
 
 func TestAuthServiceLogin(t *testing.T) {
@@ -815,6 +853,140 @@ func TestAuthServiceSetupPasswordLength(t *testing.T) {
 	t.Run("rejects six multibyte code points", func(t *testing.T) {
 		t.Parallel()
 		assertSetupPasswordLengthError(t, "你好世界你好")
+	})
+}
+
+func TestAuthServiceChangeOwnPassword(t *testing.T) {
+	t.Run("wrong current password is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		deleteCalled := false
+		service := NewAuthService(
+			&authUserRepositoryMock{},
+			&authSessionStoreMock{},
+			WithAuthPasswordTxRunner(&authPasswordTxRunnerMock{
+				userRepo: &authPasswordUserRepositoryMock{
+					getByIDForUpdateFunc: func(ctx context.Context, id int64) (*model.User, error) {
+						return &model.User{
+							ID:           id,
+							PasswordHash: mustHashPassword(t, "correct-password"),
+						}, nil
+					},
+					updatePasswordFunc: func(ctx context.Context, id int64, passwordHash string) (*model.User, error) {
+						t.Fatalf("password should not be updated")
+						return nil, nil
+					},
+				},
+				sessionRepo: &authPasswordSessionRepositoryMock{
+					deleteOtherSessionsFunc: func(ctx context.Context, userID int64, currentSessionID string) (int, error) {
+						deleteCalled = true
+						return 0, nil
+					},
+				},
+			}),
+		)
+
+		_, err := service.ChangeOwnPassword(context.Background(), 7, "session-a", "wrong-password", "new-password")
+		if !errors.Is(err, ErrInvalidCurrentPassword) {
+			t.Fatalf("expected ErrInvalidCurrentPassword, got %v", err)
+		}
+		if deleteCalled {
+			t.Fatalf("other sessions should not be deleted on wrong current password")
+		}
+	})
+
+	t.Run("too short new password is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		updateCalled := false
+		service := NewAuthService(
+			&authUserRepositoryMock{},
+			&authSessionStoreMock{},
+			WithAuthPasswordTxRunner(&authPasswordTxRunnerMock{
+				userRepo: &authPasswordUserRepositoryMock{
+					getByIDForUpdateFunc: func(ctx context.Context, id int64) (*model.User, error) {
+						return &model.User{
+							ID:           id,
+							PasswordHash: mustHashPassword(t, "current-password"),
+						}, nil
+					},
+					updatePasswordFunc: func(ctx context.Context, id int64, passwordHash string) (*model.User, error) {
+						updateCalled = true
+						return nil, nil
+					},
+				},
+				sessionRepo: &authPasswordSessionRepositoryMock{
+					deleteOtherSessionsFunc: func(ctx context.Context, userID int64, currentSessionID string) (int, error) {
+						t.Fatalf("other sessions should not be deleted")
+						return 0, nil
+					},
+				},
+			}),
+		)
+
+		_, err := service.ChangeOwnPassword(context.Background(), 7, "session-a", "current-password", "1234567")
+		if !errors.Is(err, model.ErrPasswordTooShort) {
+			t.Fatalf("expected ErrPasswordTooShort, got %v", err)
+		}
+		if updateCalled {
+			t.Fatalf("password should not be updated for short new password")
+		}
+	})
+
+	t.Run("success updates password, revokes other sessions, and emits audit", func(t *testing.T) {
+		t.Parallel()
+
+		var updatedHash string
+		service := NewAuthService(
+			&authUserRepositoryMock{},
+			&authSessionStoreMock{},
+			WithAuthPasswordTxRunner(&authPasswordTxRunnerMock{
+				userRepo: &authPasswordUserRepositoryMock{
+					getByIDForUpdateFunc: func(ctx context.Context, id int64) (*model.User, error) {
+						return &model.User{
+							ID:           id,
+							PasswordHash: mustHashPassword(t, "current-password"),
+						}, nil
+					},
+					updatePasswordFunc: func(ctx context.Context, id int64, passwordHash string) (*model.User, error) {
+						if id != 7 {
+							t.Fatalf("expected user ID 7, got %d", id)
+						}
+						updatedHash = passwordHash
+						return &model.User{ID: id, PasswordHash: passwordHash}, nil
+					},
+				},
+				sessionRepo: &authPasswordSessionRepositoryMock{
+					deleteOtherSessionsFunc: func(ctx context.Context, userID int64, currentSessionID string) (int, error) {
+						if userID != 7 || currentSessionID != "session-a" {
+							t.Fatalf("unexpected delete other sessions input: user=%d session=%q", userID, currentSessionID)
+						}
+						return 2, nil
+					},
+				},
+			}),
+		)
+		stub := audittest.New()
+		ctx := audit.WithActor(stub.ContextWith(context.Background()), 7)
+
+		revoked, err := service.ChangeOwnPassword(ctx, 7, "session-a", "current-password", "new-password")
+		if err != nil {
+			t.Fatalf("ChangeOwnPassword returned error: %v", err)
+		}
+		if revoked != 2 {
+			t.Fatalf("expected revoked count 2, got %d", revoked)
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(updatedHash), []byte("new-password")); err != nil {
+			t.Fatalf("updated hash does not match new password: %v", err)
+		}
+
+		event := stub.FindByAction(audit.ActionAuthPasswordChange)
+		if event == nil {
+			t.Fatalf("expected password change audit event, got %v", stub.Actions())
+		}
+		if event.Metadata["revoked_session_count"] != 2 {
+			t.Fatalf("unexpected audit metadata: %+v", event.Metadata)
+		}
 	})
 }
 

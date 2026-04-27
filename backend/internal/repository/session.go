@@ -12,11 +12,18 @@ import (
 var ErrSessionNotFound = errors.New("session not found")
 
 type SessionRepository struct {
-	db      *sql.DB
+	db      DBTX
 	expires time.Duration
 }
 
 func NewSessionRepository(db *sql.DB, expires time.Duration) *SessionRepository {
+	return &SessionRepository{
+		db:      db,
+		expires: expires,
+	}
+}
+
+func NewSessionRepositoryWithDBTX(db DBTX, expires time.Duration) *SessionRepository {
 	return &SessionRepository{
 		db:      db,
 		expires: expires,
@@ -97,6 +104,23 @@ func (r *SessionRepository) DeleteUserSessions(ctx context.Context, userID int64
 
 	_, err := r.db.ExecContext(ctx, query, userID)
 	return err
+}
+
+func (r *SessionRepository) DeleteOtherSessions(ctx context.Context, userID int64, currentSessionID string) (int, error) {
+	const query = `
+		DELETE FROM sessions
+		WHERE user_id = $1 AND id != $2;
+	`
+
+	result, err := r.db.ExecContext(ctx, query, userID, currentSessionID)
+	if err != nil {
+		return 0, err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return int(count), nil
 }
 
 func generateSessionID() (string, error) {

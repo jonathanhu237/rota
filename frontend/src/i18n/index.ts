@@ -4,11 +4,12 @@ import { initReactI18next } from "react-i18next"
 import en from "./locales/en.json"
 import zh from "./locales/zh.json"
 
-const languageStorageKey = "rota-language"
+export const languageStorageKey = "rota:lang"
+const legacyLanguageStorageKey = "rota-language"
 
-function normalizeLanguage(language?: string | null) {
+export function normalizeLanguage(language?: string | null) {
   if (!language) {
-    return "en"
+    return "zh"
   }
 
   return language.toLowerCase().startsWith("zh") ? "zh" : "en"
@@ -19,7 +20,9 @@ function getInitialLanguage() {
     return "en"
   }
 
-  const storedLanguage = window.localStorage.getItem(languageStorageKey)
+  const storedLanguage =
+    window.localStorage.getItem(languageStorageKey) ??
+    window.localStorage.getItem(legacyLanguageStorageKey)
   if (storedLanguage === "en" || storedLanguage === "zh") {
     return storedLanguage
   }
@@ -42,11 +45,13 @@ i18n.use(initReactI18next).init({
 
 if (typeof window !== "undefined") {
   i18n.on("languageChanged", (language) => {
-    window.localStorage.setItem(
-      languageStorageKey,
-      normalizeLanguage(language),
-    )
+    window.localStorage.setItem(languageStorageKey, normalizeLanguage(language))
   })
+}
+
+export function applyLanguagePreference(language: "zh" | "en") {
+  window.localStorage.setItem(languageStorageKey, language)
+  return i18n.changeLanguage(language)
 }
 
 export default i18n

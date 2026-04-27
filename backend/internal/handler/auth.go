@@ -20,6 +20,7 @@ type authService interface {
 	RequestPasswordReset(ctx context.Context, emailAddress string) error
 	PreviewSetupToken(ctx context.Context, rawToken string) (*service.SetupTokenPreview, error)
 	SetupPassword(ctx context.Context, input service.SetupPasswordInput) error
+	ChangeOwnPassword(ctx context.Context, viewerID int64, currentSessionID, currentPassword, newPassword string) (int, error)
 	Authenticate(ctx context.Context, sessionID string) (*service.AuthenticateResult, error)
 	Logout(ctx context.Context, sessionID string) error
 }
@@ -40,6 +41,11 @@ type passwordResetRequest struct {
 type setupPasswordRequest struct {
 	Token    string `json:"token"`
 	Password string `json:"password"`
+}
+
+type changePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
 }
 
 type authUserResponse struct {
@@ -158,6 +164,48 @@ func (h *AuthHandler) SetupPassword(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusGone, "TOKEN_EXPIRED", "Token expired")
 		case errors.Is(err, model.ErrTokenUsed):
 			writeError(w, http.StatusGone, "TOKEN_USED", "Token already used")
+		default:
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUserFromRequest(r)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+		return
+	}
+	cookie, err := r.Cookie(sessionCookieName)
+	if err != nil || cookie.Value == "" {
+		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized")
+		return
+	}
+
+	var req changePasswordRequest
+	if err := readJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+
+	_, err = h.authService.ChangeOwnPassword(
+		r.Context(),
+		user.ID,
+		cookie.Value,
+		req.CurrentPassword,
+		req.NewPassword,
+	)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidCurrentPassword):
+			writeError(w, http.StatusUnauthorized, "INVALID_CURRENT_PASSWORD", "Current password is incorrect")
+		case errors.Is(err, model.ErrPasswordTooShort):
+			writeError(w, http.StatusBadRequest, "PASSWORD_TOO_SHORT", "Password must have at least 8 characters")
+		case errors.Is(err, service.ErrInvalidInput):
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request")
 		default:
 			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
 		}

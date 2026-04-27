@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -16,6 +17,7 @@ type userService interface {
 	ResendInvitation(ctx context.Context, userID int64) error
 	GetUserByID(ctx context.Context, id int64) (*model.User, error)
 	UpdateUser(ctx context.Context, input service.UpdateUserInput) (*model.User, error)
+	UpdateOwnProfile(ctx context.Context, input service.UpdateOwnProfileInput) (*model.User, error)
 	UpdateUserStatus(ctx context.Context, input service.UpdateUserStatusInput) (*model.User, error)
 }
 
@@ -48,6 +50,39 @@ type updateUserRequest struct {
 type updateUserStatusRequest struct {
 	Status  model.UserStatus `json:"status"`
 	Version int              `json:"version"`
+}
+
+type optionalStringRequestField struct {
+	Set   bool
+	Value *string
+}
+
+type updateOwnProfileRequest struct {
+	Name               optionalStringRequestField `json:"name"`
+	LanguagePreference optionalStringRequestField `json:"language_preference"`
+	ThemePreference    optionalStringRequestField `json:"theme_preference"`
+}
+
+func (f *optionalStringRequestField) UnmarshalJSON(data []byte) error {
+	f.Set = true
+	if string(data) == "null" {
+		f.Value = nil
+		return nil
+	}
+
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	f.Value = &value
+	return nil
+}
+
+func (f optionalStringRequestField) toServiceField() service.OptionalStringField {
+	return service.OptionalStringField{
+		Set:   f.Set,
+		Value: f.Value,
+	}
 }
 
 func NewUserHandler(userService userService) *UserHandler {
@@ -159,6 +194,35 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	writeData(w, http.StatusOK, userDetailResponse{
 		User: newUserResponse(user),
+	})
+}
+
+func (h *UserHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUserFromRequest(r)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+		return
+	}
+
+	var req updateOwnProfileRequest
+	if err := readJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+
+	updatedUser, err := h.userService.UpdateOwnProfile(r.Context(), service.UpdateOwnProfileInput{
+		ID:                 user.ID,
+		Name:               req.Name.toServiceField(),
+		LanguagePreference: req.LanguagePreference.toServiceField(),
+		ThemePreference:    req.ThemePreference.toServiceField(),
+	})
+	if err != nil {
+		h.writeUserServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, userDetailResponse{
+		User: newUserResponse(updatedUser),
 	})
 }
 

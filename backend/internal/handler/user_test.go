@@ -17,6 +17,7 @@ type stubUserService struct {
 	resendInvitationFunc func(ctx context.Context, userID int64) error
 	getUserByIDFunc      func(ctx context.Context, id int64) (*model.User, error)
 	updateUserFunc       func(ctx context.Context, input service.UpdateUserInput) (*model.User, error)
+	updateOwnProfileFunc func(ctx context.Context, input service.UpdateOwnProfileInput) (*model.User, error)
 	updateUserStatusFunc func(ctx context.Context, input service.UpdateUserStatusInput) (*model.User, error)
 }
 
@@ -38,6 +39,10 @@ func (s *stubUserService) GetUserByID(ctx context.Context, id int64) (*model.Use
 
 func (s *stubUserService) UpdateUser(ctx context.Context, input service.UpdateUserInput) (*model.User, error) {
 	return s.updateUserFunc(ctx, input)
+}
+
+func (s *stubUserService) UpdateOwnProfile(ctx context.Context, input service.UpdateOwnProfileInput) (*model.User, error) {
+	return s.updateOwnProfileFunc(ctx, input)
 }
 
 func (s *stubUserService) UpdateUserStatus(ctx context.Context, input service.UpdateUserStatusInput) (*model.User, error) {
@@ -210,6 +215,75 @@ func TestUserHandler(t *testing.T) {
 		handler.Update(recorder, req)
 
 		assertErrorResponse(t, recorder, http.StatusNotFound, "USER_NOT_FOUND")
+	})
+
+	t.Run("UpdateMe returns updated user", func(t *testing.T) {
+		t.Parallel()
+
+		var received service.UpdateOwnProfileInput
+		handler := NewUserHandler(&stubUserService{
+			updateOwnProfileFunc: func(ctx context.Context, input service.UpdateOwnProfileInput) (*model.User, error) {
+				received = input
+				language := model.LanguagePreferenceEN
+				theme := model.ThemePreferenceDark
+				return &model.User{
+					ID:                 input.ID,
+					Email:              "worker@example.com",
+					Name:               "Alice",
+					Status:             model.UserStatusActive,
+					Version:            2,
+					LanguagePreference: &language,
+					ThemePreference:    &theme,
+				}, nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithUser(jsonRequest(t, http.MethodPut, "/users/me", map[string]any{
+			"name":                "Alice",
+			"language_preference": "en",
+			"theme_preference":    "dark",
+		}), sampleUser())
+
+		handler.UpdateMe(recorder, req)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", recorder.Code)
+		}
+		if received.ID != 1 ||
+			!received.Name.Set ||
+			received.Name.Value == nil ||
+			*received.Name.Value != "Alice" ||
+			!received.LanguagePreference.Set ||
+			received.LanguagePreference.Value == nil ||
+			*received.LanguagePreference.Value != "en" ||
+			!received.ThemePreference.Set ||
+			received.ThemePreference.Value == nil ||
+			*received.ThemePreference.Value != "dark" {
+			t.Fatalf("unexpected service input: %+v", received)
+		}
+		response := decodeJSONResponse[userDetailResponse](t, recorder)
+		if response.User.LanguagePreference == nil || *response.User.LanguagePreference != model.LanguagePreferenceEN {
+			t.Fatalf("unexpected language preference: %+v", response.User.LanguagePreference)
+		}
+	})
+
+	t.Run("UpdateMe rejects unknown fields", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewUserHandler(&stubUserService{
+			updateOwnProfileFunc: func(ctx context.Context, input service.UpdateOwnProfileInput) (*model.User, error) {
+				t.Fatalf("service should not be called for unknown field")
+				return nil, nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithUser(jsonRequest(t, http.MethodPut, "/users/me", map[string]any{
+			"is_admin": true,
+		}), sampleUser())
+
+		handler.UpdateMe(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusBadRequest, "INVALID_REQUEST")
 	})
 
 	t.Run("ResendInvitation returns no content", func(t *testing.T) {

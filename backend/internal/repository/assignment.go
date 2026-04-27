@@ -96,7 +96,7 @@ func (r *PublicationRepository) ListSlotPositions(
 
 func (r *PublicationRepository) GetUserByID(ctx context.Context, id int64) (*model.User, error) {
 	const query = `
-		SELECT id, email, password_hash, name, is_admin, status, version
+		SELECT id, email, password_hash, name, is_admin, status, version, language_preference, theme_preference
 		FROM users
 		WHERE id = $1;
 	`

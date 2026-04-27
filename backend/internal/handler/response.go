@@ -17,12 +17,14 @@ type errorDetail struct {
 }
 
 type userResponse struct {
-	ID      int64            `json:"id"`
-	Email   string           `json:"email"`
-	Name    string           `json:"name"`
-	IsAdmin bool             `json:"is_admin"`
-	Status  model.UserStatus `json:"status"`
-	Version int              `json:"version"`
+	ID                 int64                     `json:"id"`
+	Email              string                    `json:"email"`
+	Name               string                    `json:"name"`
+	IsAdmin            bool                      `json:"is_admin"`
+	Status             model.UserStatus          `json:"status"`
+	Version            int                       `json:"version"`
+	LanguagePreference *model.LanguagePreference `json:"language_preference"`
+	ThemePreference    *model.ThemePreference    `json:"theme_preference"`
 }
 
 type paginationResponse struct {
@@ -185,12 +187,14 @@ type rosterResponse struct {
 
 func newUserResponse(user *model.User) userResponse {
 	return userResponse{
-		ID:      user.ID,
-		Email:   user.Email,
-		Name:    user.Name,
-		IsAdmin: user.IsAdmin,
-		Status:  user.Status,
-		Version: user.Version,
+		ID:                 user.ID,
+		Email:              user.Email,
+		Name:               user.Name,
+		IsAdmin:            user.IsAdmin,
+		Status:             user.Status,
+		Version:            user.Version,
+		LanguagePreference: user.LanguagePreference,
+		ThemePreference:    user.ThemePreference,
 	}
 }
 

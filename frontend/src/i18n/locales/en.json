@@ -96,8 +96,58 @@
     "positions": "Positions",
     "templates": "Templates",
     "publications": "Publications",
+    "toggleTheme": "Toggle theme",
+    "settings": "Settings",
     "logout": "Logout",
     "openNavigation": "Open navigation"
+  },
+  "settings": {
+    "title": "Settings",
+    "description": "Manage your profile, password, language, and theme.",
+    "common": {
+      "save": "Save",
+      "saving": "Saving..."
+    },
+    "profile": {
+      "title": "Profile",
+      "description": "Update the name shown across Rota.",
+      "name": "Name",
+      "saved": "Profile updated."
+    },
+    "password": {
+      "title": "Password",
+      "description": "Change your password. Other signed-in sessions will be signed out.",
+      "current": "Current password",
+      "new": "New password",
+      "confirm": "Confirm new password",
+      "saved": "Password changed. Other devices have been signed out.",
+      "errors": {
+        "default": "Could not change password.",
+        "INVALID_CURRENT_PASSWORD": "Current password is incorrect.",
+        "PASSWORD_TOO_SHORT": "Password must be at least 8 characters."
+      }
+    },
+    "preferences": {
+      "title": "Preferences",
+      "description": "Choose the language and theme used for this account.",
+      "language": "Language",
+      "languageZh": "Chinese",
+      "languageEn": "English",
+      "theme": "Theme",
+      "themeSystem": "System",
+      "themeLight": "Light",
+      "themeDark": "Dark",
+      "saved": "Preferences updated."
+    },
+    "validation": {
+      "nameRequired": "Name is required",
+      "nameMax": "Name must be at most 100 characters",
+      "currentPasswordRequired": "Current password is required",
+      "newPasswordRequired": "New password is required",
+      "confirmPasswordRequired": "Please confirm the new password",
+      "passwordMin": "Password must be at least 8 characters",
+      "passwordMismatch": "Passwords do not match"
+    }
   },
   "dashboard": {
     "welcome": "Welcome, {{name}}",

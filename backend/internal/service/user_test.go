@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -18,13 +19,14 @@ import (
 )
 
 type userRepositoryMock struct {
-	getByIDFunc        func(ctx context.Context, id int64) (*model.User, error)
-	getByEmailFunc     func(ctx context.Context, email string) (*model.User, error)
-	listPaginatedFunc  func(ctx context.Context, params repository.ListUsersParams) ([]*model.User, int, error)
-	createFunc         func(ctx context.Context, params repository.CreateUserParams) (*model.User, error)
-	updateFunc         func(ctx context.Context, params repository.UpdateUserParams) (*model.User, error)
-	updateStatusFunc   func(ctx context.Context, params repository.UpdateUserStatusParams) (*model.User, error)
-	updatePasswordFunc func(ctx context.Context, params repository.UpdateUserPasswordParams) (*model.User, error)
+	getByIDFunc          func(ctx context.Context, id int64) (*model.User, error)
+	getByEmailFunc       func(ctx context.Context, email string) (*model.User, error)
+	listPaginatedFunc    func(ctx context.Context, params repository.ListUsersParams) ([]*model.User, int, error)
+	createFunc           func(ctx context.Context, params repository.CreateUserParams) (*model.User, error)
+	updateFunc           func(ctx context.Context, params repository.UpdateUserParams) (*model.User, error)
+	updateOwnProfileFunc func(ctx context.Context, params repository.UpdateOwnProfileParams) (*model.User, error)
+	updateStatusFunc     func(ctx context.Context, params repository.UpdateUserStatusParams) (*model.User, error)
+	updatePasswordFunc   func(ctx context.Context, params repository.UpdateUserPasswordParams) (*model.User, error)
 }
 
 func (m *userRepositoryMock) GetByID(ctx context.Context, id int64) (*model.User, error) {
@@ -45,6 +47,10 @@ func (m *userRepositoryMock) Create(ctx context.Context, params repository.Creat
 
 func (m *userRepositoryMock) Update(ctx context.Context, params repository.UpdateUserParams) (*model.User, error) {
 	return m.updateFunc(ctx, params)
+}
+
+func (m *userRepositoryMock) UpdatePreferencesAndName(ctx context.Context, params repository.UpdateOwnProfileParams) (*model.User, error) {
+	return m.updateOwnProfileFunc(ctx, params)
 }
 
 func (m *userRepositoryMock) UpdateStatus(ctx context.Context, params repository.UpdateUserStatusParams) (*model.User, error) {
@@ -556,6 +562,120 @@ func TestUserServiceUpdateUserStatus(t *testing.T) {
 		}
 		if len(stub.Events()) != 0 {
 			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
+		}
+	})
+}
+
+func TestUserServiceUpdateOwnProfile(t *testing.T) {
+	t.Run("rejects empty trimmed name", func(t *testing.T) {
+		t.Parallel()
+
+		updateCalled := false
+		service := NewUserService(&userRepositoryMock{
+			updateOwnProfileFunc: func(ctx context.Context, params repository.UpdateOwnProfileParams) (*model.User, error) {
+				updateCalled = true
+				return nil, nil
+			},
+		}, &userSessionStoreMock{})
+
+		name := "   "
+		stub := audittest.New()
+		ctx := stub.ContextWith(context.Background())
+		_, err := service.UpdateOwnProfile(ctx, UpdateOwnProfileInput{
+			ID:   7,
+			Name: OptionalStringField{Set: true, Value: &name},
+		})
+		if !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("expected ErrInvalidInput, got %v", err)
+		}
+		if updateCalled {
+			t.Fatalf("repository update should not run for invalid name")
+		}
+		if len(stub.Events()) != 0 {
+			t.Fatalf("expected no audit events on error, got %v", stub.Actions())
+		}
+	})
+
+	t.Run("rejects out of enum language", func(t *testing.T) {
+		t.Parallel()
+
+		language := "fr"
+		service := NewUserService(&userRepositoryMock{}, &userSessionStoreMock{})
+		_, err := service.UpdateOwnProfile(context.Background(), UpdateOwnProfileInput{
+			ID:                 7,
+			LanguagePreference: OptionalStringField{Set: true, Value: &language},
+		})
+		if !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("expected ErrInvalidInput, got %v", err)
+		}
+	})
+
+	t.Run("rejects out of enum theme", func(t *testing.T) {
+		t.Parallel()
+
+		theme := "sepia"
+		service := NewUserService(&userRepositoryMock{}, &userSessionStoreMock{})
+		_, err := service.UpdateOwnProfile(context.Background(), UpdateOwnProfileInput{
+			ID:              7,
+			ThemePreference: OptionalStringField{Set: true, Value: &theme},
+		})
+		if !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("expected ErrInvalidInput, got %v", err)
+		}
+	})
+
+	t.Run("partial update only touches supplied fields and emits audit", func(t *testing.T) {
+		t.Parallel()
+
+		name := "  Alice  "
+		theme := "dark"
+		var received repository.UpdateOwnProfileParams
+		service := NewUserService(&userRepositoryMock{
+			updateOwnProfileFunc: func(ctx context.Context, params repository.UpdateOwnProfileParams) (*model.User, error) {
+				received = params
+				themePreference := model.ThemePreferenceDark
+				return &model.User{
+					ID:              params.ID,
+					Name:            "Alice",
+					ThemePreference: &themePreference,
+					Version:         2,
+				}, nil
+			},
+		}, &userSessionStoreMock{})
+		stub := audittest.New()
+		ctx := audit.WithActor(stub.ContextWith(context.Background()), 7)
+
+		user, err := service.UpdateOwnProfile(ctx, UpdateOwnProfileInput{
+			ID:              7,
+			Name:            OptionalStringField{Set: true, Value: &name},
+			ThemePreference: OptionalStringField{Set: true, Value: &theme},
+		})
+		if err != nil {
+			t.Fatalf("UpdateOwnProfile returned error: %v", err)
+		}
+		if user.Name != "Alice" || user.ThemePreference == nil || *user.ThemePreference != model.ThemePreferenceDark {
+			t.Fatalf("unexpected user: %+v", user)
+		}
+		if !received.Name.Set || received.Name.Value == nil || *received.Name.Value != "Alice" {
+			t.Fatalf("unexpected name update field: %+v", received.Name)
+		}
+		if received.LanguagePreference.Set {
+			t.Fatalf("language should not be touched: %+v", received.LanguagePreference)
+		}
+		if !received.ThemePreference.Set || received.ThemePreference.Value == nil || *received.ThemePreference.Value != "dark" {
+			t.Fatalf("unexpected theme update field: %+v", received.ThemePreference)
+		}
+
+		event := stub.FindByAction(audit.ActionUserUpdate)
+		if event == nil {
+			t.Fatalf("expected user.update audit event, got %v", stub.Actions())
+		}
+		fields, ok := event.Metadata["fields"].([]string)
+		if !ok {
+			t.Fatalf("expected fields metadata as []string, got %+v", event.Metadata["fields"])
+		}
+		if !reflect.DeepEqual(fields, []string{"name", "theme_preference"}) {
+			t.Fatalf("unexpected fields metadata: %+v", fields)
 		}
 	})
 }

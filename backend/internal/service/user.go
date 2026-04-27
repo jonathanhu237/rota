@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/mail"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/jonathanhu237/rota/backend/internal/audit"
 	"github.com/jonathanhu237/rota/backend/internal/model"
@@ -31,6 +32,7 @@ type userRepository interface {
 	ListPaginated(ctx context.Context, params repository.ListUsersParams) ([]*model.User, int, error)
 	Create(ctx context.Context, params repository.CreateUserParams) (*model.User, error)
 	Update(ctx context.Context, params repository.UpdateUserParams) (*model.User, error)
+	UpdatePreferencesAndName(ctx context.Context, params repository.UpdateOwnProfileParams) (*model.User, error)
 	UpdateStatus(ctx context.Context, params repository.UpdateUserStatusParams) (*model.User, error)
 }
 
@@ -77,6 +79,18 @@ type UpdateUserStatusInput struct {
 	ID      int64
 	Status  model.UserStatus
 	Version int
+}
+
+type OptionalStringField struct {
+	Set   bool
+	Value *string
+}
+
+type UpdateOwnProfileInput struct {
+	ID                 int64
+	Name               OptionalStringField
+	LanguagePreference OptionalStringField
+	ThemePreference    OptionalStringField
 }
 
 func WithSetupFlows(config SetupFlowConfig) UserServiceOption {
@@ -348,6 +362,79 @@ func (s *UserService) UpdateUserStatus(ctx context.Context, input UpdateUserStat
 			"new_status":      string(user.Status),
 		},
 	})
+
+	return user, nil
+}
+
+func (s *UserService) UpdateOwnProfile(ctx context.Context, input UpdateOwnProfileInput) (*model.User, error) {
+	if input.ID <= 0 {
+		return nil, ErrInvalidInput
+	}
+
+	params := repository.UpdateOwnProfileParams{
+		ID: input.ID,
+	}
+	fields := make([]string, 0, 3)
+
+	if input.Name.Set {
+		if input.Name.Value == nil {
+			return nil, ErrInvalidInput
+		}
+		name := strings.TrimSpace(*input.Name.Value)
+		if utf8.RuneCountInString(name) < 1 || utf8.RuneCountInString(name) > 100 {
+			return nil, ErrInvalidInput
+		}
+		params.Name = repository.NullableStringField{Set: true, Value: &name}
+		fields = append(fields, "name")
+	}
+
+	if input.LanguagePreference.Set {
+		if input.LanguagePreference.Value != nil {
+			value := *input.LanguagePreference.Value
+			if value != string(model.LanguagePreferenceZH) && value != string(model.LanguagePreferenceEN) {
+				return nil, ErrInvalidInput
+			}
+		}
+		params.LanguagePreference = repository.NullableStringField{
+			Set:   true,
+			Value: input.LanguagePreference.Value,
+		}
+		fields = append(fields, "language_preference")
+	}
+
+	if input.ThemePreference.Set {
+		if input.ThemePreference.Value != nil {
+			value := *input.ThemePreference.Value
+			if value != string(model.ThemePreferenceLight) &&
+				value != string(model.ThemePreferenceDark) &&
+				value != string(model.ThemePreferenceSystem) {
+				return nil, ErrInvalidInput
+			}
+		}
+		params.ThemePreference = repository.NullableStringField{
+			Set:   true,
+			Value: input.ThemePreference.Value,
+		}
+		fields = append(fields, "theme_preference")
+	}
+
+	user, err := s.userRepo.UpdatePreferencesAndName(ctx, params)
+	if err != nil {
+		return nil, mapRepositoryError(err)
+	}
+
+	if len(fields) > 0 {
+		targetID := user.ID
+		audit.Record(ctx, audit.Event{
+			Action:     audit.ActionUserUpdate,
+			TargetType: audit.TargetTypeUser,
+			TargetID:   &targetID,
+			Metadata: map[string]any{
+				"user_id": user.ID,
+				"fields":  fields,
+			},
+		})
+	}
 
 	return user, nil
 }

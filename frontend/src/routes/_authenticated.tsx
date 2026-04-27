@@ -10,11 +10,13 @@ import {
 import { useTranslation } from "react-i18next"
 
 import { AppSidebar } from "@/components/app-sidebar"
+import { ThemeProvider } from "@/components/theme-provider"
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
+import { applyLanguagePreference } from "@/i18n"
 import { currentUserQueryOptions } from "@/lib/queries"
 
 export const Route = createFileRoute("/_authenticated")({
@@ -35,7 +37,7 @@ function AuthenticatedLayout() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { error } = useQuery(currentUserQueryOptions)
+  const { data: user, error } = useQuery(currentUserQueryOptions)
 
   useEffect(() => {
     if (isAxiosError(error) && error.response?.status === 401) {
@@ -44,18 +46,26 @@ function AuthenticatedLayout() {
     }
   }, [error, navigate, queryClient])
 
+  useEffect(() => {
+    if (user?.language_preference) {
+      void applyLanguagePreference(user.language_preference)
+    }
+  }, [user?.language_preference])
+
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
-        <header className="sticky top-0 z-10 flex h-14 items-center border-b bg-background px-4 md:hidden">
-          <SidebarTrigger aria-label={t("sidebar.openNavigation")} />
-          <div className="ml-3 text-sm font-semibold">Rota</div>
-        </header>
-        <main className="flex-1 p-6">
-          <Outlet />
-        </main>
-      </SidebarInset>
-    </SidebarProvider>
+    <ThemeProvider>
+      <SidebarProvider>
+        <AppSidebar />
+        <SidebarInset>
+          <header className="sticky top-0 z-10 flex h-14 items-center border-b bg-background px-4 md:hidden">
+            <SidebarTrigger aria-label={t("sidebar.openNavigation")} />
+            <div className="ml-3 text-sm font-semibold">Rota</div>
+          </header>
+          <main className="flex-1 p-6">
+            <Outlet />
+          </main>
+        </SidebarInset>
+      </SidebarProvider>
+    </ThemeProvider>
   )
 }

@@ -96,8 +96,58 @@
     "positions": "岗位",
     "templates": "模板",
     "publications": "发布",
+    "toggleTheme": "切换主题",
+    "settings": "前往设置",
     "logout": "退出登录",
     "openNavigation": "打开导航"
+  },
+  "settings": {
+    "title": "设置",
+    "description": "管理个人资料、密码、语言和主题。",
+    "common": {
+      "save": "保存",
+      "saving": "保存中..."
+    },
+    "profile": {
+      "title": "个人资料",
+      "description": "更新 Rota 中显示的姓名。",
+      "name": "姓名",
+      "saved": "个人资料已更新。"
+    },
+    "password": {
+      "title": "密码",
+      "description": "修改密码后，其他已登录会话会退出。",
+      "current": "当前密码",
+      "new": "新密码",
+      "confirm": "确认新密码",
+      "saved": "密码已修改，其他设备已退出。",
+      "errors": {
+        "default": "修改密码失败。",
+        "INVALID_CURRENT_PASSWORD": "当前密码不正确。",
+        "PASSWORD_TOO_SHORT": "密码至少需要 8 个字符。"
+      }
+    },
+    "preferences": {
+      "title": "偏好设置",
+      "description": "选择该账号使用的语言和主题。",
+      "language": "语言",
+      "languageZh": "中文",
+      "languageEn": "英文",
+      "theme": "主题",
+      "themeSystem": "跟随系统",
+      "themeLight": "浅色",
+      "themeDark": "深色",
+      "saved": "偏好设置已更新。"
+    },
+    "validation": {
+      "nameRequired": "请输入姓名",
+      "nameMax": "姓名最多 100 个字符",
+      "currentPasswordRequired": "请输入当前密码",
+      "newPasswordRequired": "请输入新密码",
+      "confirmPasswordRequired": "请确认新密码",
+      "passwordMin": "密码至少需要 8 个字符",
+      "passwordMismatch": "两次输入的密码不一致"
+    }
   },
   "dashboard": {
     "welcome": "欢迎，{{name}}",

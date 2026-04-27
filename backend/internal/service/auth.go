@@ -13,10 +13,11 @@ import (
 )
 
 var (
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrUnauthorized       = errors.New("unauthorized")
-	ErrUserPending        = errors.New("user pending")
-	ErrUserDisabled       = errors.New("user disabled")
+	ErrInvalidCredentials     = errors.New("invalid credentials")
+	ErrInvalidCurrentPassword = errors.New("invalid current password")
+	ErrUnauthorized           = errors.New("unauthorized")
+	ErrUserPending            = errors.New("user pending")
+	ErrUserDisabled           = errors.New("user disabled")
 )
 
 type authUserRepository interface {
@@ -32,10 +33,22 @@ type sessionStore interface {
 	DeleteUserSessions(ctx context.Context, userID int64) error
 }
 
+type authPasswordTxRunner interface {
+	WithinTx(
+		ctx context.Context,
+		fn func(
+			ctx context.Context,
+			userRepo repository.AuthPasswordUserRepository,
+			sessionRepo repository.AuthPasswordSessionRepository,
+		) error,
+	) error
+}
+
 type AuthService struct {
-	userRepo     authUserRepository
-	sessionStore sessionStore
-	setupFlows   *setupFlowHelper
+	userRepo         authUserRepository
+	sessionStore     sessionStore
+	setupFlows       *setupFlowHelper
+	passwordTxRunner authPasswordTxRunner
 }
 
 type AuthServiceOption func(*AuthService)
@@ -49,6 +62,12 @@ type LoginResult struct {
 func WithAuthSetupFlows(config SetupFlowConfig) AuthServiceOption {
 	return func(service *AuthService) {
 		service.setupFlows = newSetupFlowHelper(config)
+	}
+}
+
+func WithAuthPasswordTxRunner(txRunner authPasswordTxRunner) AuthServiceOption {
+	return func(service *AuthService) {
+		service.passwordTxRunner = txRunner
 	}
 }
 
@@ -246,6 +265,66 @@ func (s *AuthService) SetupPassword(ctx context.Context, input SetupPasswordInpu
 		},
 	})
 	return nil
+}
+
+func (s *AuthService) ChangeOwnPassword(
+	ctx context.Context,
+	viewerID int64,
+	currentSessionID string,
+	currentPassword string,
+	newPassword string,
+) (int, error) {
+	if viewerID <= 0 || currentSessionID == "" || s.passwordTxRunner == nil {
+		return 0, ErrInvalidInput
+	}
+
+	revokedCount := 0
+	err := s.passwordTxRunner.WithinTx(ctx, func(
+		ctx context.Context,
+		userRepo repository.AuthPasswordUserRepository,
+		sessionRepo repository.AuthPasswordSessionRepository,
+	) error {
+		user, err := userRepo.GetByIDForUpdate(ctx, viewerID)
+		if err != nil {
+			return mapRepositoryError(err)
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(currentPassword)); err != nil {
+			return ErrInvalidCurrentPassword
+		}
+		if err := model.ValidatePassword(newPassword); err != nil {
+			return err
+		}
+
+		hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+		if err != nil {
+			return err
+		}
+		if _, err := userRepo.UpdatePasswordByID(ctx, viewerID, string(hash)); err != nil {
+			return mapRepositoryError(err)
+		}
+
+		count, err := sessionRepo.DeleteOtherSessions(ctx, viewerID, currentSessionID)
+		if err != nil {
+			return err
+		}
+		revokedCount = count
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	targetID := viewerID
+	audit.Record(ctx, audit.Event{
+		Action:     audit.ActionAuthPasswordChange,
+		TargetType: audit.TargetTypeUser,
+		TargetID:   &targetID,
+		Metadata: map[string]any{
+			"user_id":               viewerID,
+			"revoked_session_count": revokedCount,
+		},
+	})
+	return revokedCount, nil
 }
 
 // AuthenticateResult holds the authenticated user and the refreshed session TTL.

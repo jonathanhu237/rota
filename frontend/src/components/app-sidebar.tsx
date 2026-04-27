@@ -9,15 +9,17 @@ import {
   ClipboardList,
   ChevronsUpDown,
   FileText,
-  Globe,
   Home,
   Inbox,
   LogOut,
+  Settings,
+  SunMoon,
   Users,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { useTheme } from "@/components/theme-context"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,14 +44,16 @@ import {
 import api from "@/lib/axios"
 import {
   currentUserQueryOptions,
+  updateOwnProfile,
   unreadNotificationsQueryOptions,
 } from "@/lib/queries"
 
 export function AppSidebar() {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const routerState = useRouterState()
+  const { toggleThemePreference } = useTheme()
 
   const { data: user } = useQuery(currentUserQueryOptions)
   const unreadCountQuery = useQuery(unreadNotificationsQueryOptions)
@@ -64,8 +68,17 @@ export function AppSidebar() {
     },
   })
 
-  const toggleLanguage = () => {
-    void i18n.changeLanguage(i18n.resolvedLanguage === "zh" ? "en" : "zh")
+  const toggleThemeMutation = useMutation({
+    mutationFn: (themePreference: "light" | "dark") =>
+      updateOwnProfile({ theme_preference: themePreference }),
+    onSuccess: (updatedUser) => {
+      queryClient.setQueryData(["auth", "me"], updatedUser)
+    },
+  })
+
+  const handleToggleTheme = () => {
+    const nextPreference = toggleThemePreference()
+    toggleThemeMutation.mutate(nextPreference)
   }
 
   type NavItem = {
@@ -240,11 +253,16 @@ export function AppSidebar() {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={toggleLanguage}>
-                  <Globe />
-                  {i18n.resolvedLanguage === "zh"
-                    ? t("common.languages.en")
-                    : t("common.languages.zh")}
+                <DropdownMenuItem
+                  onClick={handleToggleTheme}
+                  disabled={toggleThemeMutation.isPending}
+                >
+                  <SunMoon />
+                  {t("sidebar.toggleTheme")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate({ to: "/settings" })}>
+                  <Settings />
+                  {t("sidebar.settings")}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem

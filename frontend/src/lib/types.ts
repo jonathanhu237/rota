@@ -1,4 +1,6 @@
 export type UserStatus = "pending" | "active" | "disabled"
+export type LanguagePreference = "zh" | "en"
+export type ThemePreference = "light" | "dark" | "system"
 
 export type User = {
   id: number
@@ -7,6 +9,8 @@ export type User = {
   is_admin: boolean
   status: UserStatus
   version: number
+  language_preference: LanguagePreference | null
+  theme_preference: ThemePreference | null
 }
 
 export type SetupTokenPurpose = "invitation" | "password_reset"

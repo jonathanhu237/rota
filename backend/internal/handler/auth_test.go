@@ -18,6 +18,7 @@ type stubAuthService struct {
 	requestPasswordResetFunc func(ctx context.Context, email string) error
 	previewSetupTokenFunc    func(ctx context.Context, rawToken string) (*service.SetupTokenPreview, error)
 	setupPasswordFunc        func(ctx context.Context, input service.SetupPasswordInput) error
+	changeOwnPasswordFunc    func(ctx context.Context, viewerID int64, currentSessionID, currentPassword, newPassword string) (int, error)
 	authenticateFunc         func(ctx context.Context, sessionID string) (*service.AuthenticateResult, error)
 	logoutFunc               func(ctx context.Context, sessionID string) error
 }
@@ -36,6 +37,10 @@ func (s *stubAuthService) PreviewSetupToken(ctx context.Context, rawToken string
 
 func (s *stubAuthService) SetupPassword(ctx context.Context, input service.SetupPasswordInput) error {
 	return s.setupPasswordFunc(ctx, input)
+}
+
+func (s *stubAuthService) ChangeOwnPassword(ctx context.Context, viewerID int64, currentSessionID, currentPassword, newPassword string) (int, error) {
+	return s.changeOwnPasswordFunc(ctx, viewerID, currentSessionID, currentPassword, newPassword)
 }
 
 func (s *stubAuthService) Authenticate(ctx context.Context, sessionID string) (*service.AuthenticateResult, error) {
@@ -400,12 +405,89 @@ func TestAuthHandler(t *testing.T) {
 		assertErrorResponse(t, recorder, http.StatusInternalServerError, "INTERNAL_ERROR")
 	})
 
+	t.Run("ChangePassword returns no content", func(t *testing.T) {
+		t.Parallel()
+
+		var receivedViewerID int64
+		var receivedSessionID string
+		handler := NewAuthHandler(&stubAuthService{
+			changeOwnPasswordFunc: func(ctx context.Context, viewerID int64, currentSessionID, currentPassword, newPassword string) (int, error) {
+				receivedViewerID = viewerID
+				receivedSessionID = currentSessionID
+				if currentPassword != "current-password" || newPassword != "new-password" {
+					t.Fatalf("unexpected password payload")
+				}
+				return 1, nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithUser(jsonRequest(t, http.MethodPost, "/auth/change-password", map[string]any{
+			"current_password": "current-password",
+			"new_password":     "new-password",
+		}), sampleUser())
+		req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session-a"})
+
+		handler.ChangePassword(recorder, req)
+
+		if recorder.Code != http.StatusNoContent {
+			t.Fatalf("expected status 204, got %d", recorder.Code)
+		}
+		if receivedViewerID != 1 || receivedSessionID != "session-a" {
+			t.Fatalf("unexpected service inputs: viewer=%d session=%q", receivedViewerID, receivedSessionID)
+		}
+	})
+
+	t.Run("ChangePassword maps invalid current password", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewAuthHandler(&stubAuthService{
+			changeOwnPasswordFunc: func(ctx context.Context, viewerID int64, currentSessionID, currentPassword, newPassword string) (int, error) {
+				return 0, service.ErrInvalidCurrentPassword
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithUser(jsonRequest(t, http.MethodPost, "/auth/change-password", map[string]any{
+			"current_password": "wrong",
+			"new_password":     "new-password",
+		}), sampleUser())
+		req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session-a"})
+
+		handler.ChangePassword(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusUnauthorized, "INVALID_CURRENT_PASSWORD")
+	})
+
+	t.Run("ChangePassword maps short password", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewAuthHandler(&stubAuthService{
+			changeOwnPasswordFunc: func(ctx context.Context, viewerID int64, currentSessionID, currentPassword, newPassword string) (int, error) {
+				return 0, model.ErrPasswordTooShort
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithUser(jsonRequest(t, http.MethodPost, "/auth/change-password", map[string]any{
+			"current_password": "current-password",
+			"new_password":     "short",
+		}), sampleUser())
+		req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session-a"})
+
+		handler.ChangePassword(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusBadRequest, "PASSWORD_TOO_SHORT")
+	})
+
 	t.Run("Me returns the current user from request context", func(t *testing.T) {
 		t.Parallel()
 
 		handler := NewAuthHandler(&stubAuthService{})
 		recorder := httptest.NewRecorder()
-		req := requestWithUser(httptest.NewRequest(http.MethodGet, "/me", nil), sampleUser())
+		language := model.LanguagePreferenceEN
+		theme := model.ThemePreferenceDark
+		user := sampleUser()
+		user.LanguagePreference = &language
+		user.ThemePreference = &theme
+		req := requestWithUser(httptest.NewRequest(http.MethodGet, "/me", nil), user)
 
 		handler.Me(recorder, req)
 
@@ -416,6 +498,12 @@ func TestAuthHandler(t *testing.T) {
 		response := decodeJSONResponse[authUserResponse](t, recorder)
 		if response.User.Email != "worker@example.com" {
 			t.Fatalf("expected response user email %q, got %q", "worker@example.com", response.User.Email)
+		}
+		if response.User.LanguagePreference == nil || *response.User.LanguagePreference != model.LanguagePreferenceEN {
+			t.Fatalf("expected language preference en, got %+v", response.User.LanguagePreference)
+		}
+		if response.User.ThemePreference == nil || *response.User.ThemePreference != model.ThemePreferenceDark {
+			t.Fatalf("expected theme preference dark, got %+v", response.User.ThemePreference)
 		}
 	})
 

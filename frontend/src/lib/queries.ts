@@ -7,6 +7,7 @@ import type {
   Leave,
   LeaveCategory,
   LeavePreviewOccurrence,
+  LanguagePreference,
   Pagination,
   Position,
   Publication,
@@ -19,6 +20,7 @@ import type {
   TemplateDetail,
   TemplateSlot,
   TemplateSlotPosition,
+  ThemePreference,
   Roster,
   SetupTokenPreview,
   User,
@@ -112,6 +114,17 @@ export type UpdateUserStatusInput = {
 export type SetupPasswordInput = {
   token: string
   password: string
+}
+
+export type ChangeOwnPasswordInput = {
+  current_password: string
+  new_password: string
+}
+
+export type UpdateOwnProfileInput = {
+  name?: string
+  language_preference?: LanguagePreference | null
+  theme_preference?: ThemePreference | null
 }
 
 export type CreatePositionInput = {
@@ -443,6 +456,15 @@ export async function previewSetupToken(token: string) {
 
 export async function setupPassword(input: SetupPasswordInput) {
   await api.post("/auth/setup-password", input)
+}
+
+export async function changeOwnPassword(input: ChangeOwnPasswordInput) {
+  await api.post("/auth/change-password", input)
+}
+
+export async function updateOwnProfile(input: UpdateOwnProfileInput) {
+  const res = await api.put<UserResponse>("/users/me", input)
+  return res.data.user
 }
 
 export async function resendInvitation(userID: number) {

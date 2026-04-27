@@ -97,6 +97,7 @@ func main() {
 
 	setupTokenRepo := repository.NewSetupTokenRepository(db)
 	setupTxManager := repository.NewSetupTxManager(db)
+	authPasswordTxManager := repository.NewAuthPasswordTxManager(db, sessionExpires)
 	authService := service.NewAuthService(
 		userRepo,
 		sessionStore,
@@ -109,6 +110,7 @@ func main() {
 			InvitationTokenTTL:    cfg.InvitationTokenTTL,
 			PasswordResetTokenTTL: cfg.PasswordResetTokenTTL,
 		}),
+		service.WithAuthPasswordTxRunner(authPasswordTxManager),
 	)
 	userService := service.NewUserService(
 		userRepo,
@@ -192,9 +194,11 @@ func main() {
 	mux.HandleFunc("POST /auth/setup-password", authHandler.SetupPassword)
 	mux.HandleFunc("POST /auth/logout", authHandler.Logout)
 	mux.HandleFunc("GET /auth/me", authHandler.RequireAuth(authHandler.Me))
+	mux.HandleFunc("POST /auth/change-password", authHandler.RequireAuth(authHandler.ChangePassword))
 	mux.HandleFunc("GET /users", authHandler.RequireAdmin(userHandler.List))
 	mux.HandleFunc("POST /users", authHandler.RequireAdmin(userHandler.Create))
 	mux.HandleFunc("GET /users/{id}", authHandler.RequireAdmin(userHandler.GetByID))
+	mux.HandleFunc("PUT /users/me", authHandler.RequireAuth(userHandler.UpdateMe))
 	mux.HandleFunc("PUT /users/{id}", authHandler.RequireAdmin(userHandler.Update))
 	mux.HandleFunc("POST /users/{id}/resend-invitation", authHandler.RequireAdmin(userHandler.ResendInvitation))
 	mux.HandleFunc("PATCH /users/{id}/status", authHandler.RequireAdmin(userHandler.UpdateStatus))
