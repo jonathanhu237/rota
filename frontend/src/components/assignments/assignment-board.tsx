@@ -7,19 +7,18 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
-  type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core"
 import { useTranslation } from "react-i18next"
 
+import { deriveEmployeeDirectory } from "@/components/assignments/assignment-board-directory"
 import { AssignmentBoardGrid } from "@/components/assignments/assignment-board-grid"
-import { type GridDropPreview } from "@/components/assignments/assignment-board-cell"
 import { AssignmentBoardSidePanel } from "@/components/assignments/assignment-board-side-panel"
 import {
+  getDraggedUserID,
   resolveAssignmentBoardDrop,
   type AssignmentBoardDragSource,
   type AssignmentBoardDropTarget,
-  type AssignmentBoardSelection,
 } from "@/components/assignments/assignment-board-dnd"
 import {
   DraftConfirmDialog,
@@ -30,13 +29,15 @@ import {
   clearDraftOpError,
   discardDrafts,
   emptyDraftState,
+  enqueueRemove,
   removeFirstDraftOp,
+  removeDraftOp,
   type DraftOp,
   type DraftState,
 } from "@/components/assignments/draft-state"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import type { AssignmentBoardSlot } from "@/lib/types"
+import type { AssignmentBoardEmployee, AssignmentBoardSlot } from "@/lib/types"
 
 const weekdayKeys: Record<number, string> = {
   1: "templates.weekday.mon",
@@ -50,6 +51,7 @@ const weekdayKeys: Record<number, string> = {
 
 type AssignmentBoardProps = {
   slots: AssignmentBoardSlot[]
+  employees: AssignmentBoardEmployee[]
   isPending: boolean
   isReadOnly: boolean
   onAssign: (
@@ -72,6 +74,7 @@ type AssignmentBoardProps = {
 
 export function AssignmentBoard({
   slots,
+  employees,
   isPending,
   isReadOnly,
   onAssign,
@@ -82,13 +85,10 @@ export function AssignmentBoard({
   initialDraftState = emptyDraftState,
 }: AssignmentBoardProps) {
   const { t } = useTranslation()
-  const [selection, setSelection] = useState<AssignmentBoardSelection | null>(
-    null,
-  )
   const [draftState, setDraftState] = useState<DraftState>(initialDraftState)
   const [committedDraftState, setCommittedDraftState] =
     useState<DraftState>(emptyDraftState)
-  const [dropPreview, setDropPreview] = useState<GridDropPreview | null>(null)
+  const [draggingUserID, setDraggingUserID] = useState<number | null>(null)
   const [activeDragLabel, setActiveDragLabel] = useState<string | null>(null)
   const [isConfirmOpen, setIsConfirmOpen] = useState(false)
   const [isSubmittingDraft, setIsSubmittingDraft] = useState(false)
@@ -111,32 +111,20 @@ export function AssignmentBoard({
     () => applyDraftToSlots(slots, renderDraftState),
     [slots, renderDraftState],
   )
+  const directory = useMemo(
+    () => deriveEmployeeDirectory(employees),
+    [employees],
+  )
   const warningEntries = useMemo(
     () => getDraftConfirmWarnings(slots, draftState, t),
     [draftState, slots, t],
   )
   const isDraftDisabled = isReadOnly || isPending || isSubmittingDraft
 
-  const handleDragOver = (event: DragOverEvent) => {
-    const source = getDragSourceData(event.active.data.current)
-    const target = getDropTargetData(event.over?.data.current)
-
-    if (!source || !target) {
-      setDropPreview(null)
-      return
-    }
-
-    setDropPreview({
-      slotID: target.slotID,
-      weekday: target.weekday,
-      isUnqualified: isDropUnqualified(slots, source, target),
-    })
-  }
-
   const handleDragEnd = (event: DragEndEvent) => {
     const source = getDragSourceData(event.active.data.current)
     const target = getDropTargetData(event.over?.data.current)
-    setDropPreview(null)
+    setDraggingUserID(null)
     setActiveDragLabel(null)
 
     if (!source || !target || isDraftDisabled) {
@@ -145,9 +133,8 @@ export function AssignmentBoard({
 
     setDraftState((currentState) =>
       resolveAssignmentBoardDrop({
-        slots,
+        directory,
         draftState: currentState,
-        selection,
         source,
         target,
       }),
@@ -159,13 +146,15 @@ export function AssignmentBoard({
     const source = getDragSourceData(event.active.data.current)
     if (!source) {
       setActiveDragLabel(null)
+      setDraggingUserID(null)
       return
     }
 
+    setDraggingUserID(getDraggedUserID(source))
     setActiveDragLabel(
       source.kind === "assigned"
         ? source.assignment.name
-        : source.candidate.name,
+        : source.employee.name,
     )
   }
 
@@ -250,9 +239,8 @@ export function AssignmentBoard({
         collisionDetection={pointerWithin}
         sensors={sensors}
         onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
         onDragCancel={() => {
-          setDropPreview(null)
+          setDraggingUserID(null)
           setActiveDragLabel(null)
         }}
         onDragEnd={handleDragEnd}
@@ -261,23 +249,44 @@ export function AssignmentBoard({
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
             <AssignmentBoardGrid
               slots={projectedSlots}
+              serverSlots={slots}
+              renderDraftState={renderDraftState}
               disabled={isPending || isSubmittingDraft}
-              dropPreview={dropPreview}
-              selection={selection}
-              onSelectionChange={setSelection}
+              isReadOnly={isReadOnly}
+              draggingUserID={draggingUserID}
+              directory={directory}
+              onUnassignClick={(assignment, slotID, weekday, positionID) => {
+                if (isDraftDisabled) {
+                  return
+                }
+
+                setDraftState((currentState) =>
+                  enqueueRemove(currentState, {
+                    assignmentID: assignment.assignment_id,
+                    userID: assignment.user_id,
+                    name: assignment.name,
+                    email: assignment.email,
+                    slotID,
+                    weekday,
+                    positionID,
+                    sourceOpID: assignment.draftOpID,
+                  }),
+                )
+                setSubmitError(null)
+              }}
+              onCancelDraft={(draftOpID) => {
+                setDraftState((currentState) =>
+                  removeDraftOp(currentState, draftOpID),
+                )
+                setSubmitError(null)
+              }}
             />
             <AssignmentBoardSidePanel
               slots={slots}
               projectedSlots={projectedSlots}
               renderDraftState={renderDraftState}
+              directory={directory}
               disabled={isDraftDisabled}
-              isReadOnly={isReadOnly}
-              selection={selection}
-              onSelectionChange={setSelection}
-              onDraftStateChange={(nextState) => {
-                setDraftState(nextState)
-                setSubmitError(null)
-              }}
             />
           </div>
 
@@ -371,7 +380,9 @@ function getDragSourceData(value: unknown): AssignmentBoardDragSource | null {
   }
 
   const data = value as AssignmentBoardDragSource
-  return data.kind === "assigned" || data.kind === "candidate" ? data : null
+  return data.kind === "assigned" || data.kind === "directory-employee"
+    ? data
+    : null
 }
 
 function getDropTargetData(value: unknown): AssignmentBoardDropTarget | null {
@@ -380,69 +391,7 @@ function getDropTargetData(value: unknown): AssignmentBoardDropTarget | null {
   }
 
   const data = value as AssignmentBoardDropTarget
-  return data.kind === "cell" ? data : null
-}
-
-function isDropUnqualified(
-  slots: AssignmentBoardSlot[],
-  source: AssignmentBoardDragSource,
-  target: AssignmentBoardDropTarget,
-) {
-  const positionID = source.positionID
-  const userID =
-    source.kind === "assigned"
-      ? source.assignment.user_id
-      : source.candidate.user_id
-
-  return (
-    !cellHasPosition(slots, target.slotID, target.weekday, positionID) ||
-    !isUserQualifiedForCell(
-      slots,
-      target.slotID,
-      target.weekday,
-      positionID,
-      userID,
-    )
-  )
-}
-
-function cellHasPosition(
-  slots: AssignmentBoardSlot[],
-  slotID: number,
-  weekday: number,
-  positionID: number,
-) {
-  return Boolean(findBoardPosition(slots, slotID, weekday, positionID))
-}
-
-function findBoardPosition(
-  slots: AssignmentBoardSlot[],
-  slotID: number,
-  weekday: number,
-  positionID: number,
-) {
-  return slots
-    .find((entry) => entry.slot.id === slotID && entry.slot.weekday === weekday)
-    ?.positions.find((entry) => entry.position.id === positionID)
-}
-
-function isUserQualifiedForCell(
-  slots: AssignmentBoardSlot[],
-  slotID: number,
-  weekday: number,
-  positionID: number,
-  userID: number,
-) {
-  const positionEntry = findBoardPosition(slots, slotID, weekday, positionID)
-  if (!positionEntry) {
-    return false
-  }
-
-  return [
-    ...positionEntry.candidates,
-    ...positionEntry.non_candidate_qualified,
-    ...positionEntry.assignments,
-  ].some((candidate) => candidate.user_id === userID)
+  return data.kind === "seat" ? data : null
 }
 
 function findPositionName(slots: AssignmentBoardSlot[], positionID: number) {

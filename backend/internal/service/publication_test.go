@@ -865,31 +865,11 @@ func (m *publicationRepositoryStatefulMock) GetAssignmentBoardView(
 	if err != nil {
 		return nil, err
 	}
-	candidates := m.listAssignmentBoardCandidates(publicationID)
 	assignments, err := m.ListPublicationAssignments(ctx, publicationID)
 	if err != nil {
 		return nil, err
 	}
 
-	positionIDs := make([]int64, 0, len(shifts))
-	seenPositionIDs := make(map[int64]struct{}, len(shifts))
-	for _, shift := range shifts {
-		if _, ok := seenPositionIDs[shift.PositionID]; ok {
-			continue
-		}
-		seenPositionIDs[shift.PositionID] = struct{}{}
-		positionIDs = append(positionIDs, shift.PositionID)
-	}
-	qualifiedByPosition, err := m.ListQualifiedUsersForPositions(ctx, positionIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	candidatesBySlotPosition := make(map[slotPositionKey][]*model.AssignmentCandidate)
-	for _, candidate := range candidates {
-		key := slotPositionKey{SlotID: candidate.SlotID, Weekday: candidate.Weekday, PositionID: candidate.PositionID}
-		candidatesBySlotPosition[key] = append(candidatesBySlotPosition[key], candidate)
-	}
 	assignmentsBySlotPosition := make(map[slotPositionKey][]*model.AssignmentParticipant)
 	for _, assignment := range assignments {
 		key := slotPositionKey{SlotID: assignment.SlotID, Weekday: assignment.Weekday, PositionID: assignment.PositionID}
@@ -909,62 +889,66 @@ func (m *publicationRepositoryStatefulMock) GetAssignmentBoardView(
 		}
 
 		key := slotPositionKey{SlotID: shift.SlotID, Weekday: shift.Weekday, PositionID: shift.PositionID}
-		candidatesForSlot := candidatesBySlotPosition[key]
 		assignmentsForSlot := assignmentsBySlotPosition[key]
 		slotView.Positions[shift.PositionID] = &repository.AssignmentBoardPositionView{
-			Position:              publicationShiftPosition(shift),
-			RequiredHeadcount:     shift.RequiredHeadcount,
-			Candidates:            cloneAssignmentCandidates(candidatesForSlot),
-			NonCandidateQualified: filterNonCandidateQualified(qualifiedByPosition[shift.PositionID], candidatesForSlot, assignmentsForSlot),
-			Assignments:           cloneAssignmentParticipants(assignmentsForSlot),
+			Position:          publicationShiftPosition(shift),
+			RequiredHeadcount: shift.RequiredHeadcount,
+			Assignments:       cloneAssignmentParticipants(assignmentsForSlot),
 		}
 	}
 
 	return board, nil
 }
 
-func (m *publicationRepositoryStatefulMock) listAssignmentBoardCandidates(publicationID int64) []*model.AssignmentCandidate {
-	candidates := make([]*model.AssignmentCandidate, 0)
-	for _, submission := range m.submissions {
-		if submission.PublicationID != publicationID {
+func (m *publicationRepositoryStatefulMock) ListAssignmentBoardEmployees(
+	ctx context.Context,
+	publicationID int64,
+) ([]*model.AssignmentBoardEmployee, error) {
+	publication, ok := m.publications[publicationID]
+	if !ok {
+		return nil, repository.ErrPublicationNotFound
+	}
+
+	publicationPositionIDs := make(map[int64]struct{})
+	for _, slot := range m.templateSlots {
+		if slot.TemplateID != publication.TemplateID {
 			continue
 		}
-		user, ok := m.users[submission.UserID]
-		if !ok {
-			continue
-		}
-		if user.Status != model.UserStatusActive {
-			continue
-		}
-		for _, slotPosition := range m.slotPositions[submission.SlotID] {
-			if qualified, _ := m.IsUserQualifiedForPosition(context.Background(), user.ID, slotPosition.PositionID); !qualified {
-				continue
-			}
-			candidates = append(candidates, &model.AssignmentCandidate{
-				SlotID:     submission.SlotID,
-				Weekday:    submission.Weekday,
-				PositionID: slotPosition.PositionID,
-				UserID:     user.ID,
-				Name:       user.Name,
-				Email:      user.Email,
-			})
+		for _, slotPosition := range m.slotPositions[slot.ID] {
+			publicationPositionIDs[slotPosition.PositionID] = struct{}{}
 		}
 	}
 
-	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].SlotID != candidates[j].SlotID {
-			return candidates[i].SlotID < candidates[j].SlotID
+	employees := make([]*model.AssignmentBoardEmployee, 0)
+	for _, user := range m.users {
+		if user.IsAdmin || user.Status != model.UserStatusActive {
+			continue
 		}
-		if candidates[i].Weekday != candidates[j].Weekday {
-			return candidates[i].Weekday < candidates[j].Weekday
+		positions := m.qualifiedByUser[user.ID]
+		positionIDs := make([]int64, 0, len(positions))
+		for positionID := range positions {
+			if _, ok := publicationPositionIDs[positionID]; ok {
+				positionIDs = append(positionIDs, positionID)
+			}
 		}
-		if candidates[i].PositionID != candidates[j].PositionID {
-			return candidates[i].PositionID < candidates[j].PositionID
+		if len(positionIDs) == 0 {
+			continue
 		}
-		return candidates[i].UserID < candidates[j].UserID
+		sort.Slice(positionIDs, func(i, j int) bool {
+			return positionIDs[i] < positionIDs[j]
+		})
+		employees = append(employees, &model.AssignmentBoardEmployee{
+			UserID:      user.ID,
+			Name:        user.Name,
+			Email:       user.Email,
+			PositionIDs: positionIDs,
+		})
+	}
+	sort.Slice(employees, func(i, j int) bool {
+		return employees[i].UserID < employees[j].UserID
 	})
 
-	return candidates
+	return employees, nil
 }
 
 func TestPublicationServiceCreatePublication(t *testing.T) {

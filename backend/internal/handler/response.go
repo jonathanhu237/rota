@@ -123,12 +123,6 @@ type publicationPositionResponse struct {
 	Name string `json:"name"`
 }
 
-type assignmentCandidateResponse struct {
-	UserID int64  `json:"user_id"`
-	Name   string `json:"name"`
-	Email  string `json:"email"`
-}
-
 type assignmentResponse struct {
 	AssignmentID int64  `json:"assignment_id"`
 	UserID       int64  `json:"user_id"`
@@ -136,12 +130,17 @@ type assignmentResponse struct {
 	Email        string `json:"email"`
 }
 
+type assignmentBoardEmployeeResponse struct {
+	UserID      int64   `json:"user_id"`
+	Name        string  `json:"name"`
+	Email       string  `json:"email"`
+	PositionIDs []int64 `json:"position_ids"`
+}
+
 type assignmentBoardPositionResponse struct {
-	Position              publicationPositionResponse   `json:"position"`
-	RequiredHeadcount     int                           `json:"required_headcount"`
-	Candidates            []assignmentCandidateResponse `json:"candidates"`
-	NonCandidateQualified []assignmentCandidateResponse `json:"non_candidate_qualified"`
-	Assignments           []assignmentResponse          `json:"assignments"`
+	Position          publicationPositionResponse `json:"position"`
+	RequiredHeadcount int                         `json:"required_headcount"`
+	Assignments       []assignmentResponse        `json:"assignments"`
 }
 
 type assignmentBoardSlotResponse struct {
@@ -150,8 +149,9 @@ type assignmentBoardSlotResponse struct {
 }
 
 type assignmentBoardResponse struct {
-	Publication *publicationResponse          `json:"publication"`
-	Slots       []assignmentBoardSlotResponse `json:"slots"`
+	Publication *publicationResponse              `json:"publication"`
+	Slots       []assignmentBoardSlotResponse     `json:"slots"`
+	Employees   []assignmentBoardEmployeeResponse `json:"employees"`
 }
 
 type rosterAssignmentResponse struct {

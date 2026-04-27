@@ -43,6 +43,13 @@ type AssignmentCandidate struct {
 	Email      string
 }
 
+type AssignmentBoardEmployee struct {
+	UserID      int64
+	Name        string
+	Email       string
+	PositionIDs []int64
+}
+
 type AssignmentParticipant struct {
 	AssignmentID int64
 	SlotID       int64

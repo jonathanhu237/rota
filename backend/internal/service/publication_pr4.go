@@ -16,6 +16,7 @@ import (
 type AssignmentBoardResult struct {
 	Publication *model.Publication
 	Slots       []*AssignmentBoardSlotResult
+	Employees   []*model.AssignmentBoardEmployee
 }
 
 type AssignmentBoardSlotResult struct {
@@ -24,11 +25,9 @@ type AssignmentBoardSlotResult struct {
 }
 
 type AssignmentBoardPositionResult struct {
-	Position              *model.Position
-	RequiredHeadcount     int
-	Candidates            []*model.AssignmentCandidate
-	NonCandidateQualified []*model.AssignmentCandidate
-	Assignments           []*model.AssignmentParticipant
+	Position          *model.Position
+	RequiredHeadcount int
+	Assignments       []*model.AssignmentParticipant
 }
 
 type RosterResult struct {
@@ -390,10 +389,15 @@ func (s *PublicationService) GetAssignmentBoard(
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
 	}
+	employees, err := s.publicationRepo.ListAssignmentBoardEmployees(ctx, publicationID)
+	if err != nil {
+		return nil, mapPublicationRepositoryError(err)
+	}
 
 	result := &AssignmentBoardResult{
 		Publication: publicationWithEffectiveState(publication, now),
 		Slots:       make([]*AssignmentBoardSlotResult, 0),
+		Employees:   cloneAssignmentBoardEmployees(employees),
 	}
 
 	slotKeys := make([]repository.AssignmentBoardSlotKey, 0, len(boardView))
@@ -445,10 +449,8 @@ func (s *PublicationService) GetAssignmentBoard(
 					ID:   positionView.Position.ID,
 					Name: positionView.Position.Name,
 				},
-				RequiredHeadcount:     positionView.RequiredHeadcount,
-				Candidates:            cloneAssignmentCandidates(positionView.Candidates),
-				NonCandidateQualified: cloneAssignmentCandidates(positionView.NonCandidateQualified),
-				Assignments:           cloneAssignmentParticipants(positionView.Assignments),
+				RequiredHeadcount: positionView.RequiredHeadcount,
+				Assignments:       cloneAssignmentParticipants(positionView.Assignments),
 			})
 		}
 
@@ -456,6 +458,31 @@ func (s *PublicationService) GetAssignmentBoard(
 	}
 
 	return result, nil
+}
+
+func cloneAssignmentBoardEmployees(
+	employees []*model.AssignmentBoardEmployee,
+) []*model.AssignmentBoardEmployee {
+	if len(employees) == 0 {
+		return make([]*model.AssignmentBoardEmployee, 0)
+	}
+
+	cloned := make([]*model.AssignmentBoardEmployee, 0, len(employees))
+	for _, employee := range employees {
+		if employee == nil {
+			continue
+		}
+		clonedEmployee := *employee
+		clonedEmployee.PositionIDs = append([]int64(nil), employee.PositionIDs...)
+		sort.Slice(clonedEmployee.PositionIDs, func(i, j int) bool {
+			return clonedEmployee.PositionIDs[i] < clonedEmployee.PositionIDs[j]
+		})
+		cloned = append(cloned, &clonedEmployee)
+	}
+	sort.Slice(cloned, func(i, j int) bool {
+		return cloned[i].UserID < cloned[j].UserID
+	})
+	return cloned
 }
 
 func (s *PublicationService) GetPublicationRoster(
@@ -791,25 +818,6 @@ func publicationShiftPosition(shift *model.PublicationShift) *model.Position {
 	}
 }
 
-func cloneAssignmentCandidates(candidates []*model.AssignmentCandidate) []*model.AssignmentCandidate {
-	if len(candidates) == 0 {
-		return make([]*model.AssignmentCandidate, 0)
-	}
-
-	cloned := make([]*model.AssignmentCandidate, 0, len(candidates))
-	for _, candidate := range candidates {
-		if candidate == nil {
-			continue
-		}
-		clonedCandidate := *candidate
-		cloned = append(cloned, &clonedCandidate)
-	}
-	sort.Slice(cloned, func(i, j int) bool {
-		return cloned[i].UserID < cloned[j].UserID
-	})
-	return cloned
-}
-
 func cloneAssignmentParticipants(participants []*model.AssignmentParticipant) []*model.AssignmentParticipant {
 	if len(participants) == 0 {
 		return make([]*model.AssignmentParticipant, 0)
@@ -827,46 +835,4 @@ func cloneAssignmentParticipants(participants []*model.AssignmentParticipant) []
 		return cloned[i].UserID < cloned[j].UserID
 	})
 	return cloned
-}
-
-func filterNonCandidateQualified(
-	qualified []*model.AssignmentCandidate,
-	candidates []*model.AssignmentCandidate,
-	assignments []*model.AssignmentParticipant,
-) []*model.AssignmentCandidate {
-	if len(qualified) == 0 {
-		return make([]*model.AssignmentCandidate, 0)
-	}
-
-	excludedUserIDs := make(map[int64]struct{}, len(candidates)+len(assignments))
-	for _, candidate := range candidates {
-		if candidate == nil {
-			continue
-		}
-		excludedUserIDs[candidate.UserID] = struct{}{}
-	}
-	for _, assignment := range assignments {
-		if assignment == nil {
-			continue
-		}
-		excludedUserIDs[assignment.UserID] = struct{}{}
-	}
-
-	filtered := make([]*model.AssignmentCandidate, 0, len(qualified))
-	for _, candidate := range qualified {
-		if candidate == nil {
-			continue
-		}
-		if _, ok := excludedUserIDs[candidate.UserID]; ok {
-			continue
-		}
-		clonedCandidate := *candidate
-		filtered = append(filtered, &clonedCandidate)
-	}
-
-	sort.Slice(filtered, func(i, j int) bool {
-		return filtered[i].UserID < filtered[j].UserID
-	})
-
-	return filtered
 }

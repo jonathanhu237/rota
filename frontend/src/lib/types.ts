@@ -121,10 +121,11 @@ export type PublicationPosition = {
   name: string
 }
 
-export type AssignmentBoardCandidate = {
+export type AssignmentBoardEmployee = {
   user_id: number
   name: string
   email: string
+  position_ids: number[]
 }
 
 export type AssignmentBoardAssignment = {
@@ -137,8 +138,6 @@ export type AssignmentBoardAssignment = {
 export type AssignmentBoardPosition = {
   position: PublicationPosition
   required_headcount: number
-  candidates: AssignmentBoardCandidate[]
-  non_candidate_qualified: AssignmentBoardCandidate[]
   assignments: AssignmentBoardAssignment[]
 }
 
@@ -150,6 +149,7 @@ export type AssignmentBoardSlot = {
 export type AssignmentBoard = {
   publication: Publication
   slots: AssignmentBoardSlot[]
+  employees: AssignmentBoardEmployee[]
 }
 
 export type RosterAssignment = {

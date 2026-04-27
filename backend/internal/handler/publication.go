@@ -553,31 +553,26 @@ func newAssignmentBoardResponse(result *service.AssignmentBoardResult) assignmen
 		return assignmentBoardResponse{
 			Publication: nil,
 			Slots:       make([]assignmentBoardSlotResponse, 0),
+			Employees:   make([]assignmentBoardEmployeeResponse, 0),
 		}
+	}
+
+	employees := make([]assignmentBoardEmployeeResponse, 0, len(result.Employees))
+	for _, employee := range result.Employees {
+		positionIDs := make([]int64, len(employee.PositionIDs))
+		copy(positionIDs, employee.PositionIDs)
+		employees = append(employees, assignmentBoardEmployeeResponse{
+			UserID:      employee.UserID,
+			Name:        employee.Name,
+			Email:       employee.Email,
+			PositionIDs: positionIDs,
+		})
 	}
 
 	responseSlots := make([]assignmentBoardSlotResponse, 0, len(result.Slots))
 	for _, slotResult := range result.Slots {
 		positions := make([]assignmentBoardPositionResponse, 0, len(slotResult.Positions))
 		for _, positionResult := range slotResult.Positions {
-			candidates := make([]assignmentCandidateResponse, 0, len(positionResult.Candidates))
-			for _, candidate := range positionResult.Candidates {
-				candidates = append(candidates, assignmentCandidateResponse{
-					UserID: candidate.UserID,
-					Name:   candidate.Name,
-					Email:  candidate.Email,
-				})
-			}
-
-			nonCandidateQualified := make([]assignmentCandidateResponse, 0, len(positionResult.NonCandidateQualified))
-			for _, candidate := range positionResult.NonCandidateQualified {
-				nonCandidateQualified = append(nonCandidateQualified, assignmentCandidateResponse{
-					UserID: candidate.UserID,
-					Name:   candidate.Name,
-					Email:  candidate.Email,
-				})
-			}
-
 			assignments := make([]assignmentResponse, 0, len(positionResult.Assignments))
 			for _, assignment := range positionResult.Assignments {
 				assignments = append(assignments, assignmentResponse{
@@ -589,11 +584,9 @@ func newAssignmentBoardResponse(result *service.AssignmentBoardResult) assignmen
 			}
 
 			positions = append(positions, assignmentBoardPositionResponse{
-				Position:              newPublicationPositionResponse(positionResult.Position),
-				RequiredHeadcount:     positionResult.RequiredHeadcount,
-				Candidates:            candidates,
-				NonCandidateQualified: nonCandidateQualified,
-				Assignments:           assignments,
+				Position:          newPublicationPositionResponse(positionResult.Position),
+				RequiredHeadcount: positionResult.RequiredHeadcount,
+				Assignments:       assignments,
 			})
 		}
 
@@ -606,6 +599,7 @@ func newAssignmentBoardResponse(result *service.AssignmentBoardResult) assignmen
 	return assignmentBoardResponse{
 		Publication: newPublicationResponse(result.Publication),
 		Slots:       responseSlots,
+		Employees:   employees,
 	}
 }
 

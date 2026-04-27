@@ -1,15 +1,16 @@
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 
-import {
-  AssignmentBoardCell,
-  type GridDropPreview,
-} from "@/components/assignments/assignment-board-cell"
+import type { Employee } from "@/components/assignments/assignment-board-directory"
+import { AssignmentBoardCell } from "@/components/assignments/assignment-board-cell"
 import {
   pivotIntoGridCells,
   type GridCell,
 } from "@/components/assignments/assignment-board-grid-cells"
-import type { AssignmentBoardSelection } from "@/components/assignments/assignment-board-dnd"
+import type {
+  DraftState,
+  ProjectedAssignment,
+} from "@/components/assignments/draft-state"
 import type { AssignmentBoardSlot } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -25,32 +26,45 @@ const weekdayKeys: Record<number, string> = {
 
 export function AssignmentBoardGrid({
   slots,
+  serverSlots,
+  renderDraftState,
   disabled,
-  dropPreview,
-  selection,
-  onSelectionChange,
+  isReadOnly,
+  draggingUserID,
+  directory,
+  onUnassignClick,
+  onCancelDraft,
 }: {
   slots: AssignmentBoardSlot[]
+  serverSlots: AssignmentBoardSlot[]
+  renderDraftState: DraftState
   disabled: boolean
-  dropPreview: GridDropPreview | null
-  selection: AssignmentBoardSelection | null
-  onSelectionChange: (selection: AssignmentBoardSelection | null) => void
+  isReadOnly: boolean
+  draggingUserID: number | null
+  directory: Map<number, Employee>
+  onUnassignClick: (
+    assignment: ProjectedAssignment,
+    slotID: number,
+    weekday: number,
+    positionID: number,
+  ) => void
+  onCancelDraft: (draftOpID: string) => void
 }) {
   const { t } = useTranslation()
   const grid = useMemo(() => pivotIntoGridCells(slots), [slots])
 
   return (
-    <div className="overflow-x-auto rounded-lg border bg-card">
-      <table className="w-full min-w-[920px] border-collapse">
+    <div className="min-w-0 overflow-x-auto rounded-lg border bg-card">
+      <table className="w-full min-w-[1080px] border-collapse">
         <thead>
           <tr className="border-b bg-muted/40">
-            <th className="w-32 px-3 py-3 text-left text-xs font-medium text-muted-foreground">
+            <th className="w-32 px-3 py-3 text-center text-xs font-medium text-muted-foreground">
               {t("assignments.grid.time")}
             </th>
             {grid.weekdays.map((weekday) => (
               <th
                 key={weekday}
-                className="px-2 py-3 text-left text-xs font-medium text-muted-foreground"
+                className="px-2 py-3 text-center text-xs font-medium text-muted-foreground"
               >
                 {t(weekdayKeys[weekday])}
               </th>
@@ -72,28 +86,18 @@ export function AssignmentBoardGrid({
               {grid.cells[rowIndex].map((cell) => (
                 <td
                   key={getCellKey(cell)}
-                  className="w-[12.5%] px-2 py-2 align-middle"
+                  className="w-[12.5%] px-2 py-2 align-top"
                 >
                   <AssignmentBoardCell
                     cell={cell}
+                    serverSlots={serverSlots}
+                    renderDraftState={renderDraftState}
                     disabled={disabled}
-                    dropPreview={dropPreview}
-                    isSelected={
-                      cell.kind === "scheduled" &&
-                      selection?.slotID === cell.slotID &&
-                      selection.weekday === cell.weekday
-                    }
-                    onSelect={(slotID, weekday) => {
-                      if (
-                        selection?.slotID === slotID &&
-                        selection.weekday === weekday
-                      ) {
-                        onSelectionChange(null)
-                        return
-                      }
-
-                      onSelectionChange({ slotID, weekday })
-                    }}
+                    isReadOnly={isReadOnly}
+                    draggingUserID={draggingUserID}
+                    directory={directory}
+                    onUnassignClick={onUnassignClick}
+                    onCancelDraft={onCancelDraft}
                   />
                 </td>
               ))}

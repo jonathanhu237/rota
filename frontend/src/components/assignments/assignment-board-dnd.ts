@@ -1,24 +1,18 @@
+import type { Employee } from "@/components/assignments/assignment-board-directory"
 import {
   enqueueAdd,
-  enqueueMove,
   enqueueRemove,
-  removeDraftOp,
   type DraftAssignmentInput,
   type DraftState,
   type DraftUserInput,
   type ProjectedAssignment,
 } from "@/components/assignments/draft-state"
-import type {
-  AssignmentBoardCandidate,
-  AssignmentBoardSlot,
-} from "@/lib/types"
-
-export type AssignmentBoardSelection = {
-  slotID: number
-  weekday: number
-}
 
 export type AssignmentBoardDragSource =
+  | {
+      kind: "directory-employee"
+      employee: Employee
+    }
   | {
       kind: "assigned"
       assignment: ProjectedAssignment
@@ -26,124 +20,109 @@ export type AssignmentBoardDragSource =
       weekday: number
       positionID: number
     }
-  | {
-      kind: "candidate"
-      candidate: AssignmentBoardCandidate
-      slotID: number
-      weekday: number
-      positionID: number
-    }
 
 export type AssignmentBoardDropTarget = {
-  kind: "cell"
+  kind: "seat"
   slotID: number
   weekday: number
+  positionID: number
+  headcountIndex: number
+  filledBy: ProjectedAssignment | null
+  cellUserIDs: number[]
 }
 
 export function resolveAssignmentBoardDrop({
-  slots,
+  directory,
   draftState,
-  selection,
   source,
   target,
 }: {
-  slots: AssignmentBoardSlot[]
+  directory: Map<number, Employee>
   draftState: DraftState
-  selection: AssignmentBoardSelection | null
   source: AssignmentBoardDragSource
   target: AssignmentBoardDropTarget
 }) {
-  const targetSlot = findBoardSlot(slots, target.slotID, target.weekday)
-  if (!targetSlot) {
+  const draggedUser = getSourceUser(source)
+
+  if (target.filledBy?.user_id === draggedUser.userID) {
     return draftState
   }
 
-  const targetCell = getTargetCell(slots, target, source)
-
   if (
-    selection?.slotID === target.slotID &&
-    selection.weekday === target.weekday
+    source.kind === "directory-employee" &&
+    target.cellUserIDs.includes(draggedUser.userID)
   ) {
-    return stageSourceAsClick(draftState, source, targetCell)
+    return draftState
   }
 
+  const targetCell = {
+    slotID: target.slotID,
+    weekday: target.weekday,
+    positionID: target.positionID,
+    isUnqualified: !isEmployeeQualifiedForPosition(
+      directory,
+      draggedUser.userID,
+      target.positionID,
+    ),
+  }
+
+  let nextState = draftState
+
   if (source.kind === "assigned") {
-    return enqueueMove(
-      draftState,
+    if (
+      source.slotID === target.slotID &&
+      source.weekday === target.weekday &&
+      source.positionID === target.positionID &&
+      source.assignment.assignment_id === target.filledBy?.assignment_id
+    ) {
+      return draftState
+    }
+
+    nextState = enqueueRemove(
+      nextState,
       assignmentToDraftInput(
         source.assignment,
         source.slotID,
         source.weekday,
         source.positionID,
       ),
-      targetCell,
     )
   }
 
-  return enqueueAdd(draftState, candidateToDraftUser(source.candidate), targetCell)
-}
-
-function stageSourceAsClick(
-  draftState: DraftState,
-  source: AssignmentBoardDragSource,
-  targetCell: {
-    slotID: number
-    weekday: number
-    positionID: number
-    isUnqualified: boolean
-  },
-) {
-  if (source.kind === "candidate") {
-    return enqueueAdd(draftState, candidateToDraftUser(source.candidate), {
-      ...targetCell,
-      positionID: source.positionID,
-    })
-  }
-
-  if (source.assignment.draftOpID) {
-    return removeDraftOp(draftState, source.assignment.draftOpID)
-  }
-
-  return enqueueRemove(
-    draftState,
-    assignmentToDraftInput(
-      source.assignment,
-      source.slotID,
-      source.weekday,
-      source.positionID,
-    ),
-  )
-}
-
-function getTargetCell(
-  slots: AssignmentBoardSlot[],
-  target: AssignmentBoardDropTarget,
-  source: AssignmentBoardDragSource,
-) {
-  const userID =
-    source.kind === "assigned"
-      ? source.assignment.user_id
-      : source.candidate.user_id
-  const hasPosition = cellHasPosition(
-    slots,
-    target.slotID,
-    target.weekday,
-    source.positionID,
-  )
-
-  return {
-    slotID: target.slotID,
-    weekday: target.weekday,
-    positionID: source.positionID,
-    isUnqualified:
-      !hasPosition ||
-      !isUserQualifiedForCell(
-        slots,
+  if (target.filledBy) {
+    nextState = enqueueRemove(
+      nextState,
+      assignmentToDraftInput(
+        target.filledBy,
         target.slotID,
         target.weekday,
-        source.positionID,
-        userID,
+        target.positionID,
       ),
+    )
+  }
+
+  return enqueueAdd(nextState, draggedUser, targetCell)
+}
+
+export function getDraggedUserID(source: AssignmentBoardDragSource) {
+  return source.kind === "directory-employee"
+    ? source.employee.user_id
+    : source.assignment.user_id
+}
+
+function getSourceUser(source: AssignmentBoardDragSource): DraftUserInput {
+  if (source.kind === "directory-employee") {
+    return {
+      userID: source.employee.user_id,
+      name: source.employee.name,
+      email: source.employee.email,
+    }
+  }
+
+  return {
+    userID: source.assignment.user_id,
+    name: source.assignment.name,
+    email: source.assignment.email,
   }
 }
 
@@ -165,66 +144,10 @@ function assignmentToDraftInput(
   }
 }
 
-function candidateToDraftUser(
-  candidate: AssignmentBoardCandidate,
-): DraftUserInput {
-  return {
-    userID: candidate.user_id,
-    name: candidate.name,
-    email: candidate.email,
-  }
-}
-
-function findBoardSlot(
-  slots: AssignmentBoardSlot[],
-  slotID: number,
-  weekday: number,
-) {
-  return slots.find(
-    (entry) => entry.slot.id === slotID && entry.slot.weekday === weekday,
-  )
-}
-
-function cellHasPosition(
-  slots: AssignmentBoardSlot[],
-  slotID: number,
-  weekday: number,
-  positionID: number,
-) {
-  return Boolean(findBoardPosition(slots, slotID, weekday, positionID))
-}
-
-function findBoardPosition(
-  slots: AssignmentBoardSlot[],
-  slotID: number,
-  weekday: number,
-  positionID: number,
-) {
-  return findBoardSlot(slots, slotID, weekday)?.positions.find(
-    (entry) => entry.position.id === positionID,
-  )
-}
-
-function isUserQualifiedForCell(
-  slots: AssignmentBoardSlot[],
-  slotID: number,
-  weekday: number,
-  positionID: number,
+function isEmployeeQualifiedForPosition(
+  directory: Map<number, Employee>,
   userID: number,
+  positionID: number,
 ) {
-  const positionEntry = findBoardPosition(
-    slots,
-    slotID,
-    weekday,
-    positionID,
-  )
-  if (!positionEntry) {
-    return false
-  }
-
-  return [
-    ...positionEntry.candidates,
-    ...positionEntry.non_candidate_qualified,
-    ...positionEntry.assignments,
-  ].some((candidate) => candidate.user_id === userID)
+  return directory.get(userID)?.position_ids.has(positionID) ?? false
 }

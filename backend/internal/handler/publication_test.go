@@ -584,12 +584,16 @@ func TestPublicationHandler(t *testing.T) {
 		if recorder.Code != http.StatusOK {
 			t.Fatalf("expected status 200, got %d", recorder.Code)
 		}
+		body := recorder.Body.String()
+		if strings.Contains(body, `"candidates"`) || strings.Contains(body, `"non_candidate_qualified"`) {
+			t.Fatalf("assignment-board response still carries removed per-position fields: %s", body)
+		}
 		response := decodeJSONResponse[assignmentBoardResponse](t, recorder)
 		if response.Publication == nil ||
 			len(response.Slots) != 1 ||
 			len(response.Slots[0].Positions) != 1 ||
-			len(response.Slots[0].Positions[0].Candidates) != 1 ||
-			len(response.Slots[0].Positions[0].NonCandidateQualified) != 1 ||
+			len(response.Employees) != 2 ||
+			len(response.Employees[0].PositionIDs) != 1 ||
 			len(response.Slots[0].Positions[0].Assignments) != 1 {
 			t.Fatalf("unexpected response: %+v", response)
 		}
@@ -944,6 +948,20 @@ func samplePublicationPosition() *model.Position {
 func sampleAssignmentBoardResult() *service.AssignmentBoardResult {
 	return &service.AssignmentBoardResult{
 		Publication: samplePublication(),
+		Employees: []*model.AssignmentBoardEmployee{
+			{
+				UserID:      1,
+				Name:        "Worker",
+				Email:       "worker@example.com",
+				PositionIDs: []int64{7},
+			},
+			{
+				UserID:      2,
+				Name:        "Available",
+				Email:       "available@example.com",
+				PositionIDs: []int64{7},
+			},
+		},
 		Slots: []*service.AssignmentBoardSlotResult{
 			{
 				Slot: samplePublicationSlot(),
@@ -951,24 +969,6 @@ func sampleAssignmentBoardResult() *service.AssignmentBoardResult {
 					{
 						Position:          samplePublicationPosition(),
 						RequiredHeadcount: 2,
-						Candidates: []*model.AssignmentCandidate{
-							{
-								SlotID:     21,
-								PositionID: 7,
-								UserID:     1,
-								Name:       "Worker",
-								Email:      "worker@example.com",
-							},
-						},
-						NonCandidateQualified: []*model.AssignmentCandidate{
-							{
-								SlotID:     21,
-								PositionID: 7,
-								UserID:     2,
-								Name:       "Available",
-								Email:      "available@example.com",
-							},
-						},
 						Assignments: []*model.AssignmentParticipant{
 							{
 								AssignmentID: 3,

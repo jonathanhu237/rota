@@ -66,6 +66,7 @@ type publicationRepository interface {
 	ActivatePublication(ctx context.Context, params repository.ActivatePublicationParams) (*repository.ActivatePublicationResult, error)
 	PublishPublication(ctx context.Context, params repository.PublishPublicationParams) (*model.Publication, error)
 	GetAssignmentBoardView(ctx context.Context, publicationID int64) (map[repository.AssignmentBoardSlotKey]*repository.AssignmentBoardSlotView, error)
+	ListAssignmentBoardEmployees(ctx context.Context, publicationID int64) ([]*model.AssignmentBoardEmployee, error)
 	ListPublicationShifts(ctx context.Context, publicationID int64) ([]*model.PublicationShift, error)
 	ListAssignmentCandidates(ctx context.Context, publicationID int64) ([]*model.AssignmentCandidate, error)
 	ListQualifiedUsersForPositions(ctx context.Context, positionIDs []int64) (map[int64][]*model.AssignmentCandidate, error)

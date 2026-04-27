@@ -3,11 +3,15 @@ import { screen, within } from "@testing-library/react"
 import type { ComponentProps } from "react"
 import { describe, expect, it, vi } from "vitest"
 
-import type { AssignmentBoardSlot } from "@/lib/types"
+import {
+  deriveEmployeeDirectory,
+  type Employee,
+} from "@/components/assignments/assignment-board-directory"
+import type { AssignmentBoardEmployee, AssignmentBoardSlot } from "@/lib/types"
 import { renderWithProviders } from "@/test-utils/render"
 
-import { resolveAssignmentBoardDrop } from "./assignment-board-dnd"
 import { AssignmentBoard } from "./assignment-board"
+import { resolveAssignmentBoardDrop } from "./assignment-board-dnd"
 import { emptyDraftState, type DraftState } from "./draft-state"
 
 const slots: AssignmentBoardSlot[] = [
@@ -25,12 +29,6 @@ const slots: AssignmentBoardSlot[] = [
           name: "Front Desk",
         },
         required_headcount: 2,
-        candidates: [
-          { user_id: 10, name: "Alice", email: "alice@example.com" },
-        ],
-        non_candidate_qualified: [
-          { user_id: 12, name: "Dana", email: "dana@example.com" },
-        ],
         assignments: [
           {
             assignment_id: 20,
@@ -46,8 +44,6 @@ const slots: AssignmentBoardSlot[] = [
           name: "Kitchen",
         },
         required_headcount: 1,
-        candidates: [],
-        non_candidate_qualified: [],
         assignments: [
           {
             assignment_id: 21,
@@ -73,12 +69,6 @@ const slots: AssignmentBoardSlot[] = [
           name: "Front Desk",
         },
         required_headcount: 2,
-        candidates: [
-          { user_id: 10, name: "Alice", email: "alice@example.com" },
-        ],
-        non_candidate_qualified: [
-          { user_id: 11, name: "Bob", email: "bob@example.com" },
-        ],
         assignments: [],
       },
     ],
@@ -97,155 +87,177 @@ const slots: AssignmentBoardSlot[] = [
           name: "Kitchen",
         },
         required_headcount: 1,
-        candidates: [
-          { user_id: 10, name: "Alice", email: "alice@example.com" },
-        ],
-        non_candidate_qualified: [],
         assignments: [],
       },
     ],
   },
 ]
 
-const fullSlots: AssignmentBoardSlot[] = [
-  {
-    slot: {
-      id: 1,
-      weekday: 1,
-      start_time: "09:00",
-      end_time: "11:00",
-    },
-    positions: [
-      {
-        position: { id: 101, name: "Front Desk" },
-        required_headcount: 1,
-        candidates: [],
-        non_candidate_qualified: [],
-        assignments: [
-          {
-            assignment_id: 20,
-            user_id: 11,
-            name: "Bob",
-            email: "bob@example.com",
-          },
-        ],
-      },
-    ],
-  },
+const employees: AssignmentBoardEmployee[] = [
+  { user_id: 10, name: "Alice", email: "alice@example.com", position_ids: [101] },
+  { user_id: 11, name: "Bob", email: "bob@example.com", position_ids: [101] },
+  { user_id: 12, name: "Dana", email: "dana@example.com", position_ids: [101] },
+  { user_id: 13, name: "Cara", email: "cara@example.com", position_ids: [102] },
 ]
 
 type AssignmentBoardProps = ComponentProps<typeof AssignmentBoard>
 
 describe("AssignmentBoard", () => {
-  it("shows the summary first and selecting a grid cell opens the editor", async () => {
-    const user = userEvent.setup()
-    const { container } = renderBoard()
+  it("renders the seat grid and always-visible employee directory", () => {
+    renderBoard()
 
-    expect(screen.getByText("assignments.summary.title")).toBeInTheDocument()
+    const directory = getDirectory()
 
-    const firstCell = getGridButtons(container)[0]
-    await user.click(firstCell)
-
-    expect(firstCell).toHaveAttribute("aria-pressed", "true")
-    expect(screen.getByText("Front Desk")).toBeInTheDocument()
-    expect(screen.queryByText("assignments.summary.title")).not.toBeInTheDocument()
+    expect(screen.getAllByTestId("assignment-seat")).toHaveLength(6)
+    expect(within(directory).getByText("Alice")).toBeInTheDocument()
+    expect(within(directory).getByText("Bob")).toBeInTheDocument()
+    expect(within(directory).getByText("Cara")).toBeInTheDocument()
+    expect(within(directory).getByText("Dana")).toBeInTheDocument()
+    expect(within(directory).getByText("assignments.directory.gaps"))
+      .toBeInTheDocument()
   })
 
-  it("click-stages a candidate and cancels the inverse staged chip", async () => {
+  it("filters the directory search by name", async () => {
     const user = userEvent.setup()
-    const onAssign = vi.fn()
-    renderBoard({ onAssign })
+    renderBoard()
 
-    await user.click(getGridButtons(document.body)[0])
-    await user.click(getButtonForText("Alice (2h)"))
+    const directory = getDirectory()
+    await user.type(
+      within(directory).getByLabelText("assignments.directory.search"),
+      "da",
+    )
 
-    expect(onAssign).not.toHaveBeenCalled()
-    expect(screen.getByText("assignments.drafts.added")).toBeInTheDocument()
+    expect(getDirectoryRowNames(directory)).toEqual(["Dana"])
+  })
+
+  it("sorts the directory by hours by default and by name on toggle", async () => {
+    const user = userEvent.setup()
+    renderBoard()
+
+    const directory = getDirectory()
+
+    expect(getDirectoryRowNames(directory)).toEqual([
+      "Alice",
+      "Dana",
+      "Bob",
+      "Cara",
+    ])
+
+    await user.click(
+      within(directory).getByRole("button", {
+        name: "assignments.directory.sortByName",
+      }),
+    )
+
+    expect(getDirectoryRowNames(directory)).toEqual([
+      "Alice",
+      "Bob",
+      "Cara",
+      "Dana",
+    ])
+  })
+
+  it("clicks a filled seat x to stage unassign and clicks it again to cancel", async () => {
+    const user = userEvent.setup()
+    renderBoard()
+
+    await user.click(getButtonForText("Bob (2h)"))
+
+    expect(screen.getByText("assignments.drafts.toRemove")).toBeInTheDocument()
     expect(
       screen.getByRole("button", { name: "assignments.drafts.submit" }),
     ).toBeEnabled()
 
-    await user.click(getButtonForText("Alice (2h)"))
+    const stagedButton = screen
+      .getByText("assignments.drafts.toRemove")
+      .closest("button")
+    if (!stagedButton) {
+      throw new Error("Missing staged unassign button")
+    }
 
-    expect(screen.queryByText("assignments.drafts.added")).not.toBeInTheDocument()
+    await user.click(stagedButton)
+
+    expect(
+      screen.queryByText("assignments.drafts.toRemove"),
+    ).not.toBeInTheDocument()
     expect(
       screen.getByRole("button", { name: "assignments.drafts.submit" }),
     ).toBeDisabled()
-  })
-
-  it("click-stages an assigned chip for removal", async () => {
-    const user = userEvent.setup()
-    const onUnassign = vi.fn()
-    renderBoard({ onUnassign })
-
-    await user.click(getGridButtons(document.body)[0])
-    await user.click(getButtonForText("Bob (2h)"))
-
-    expect(onUnassign).not.toHaveBeenCalled()
-    expect(screen.getByText("assignments.drafts.toRemove")).toBeInTheDocument()
-  })
-
-  it("keeps staged drafts visible after changing selection", async () => {
-    const user = userEvent.setup()
-    renderBoard()
-
-    await user.click(getGridButtons(document.body)[0])
-    await user.click(getButtonForText("Alice (2h)"))
-    await user.click(getGridButtons(document.body)[1])
-    await user.click(getGridButtons(document.body)[0])
-
-    expect(screen.getByText("assignments.drafts.added")).toBeInTheDocument()
-  })
-
-  it("lists summary gaps in weekday then start-time order and jumps to a gap", async () => {
-    const user = userEvent.setup()
-    renderBoard()
-
-    const summary = screen.getByText("assignments.summary.title").closest("aside")
-    if (!summary) {
-      throw new Error("Missing summary side panel")
-    }
-    const gapButtons = within(summary).getAllByRole("button")
-
-    expect(gapButtons.map((button) => button.textContent)).toEqual([
-      "templates.weekday.mon assignments.shiftSummaryassignments.headcount",
-      "templates.weekday.mon assignments.shiftSummaryassignments.headcount",
-      "templates.weekday.tue assignments.shiftSummaryassignments.headcount",
-    ])
-
-    await user.click(gapButtons[2])
-
-    expect(screen.getByText("Kitchen")).toBeInTheDocument()
-  })
-
-  it("shows an empty summary state when every cell is full", () => {
-    renderBoard({ slots: fullSlots })
-
-    expect(screen.getByText("assignments.summary.noGaps")).toBeInTheDocument()
   })
 
   it("disables staging in read-only mode", async () => {
     const user = userEvent.setup()
-    const onAssign = vi.fn()
-    const onUnassign = vi.fn()
-    renderBoard({ isReadOnly: true, onAssign, onUnassign })
+    renderBoard({ isReadOnly: true })
 
-    await user.click(getGridButtons(document.body)[0])
-    await user.click(getButtonForText("Alice (2h)"))
     await user.click(getButtonForText("Bob (2h)"))
 
-    expect(onAssign).not.toHaveBeenCalled()
-    expect(onUnassign).not.toHaveBeenCalled()
+    expect(
+      screen.queryByText("assignments.drafts.toRemove"),
+    ).not.toBeInTheDocument()
     expect(
       screen.getByRole("button", { name: "assignments.drafts.submit" }),
     ).toBeDisabled()
   })
 
-  it("resolves a cross-cell drag from assigned chip as remove plus add", () => {
+  it("resolves a directory drop on an empty seat as one add", () => {
+    const directory = makeDirectory()
     const state = resolveAssignmentBoardDrop({
-      slots,
+      directory,
       draftState: emptyDraftState,
-      selection: { slotID: 1, weekday: 1 },
+      source: {
+        kind: "directory-employee",
+        employee: getEmployee(directory, 10),
+      },
+      target: {
+        kind: "seat",
+        slotID: 2,
+        weekday: 1,
+        positionID: 101,
+        headcountIndex: 0,
+        filledBy: null,
+        cellUserIDs: [],
+      },
+    })
+
+    expect(state.ops).toHaveLength(1)
+    expect(state.ops[0]).toMatchObject({ kind: "assign", userID: 10 })
+  })
+
+  it("resolves a directory drop on a filled seat as replace", () => {
+    const directory = makeDirectory()
+    const state = resolveAssignmentBoardDrop({
+      directory,
+      draftState: emptyDraftState,
+      source: {
+        kind: "directory-employee",
+        employee: getEmployee(directory, 10),
+      },
+      target: {
+        kind: "seat",
+        slotID: 1,
+        weekday: 1,
+        positionID: 101,
+        headcountIndex: 0,
+        filledBy: {
+          assignment_id: 20,
+          user_id: 11,
+          name: "Bob",
+          email: "bob@example.com",
+        },
+        cellUserIDs: [11],
+      },
+    })
+
+    expect(state.ops.map((op) => op.kind)).toEqual(["unassign", "assign"])
+    expect(state.ops[0]).toMatchObject({ assignmentID: 20, userID: 11 })
+    expect(state.ops[1]).toMatchObject({ userID: 10 })
+  })
+
+  it("resolves a cross-seat drag from an assigned chip", () => {
+    const directory = makeDirectory()
+    const state = resolveAssignmentBoardDrop({
+      directory,
+      draftState: emptyDraftState,
       source: {
         kind: "assigned",
         assignment: {
@@ -259,62 +271,48 @@ describe("AssignmentBoard", () => {
         positionID: 101,
       },
       target: {
-        kind: "cell",
+        kind: "seat",
         slotID: 2,
         weekday: 1,
+        positionID: 101,
+        headcountIndex: 1,
+        filledBy: null,
+        cellUserIDs: [],
       },
     })
 
     expect(state.ops.map((op) => op.kind)).toEqual(["unassign", "assign"])
-  })
-
-  it("resolves a cross-cell drag from candidate chip as one add", () => {
-    const state = resolveAssignmentBoardDrop({
-      slots,
-      draftState: emptyDraftState,
-      selection: { slotID: 1, weekday: 1 },
-      source: {
-        kind: "candidate",
-        candidate: {
-          user_id: 10,
-          name: "Alice",
-          email: "alice@example.com",
-        },
-        slotID: 1,
-        weekday: 1,
-        positionID: 101,
-      },
-      target: {
-        kind: "cell",
-        slotID: 2,
-        weekday: 1,
-      },
+    expect(state.ops[1]).toMatchObject({
+      kind: "assign",
+      userID: 11,
+      slotID: 2,
+      weekday: 1,
+      positionID: 101,
     })
-
-    expect(state.ops).toHaveLength(1)
-    expect(state.ops[0]).toMatchObject({ kind: "assign", userID: 10 })
   })
 
-  it("rejects drops on off-schedule cells", () => {
+  it("treats a drop onto a seat already held by the same user as a no-op", () => {
+    const directory = makeDirectory()
     const state = resolveAssignmentBoardDrop({
-      slots,
+      directory,
       draftState: emptyDraftState,
-      selection: { slotID: 1, weekday: 1 },
       source: {
-        kind: "candidate",
-        candidate: {
-          user_id: 10,
-          name: "Alice",
-          email: "alice@example.com",
-        },
+        kind: "directory-employee",
+        employee: getEmployee(directory, 11),
+      },
+      target: {
+        kind: "seat",
         slotID: 1,
         weekday: 1,
         positionID: 101,
-      },
-      target: {
-        kind: "cell",
-        slotID: 999,
-        weekday: 6,
+        headcountIndex: 0,
+        filledBy: {
+          assignment_id: 20,
+          user_id: 11,
+          name: "Bob",
+          email: "bob@example.com",
+        },
+        cellUserIDs: [11],
       },
     })
 
@@ -388,6 +386,7 @@ describe("AssignmentBoard", () => {
 
 function renderBoard({
   slots: boardSlots = slots,
+  employees: boardEmployees = employees,
   isReadOnly = false,
   initialDraftState,
   onAssign = vi.fn(),
@@ -397,6 +396,7 @@ function renderBoard({
   onUnassign = vi.fn(),
 }: {
   slots?: AssignmentBoardSlot[]
+  employees?: AssignmentBoardEmployee[]
   isReadOnly?: boolean
   initialDraftState?: DraftState
   onAssign?: ReturnType<typeof vi.fn>
@@ -422,6 +422,7 @@ function renderBoard({
       }
       onUnassign={onUnassign as AssignmentBoardProps["onUnassign"]}
       slots={boardSlots}
+      employees={boardEmployees}
     />,
   )
 }
@@ -465,13 +466,21 @@ function makeSubmitDraftState(): DraftState {
   }
 }
 
-function getGridButtons(container: HTMLElement) {
-  const table = container.querySelector("table")
-  if (!table) {
-    throw new Error("Missing assignment grid")
+function getDirectory() {
+  const directory = screen
+    .getByText("assignments.directory.title")
+    .closest("aside")
+  if (!directory) {
+    throw new Error("Missing employee directory")
   }
 
-  return within(table).getAllByRole("button")
+  return directory
+}
+
+function getDirectoryRowNames(directory: HTMLElement) {
+  return within(directory)
+    .getAllByTestId("assignment-directory-row")
+    .map((row) => row.getAttribute("aria-label"))
 }
 
 function getButtonForText(text: string) {
@@ -482,4 +491,17 @@ function getButtonForText(text: string) {
   }
 
   return button
+}
+
+function makeDirectory() {
+  return deriveEmployeeDirectory(employees)
+}
+
+function getEmployee(directory: Map<number, Employee>, userID: number) {
+  const employee = directory.get(userID)
+  if (!employee) {
+    throw new Error(`Missing employee ${userID}`)
+  }
+
+  return employee
 }

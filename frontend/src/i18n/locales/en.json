@@ -646,19 +646,20 @@
       "partial": "Partial",
       "empty": "Empty"
     },
-    "panel": {
-      "close": "Close cell"
+    "directory": {
+      "title": "Employee directory",
+      "gaps": "{{count}} coverage gaps",
+      "noGaps": "All cells filled",
+      "search": "Search employee",
+      "sortByHours": "By hours",
+      "sortByName": "By name",
+      "empty": "No employees match this search.",
+      "hours": "{{hours}}h"
     },
-    "summary": {
-      "title": "Coverage summary",
-      "coverageGaps": "Coverage gaps ({{count}})",
-      "noGaps": "All scheduled cells are fully covered."
+    "seat": {
+      "empty": "Empty",
+      "overflow": "Overflow"
     },
-    "understaffed": "Understaffed",
-    "candidates": "Candidates",
-    "assigned": "Assigned",
-    "emptyCandidates": "No candidates submitted availability for this shift.",
-    "emptyAssignments": "Nobody is assigned to this shift yet.",
     "drafts": {
       "pendingCount": "Drafts: {{count}} pending",
       "submit": "Submit",

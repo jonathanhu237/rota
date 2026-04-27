@@ -210,6 +210,7 @@ function PublicationAssignmentsPage() {
             )}
             <AssignmentBoard
               slots={board.slots}
+              employees={board.employees}
               isPending={isPending}
               isReadOnly={isReadOnly}
               onAssign={(userID, slotID, weekday, positionID) =>

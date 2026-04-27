@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -430,12 +431,13 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		}
 	})
 
-	t.Run("GetAssignmentBoardView groups slot positions and filters non-candidate qualified users", func(t *testing.T) {
+	t.Run("GetAssignmentBoardView groups slot positions and ListAssignmentBoardEmployees filters publication employees", func(t *testing.T) {
 		db := openIntegrationDB(t)
 		repo := NewPublicationRepository(db)
 		template := seedTemplate(t, db, templateSeed{Name: "Board Template"})
 		firstPosition := seedPosition(t, db, positionSeed{Name: "Front Desk"})
 		secondPosition := seedPosition(t, db, positionSeed{Name: "Cashier"})
+		outsidePosition := seedPosition(t, db, positionSeed{Name: "Inventory"})
 		firstSlotID := seedTemplateSlot(t, db, template.ID, 1, "09:00", "12:00")
 		secondSlotID := seedTemplateSlot(t, db, template.ID, 2, "13:00", "16:00")
 		seedTemplateSlotPosition(t, db, firstSlotID, firstPosition.ID, 2)
@@ -451,20 +453,27 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		firstCandidate := seedUser(t, db, userSeed{Name: "Alice", Email: "alice@example.com"})
 		secondCandidate := seedUser(t, db, userSeed{Name: "Bob", Email: "bob@example.com"})
 		nonCandidateQualified := seedUser(t, db, userSeed{Name: "Dana", Email: "dana@example.com"})
+		adminQualified := seedUser(t, db, userSeed{Name: "Admin", Email: "admin@example.com", IsAdmin: true})
 		disabledQualified := seedUser(t, db, userSeed{
 			Name:   "Disabled",
 			Email:  "disabled@example.com",
 			Status: model.UserStatusDisabled,
 		})
+		outsideOnly := seedUser(t, db, userSeed{Name: "Outside", Email: "outside@example.com"})
+		mixedQualified := seedUser(t, db, userSeed{Name: "Mixed", Email: "mixed@example.com"})
 
 		for _, userID := range []int64{
 			firstCandidate.ID,
 			secondCandidate.ID,
 			nonCandidateQualified.ID,
+			adminQualified.ID,
 			disabledQualified.ID,
+			mixedQualified.ID,
 		} {
 			seedUserPosition(t, db, userID, firstPosition.ID)
 		}
+		seedUserPosition(t, db, outsideOnly.ID, outsidePosition.ID)
+		seedUserPosition(t, db, mixedQualified.ID, outsidePosition.ID)
 
 		seedSubmission(t, db, publication.ID, firstCandidate.ID, firstSlotID, testTime())
 		seedSubmission(t, db, publication.ID, secondCandidate.ID, firstSlotID, testTime().Add(1*time.Minute))
@@ -489,16 +498,8 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		if firstPositionView.RequiredHeadcount != 2 {
 			t.Fatalf("expected required_headcount=2, got %+v", firstPositionView)
 		}
-		if len(firstPositionView.Candidates) != 2 ||
-			firstPositionView.Candidates[0].UserID != firstCandidate.ID ||
-			firstPositionView.Candidates[1].UserID != secondCandidate.ID {
-			t.Fatalf("unexpected candidates: %+v", firstPositionView.Candidates)
-		}
 		if len(firstPositionView.Assignments) != 1 || firstPositionView.Assignments[0].UserID != secondCandidate.ID {
 			t.Fatalf("unexpected assignments: %+v", firstPositionView.Assignments)
-		}
-		if len(firstPositionView.NonCandidateQualified) != 1 || firstPositionView.NonCandidateQualified[0].UserID != nonCandidateQualified.ID {
-			t.Fatalf("unexpected non-candidate qualified users: %+v", firstPositionView.NonCandidateQualified)
 		}
 
 		secondSlot := board[AssignmentBoardSlotKey{SlotID: secondSlotID, Weekday: 2}]
@@ -509,8 +510,36 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 		if secondPositionView == nil {
 			t.Fatalf("expected second slot position view, got %+v", secondSlot.Positions)
 		}
-		if len(secondPositionView.Candidates) != 0 || len(secondPositionView.Assignments) != 0 || len(secondPositionView.NonCandidateQualified) != 0 {
+		if len(secondPositionView.Assignments) != 0 {
 			t.Fatalf("expected empty second slot position view, got %+v", secondPositionView)
+		}
+
+		employees, err := repo.ListAssignmentBoardEmployees(ctx, publication.ID)
+		if err != nil {
+			t.Fatalf("list assignment board employees: %v", err)
+		}
+		wantEmployeePositions := map[int64][]int64{
+			firstCandidate.ID:        {firstPosition.ID},
+			secondCandidate.ID:       {firstPosition.ID},
+			nonCandidateQualified.ID: {firstPosition.ID},
+			mixedQualified.ID:        {firstPosition.ID},
+		}
+		if len(employees) != len(wantEmployeePositions) {
+			t.Fatalf("unexpected employees: %+v", employees)
+		}
+		previousID := int64(0)
+		for _, employee := range employees {
+			if employee.UserID <= previousID {
+				t.Fatalf("employees are not sorted by user id: %+v", employees)
+			}
+			previousID = employee.UserID
+			wantPositions, ok := wantEmployeePositions[employee.UserID]
+			if !ok {
+				t.Fatalf("unexpected employee: %+v", employee)
+			}
+			if !reflect.DeepEqual(employee.PositionIDs, wantPositions) {
+				t.Fatalf("unexpected position_ids for employee %d: got %+v want %+v", employee.UserID, employee.PositionIDs, wantPositions)
+			}
 		}
 	})
 

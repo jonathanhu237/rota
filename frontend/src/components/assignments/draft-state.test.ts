@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
-import type { AssignmentBoardSlot } from "@/lib/types"
+import { deriveEmployeeDirectory } from "@/components/assignments/assignment-board-directory"
+import type { AssignmentBoardEmployee, AssignmentBoardSlot } from "@/lib/types"
 
 import { resolveAssignmentBoardDrop } from "./assignment-board-dnd"
 import {
@@ -31,10 +32,6 @@ const slots: AssignmentBoardSlot[] = [
           name: "Front Desk",
         },
         required_headcount: 1,
-        candidates: [
-          { user_id: 10, name: "Alice", email: "alice@example.com" },
-        ],
-        non_candidate_qualified: [],
         assignments: [
           {
             assignment_id: 20,
@@ -60,10 +57,6 @@ const slots: AssignmentBoardSlot[] = [
           name: "Front Desk",
         },
         required_headcount: 2,
-        candidates: [
-          { user_id: 10, name: "Alice", email: "alice@example.com" },
-        ],
-        non_candidate_qualified: [],
         assignments: [
           {
             assignment_id: 21,
@@ -79,8 +72,6 @@ const slots: AssignmentBoardSlot[] = [
           name: "Kitchen",
         },
         required_headcount: 1,
-        candidates: [],
-        non_candidate_qualified: [],
         assignments: [
           {
             assignment_id: 22,
@@ -106,12 +97,17 @@ const slots: AssignmentBoardSlot[] = [
           name: "Kitchen",
         },
         required_headcount: 1,
-        candidates: [],
-        non_candidate_qualified: [],
         assignments: [],
       },
     ],
   },
+]
+
+const employees: AssignmentBoardEmployee[] = [
+  { user_id: 10, name: "Alice", email: "alice@example.com", position_ids: [101] },
+  { user_id: 11, name: "Bob", email: "bob@example.com", position_ids: [101] },
+  { user_id: 12, name: "Cara", email: "cara@example.com", position_ids: [101] },
+  { user_id: 13, name: "Dana", email: "dana@example.com", position_ids: [102] },
 ]
 
 describe("draft state reducers", () => {
@@ -276,11 +272,11 @@ describe("draft state reducers", () => {
     })
   })
 
-  it("marks a cross-cell assign as unqualified when the target cell lacks the source position", () => {
+  it("marks a seat drop as unqualified when the user lacks the target position", () => {
+    const directory = deriveEmployeeDirectory(employees)
     const state = resolveAssignmentBoardDrop({
-      slots,
+      directory,
       draftState: emptyDraftState,
-      selection: { slotID: 1, weekday: 1 },
       source: {
         kind: "assigned",
         assignment: {
@@ -294,9 +290,13 @@ describe("draft state reducers", () => {
         positionID: 101,
       },
       target: {
-        kind: "cell",
+        kind: "seat",
         slotID: 3,
         weekday: 2,
+        positionID: 102,
+        headcountIndex: 0,
+        filledBy: null,
+        cellUserIDs: [],
       },
     })
 
@@ -306,7 +306,7 @@ describe("draft state reducers", () => {
       userID: 11,
       slotID: 3,
       weekday: 2,
-      positionID: 101,
+      positionID: 102,
       isUnqualified: true,
     })
   })

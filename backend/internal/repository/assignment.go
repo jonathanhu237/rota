@@ -60,11 +60,9 @@ type AssignmentBoardSlotKey struct {
 }
 
 type AssignmentBoardPositionView struct {
-	Position              *model.Position
-	RequiredHeadcount     int
-	Candidates            []*model.AssignmentCandidate
-	NonCandidateQualified []*model.AssignmentCandidate
-	Assignments           []*model.AssignmentParticipant
+	Position          *model.Position
+	RequiredHeadcount int
+	Assignments       []*model.AssignmentParticipant
 }
 
 type ActivatePublicationParams struct {
@@ -677,64 +675,12 @@ func (r *PublicationRepository) GetAssignmentBoardView(
 			tsp.position_id,
 			p.name,
 			tsp.required_headcount,
-			COALESCE(candidates.users, '[]'::jsonb),
-			COALESCE(non_candidates.users, '[]'::jsonb),
 			COALESCE(assignments.users, '[]'::jsonb)
 		FROM publications pub
 		INNER JOIN template_slots ts ON ts.template_id = pub.template_id
 		INNER JOIN template_slot_weekdays tsw ON tsw.slot_id = ts.id
 		INNER JOIN template_slot_positions tsp ON tsp.slot_id = ts.id
 		INNER JOIN positions p ON p.id = tsp.position_id
-		LEFT JOIN LATERAL (
-			SELECT jsonb_agg(
-				jsonb_build_object(
-					'user_id', u.id,
-					'name', u.name,
-					'email', u.email
-				)
-				ORDER BY u.id
-			) AS users
-			FROM availability_submissions asub
-			INNER JOIN users u ON u.id = asub.user_id
-			INNER JOIN user_positions up
-				ON up.user_id = asub.user_id
-				AND up.position_id = tsp.position_id
-			WHERE asub.publication_id = pub.id
-				AND asub.slot_id = ts.id
-				AND asub.weekday = tsw.weekday
-				AND u.status = 'active'
-		) candidates ON true
-		LEFT JOIN LATERAL (
-			SELECT jsonb_agg(
-				jsonb_build_object(
-					'user_id', u.id,
-					'name', u.name,
-					'email', u.email
-				)
-				ORDER BY u.id
-			) AS users
-			FROM user_positions up
-			INNER JOIN users u ON u.id = up.user_id
-			WHERE up.position_id = tsp.position_id
-				AND u.status = 'active'
-				AND NOT EXISTS (
-					SELECT 1
-					FROM availability_submissions asub
-					WHERE asub.publication_id = pub.id
-						AND asub.slot_id = ts.id
-						AND asub.weekday = tsw.weekday
-						AND asub.user_id = u.id
-				)
-				AND NOT EXISTS (
-					SELECT 1
-					FROM assignments a
-					WHERE a.publication_id = pub.id
-						AND a.slot_id = ts.id
-						AND a.weekday = tsw.weekday
-						AND a.position_id = tsp.position_id
-						AND a.user_id = u.id
-				)
-		) non_candidates ON true
 		LEFT JOIN LATERAL (
 			SELECT jsonb_agg(
 				jsonb_build_object(
@@ -774,8 +720,6 @@ func (r *PublicationRepository) GetAssignmentBoardView(
 			positionID        int64
 			positionName      string
 			requiredHeadcount int
-			candidatesJSON    []byte
-			nonCandidatesJSON []byte
 			assignmentsJSON   []byte
 		)
 		if err := rows.Scan(
@@ -787,8 +731,6 @@ func (r *PublicationRepository) GetAssignmentBoardView(
 			&positionID,
 			&positionName,
 			&requiredHeadcount,
-			&candidatesJSON,
-			&nonCandidatesJSON,
 			&assignmentsJSON,
 		); err != nil {
 			return nil, err
@@ -810,14 +752,6 @@ func (r *PublicationRepository) GetAssignmentBoardView(
 			board[key] = slotView
 		}
 
-		candidates, err := decodeAssignmentBoardCandidates(candidatesJSON, slotID, weekday, positionID)
-		if err != nil {
-			return nil, fmt.Errorf("decode candidates for slot %d position %d: %w", slotID, positionID, err)
-		}
-		nonCandidates, err := decodeAssignmentBoardCandidates(nonCandidatesJSON, slotID, weekday, positionID)
-		if err != nil {
-			return nil, fmt.Errorf("decode non-candidates for slot %d position %d: %w", slotID, positionID, err)
-		}
 		assignments, err := decodeAssignmentBoardAssignments(assignmentsJSON, slotID, weekday, positionID)
 		if err != nil {
 			return nil, fmt.Errorf("decode assignments for slot %d position %d: %w", slotID, positionID, err)
@@ -828,10 +762,8 @@ func (r *PublicationRepository) GetAssignmentBoardView(
 				ID:   positionID,
 				Name: positionName,
 			},
-			RequiredHeadcount:     requiredHeadcount,
-			Candidates:            candidates,
-			NonCandidateQualified: nonCandidates,
-			Assignments:           assignments,
+			RequiredHeadcount: requiredHeadcount,
+			Assignments:       assignments,
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -839,6 +771,67 @@ func (r *PublicationRepository) GetAssignmentBoardView(
 	}
 
 	return board, nil
+}
+
+func (r *PublicationRepository) ListAssignmentBoardEmployees(
+	ctx context.Context,
+	publicationID int64,
+) ([]*model.AssignmentBoardEmployee, error) {
+	const query = `
+		SELECT
+			u.id,
+			u.name,
+			u.email,
+			up.position_id
+		FROM publications pub
+		INNER JOIN template_slots ts ON ts.template_id = pub.template_id
+		INNER JOIN template_slot_positions tsp ON tsp.slot_id = ts.id
+		INNER JOIN user_positions up ON up.position_id = tsp.position_id
+		INNER JOIN users u ON u.id = up.user_id
+		WHERE pub.id = $1
+			AND u.status = 'active'
+			AND u.is_admin = false
+		GROUP BY u.id, u.name, u.email, up.position_id
+		ORDER BY u.id ASC, up.position_id ASC;
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, publicationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	employees := make([]*model.AssignmentBoardEmployee, 0)
+	employeeByID := make(map[int64]*model.AssignmentBoardEmployee)
+	for rows.Next() {
+		var (
+			userID     int64
+			name       string
+			email      string
+			positionID int64
+		)
+		if err := rows.Scan(&userID, &name, &email, &positionID); err != nil {
+			return nil, err
+		}
+
+		employee := employeeByID[userID]
+		if employee == nil {
+			employee = &model.AssignmentBoardEmployee{
+				UserID:      userID,
+				Name:        name,
+				Email:       email,
+				PositionIDs: make([]int64, 0, 1),
+			}
+			employeeByID[userID] = employee
+			employees = append(employees, employee)
+		}
+		employee.PositionIDs = append(employee.PositionIDs, positionID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return employees, nil
 }
 
 func (r *PublicationRepository) ListQualifiedUsersForPositions(
@@ -987,44 +980,12 @@ func (r *PublicationRepository) ListPublicationAssignments(
 	return assignments, nil
 }
 
-type assignmentBoardCandidateJSON struct {
-	UserID int64  `json:"user_id"`
-	Name   string `json:"name"`
-	Email  string `json:"email"`
-}
-
 type assignmentBoardAssignmentJSON struct {
 	AssignmentID int64  `json:"assignment_id"`
 	UserID       int64  `json:"user_id"`
 	Name         string `json:"name"`
 	Email        string `json:"email"`
 	CreatedAt    string `json:"created_at"`
-}
-
-func decodeAssignmentBoardCandidates(
-	raw []byte,
-	slotID int64,
-	weekday int,
-	positionID int64,
-) ([]*model.AssignmentCandidate, error) {
-	var decoded []assignmentBoardCandidateJSON
-	if err := json.Unmarshal(raw, &decoded); err != nil {
-		return nil, err
-	}
-
-	candidates := make([]*model.AssignmentCandidate, 0, len(decoded))
-	for _, candidate := range decoded {
-		candidates = append(candidates, &model.AssignmentCandidate{
-			SlotID:     slotID,
-			Weekday:    weekday,
-			PositionID: positionID,
-			UserID:     candidate.UserID,
-			Name:       candidate.Name,
-			Email:      candidate.Email,
-		})
-	}
-
-	return candidates, nil
 }
 
 func decodeAssignmentBoardAssignments(

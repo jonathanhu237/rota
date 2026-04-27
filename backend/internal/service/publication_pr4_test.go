@@ -1061,7 +1061,7 @@ func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
 		}
 	})
 
-	t.Run("assignment board returns slots, positions, non-candidate qualified users, assignments, and zero-candidate slots", func(t *testing.T) {
+	t.Run("assignment board returns slots, positions, top-level employees, assignments, and empty slots", func(t *testing.T) {
 		t.Parallel()
 
 		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
@@ -1117,24 +1117,21 @@ func TestPublicationServiceAssignmentBoardAndRoster(t *testing.T) {
 		if firstPosition.RequiredHeadcount != 2 {
 			t.Fatalf("expected headcount 2, got %d", firstPosition.RequiredHeadcount)
 		}
-		if len(firstPosition.Candidates) != 1 {
-			t.Fatalf("expected 1 candidate, got %d", len(firstPosition.Candidates))
-		}
-		if firstPosition.Candidates[0].UserID != 8 {
-			t.Fatalf("expected qualified submitted candidate user 8, got %d", firstPosition.Candidates[0].UserID)
-		}
 		if len(firstPosition.Assignments) != 1 || firstPosition.Assignments[0].UserID != 8 {
 			t.Fatalf("unexpected assignments: %+v", firstPosition.Assignments)
 		}
-		if len(firstPosition.NonCandidateQualified) != 1 || firstPosition.NonCandidateQualified[0].UserID != 10 {
-			t.Fatalf("unexpected non-candidate qualified users: %+v", firstPosition.NonCandidateQualified)
+		if len(board.Employees) != 2 {
+			t.Fatalf("expected 2 employees, got %+v", board.Employees)
+		}
+		if board.Employees[0].UserID != 8 || len(board.Employees[0].PositionIDs) != 1 || board.Employees[0].PositionIDs[0] != 101 {
+			t.Fatalf("unexpected first employee: %+v", board.Employees[0])
+		}
+		if board.Employees[1].UserID != 10 || len(board.Employees[1].PositionIDs) != 1 || board.Employees[1].PositionIDs[0] != 101 {
+			t.Fatalf("unexpected second employee: %+v", board.Employees[1])
 		}
 		secondPosition := board.Slots[1].Positions[0]
-		if len(secondPosition.Candidates) != 0 {
-			t.Fatalf("expected zero candidates for second slot position, got %d", len(secondPosition.Candidates))
-		}
-		if len(secondPosition.NonCandidateQualified) != 0 {
-			t.Fatalf("expected zero non-candidate qualified users for second slot position, got %d", len(secondPosition.NonCandidateQualified))
+		if len(secondPosition.Assignments) != 0 {
+			t.Fatalf("expected zero assignments for second slot position, got %d", len(secondPosition.Assignments))
 		}
 	})
 

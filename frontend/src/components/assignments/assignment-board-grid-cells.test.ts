@@ -16,8 +16,6 @@ const slots: AssignmentBoardSlot[] = [
       {
         position: { id: 102, name: "Kitchen" },
         required_headcount: 1,
-        candidates: [{ user_id: 10, name: "Alice", email: "alice@example.com" }],
-        non_candidate_qualified: [],
         assignments: [],
       },
     ],
@@ -33,8 +31,6 @@ const slots: AssignmentBoardSlot[] = [
       {
         position: { id: 101, name: "Front Desk" },
         required_headcount: 2,
-        candidates: [],
-        non_candidate_qualified: [],
         assignments: [
           {
             assignment_id: 20,

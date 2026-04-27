@@ -628,55 +628,56 @@
     }
   },
   "assignments": {
-  "title": "分配面板",
-  "descriptionEditable": "按星期和时间查看覆盖情况，并为 {{name}} 暂存分配调整。",
+    "title": "分配面板",
+    "descriptionEditable": "按星期和时间查看覆盖情况，并为 {{name}} 暂存分配调整。",
     "descriptionReadOnly": "{{name}} 已经生效，当前面板为只读。",
     "autoAssign": "自动分配",
     "backToPublication": "返回发布详情",
     "loadError": "当前无法加载分配面板。",
     "emptyWeekday": "这一天没有排班班次。",
-  "shiftSummary": "{{startTime}}-{{endTime}}",
-  "headcount": "已分配 {{assigned}} / 需求 {{required}}",
-  "grid": {
-    "time": "时间"
-  },
-  "status": {
-    "full": "已满",
-    "partial": "部分",
-    "empty": "空缺"
-  },
-  "panel": {
-    "close": "关闭单元格"
-  },
-  "summary": {
-    "title": "覆盖概览",
-    "coverageGaps": "仍缺人手（{{count}} 个）",
-    "noGaps": "所有排班单元格都已满足需求。"
-  },
-  "understaffed": "人数不足",
-    "candidates": "候选人",
-    "assigned": "已分配",
-    "emptyCandidates": "这个班次没有人提交可用性。",
-    "emptyAssignments": "这个班次还没有分配员工。",
+    "shiftSummary": "{{startTime}}-{{endTime}}",
+    "headcount": "已分配 {{assigned}} / 需求 {{required}}",
+    "grid": {
+      "time": "时间"
+    },
+    "status": {
+      "full": "已满",
+      "partial": "部分",
+      "empty": "空缺"
+    },
+    "directory": {
+      "title": "员工目录",
+      "gaps": "仍缺 {{count}} 个 cell",
+      "noGaps": "全部 cell 已满",
+      "search": "搜索员工",
+      "sortByHours": "按工时",
+      "sortByName": "按姓名",
+      "empty": "没有匹配的员工。",
+      "hours": "{{hours}} 小时"
+    },
+    "seat": {
+      "empty": "空缺",
+      "overflow": "超额"
+    },
     "drafts": {
       "pendingCount": "草稿：{{count}} 项待提交",
       "submit": "提交",
       "discard": "放弃草稿",
-    "confirmAndSubmit": "确认并提交",
-    "cancel": "取消",
-    "changed": "草稿",
-    "added": "新增",
-    "toRemove": "移除",
-    "warning": "警告",
-    "userHoursLabel": "{{user}} ({{hours}}h)",
+      "confirmAndSubmit": "确认并提交",
+      "cancel": "取消",
+      "changed": "草稿",
+      "added": "新增",
+      "toRemove": "移除",
+      "warning": "警告",
+      "userHoursLabel": "{{user}} ({{hours}}h)",
       "submitFailed": "无法提交 {{user}} 的草稿。请修正后重试。",
       "submitFailedUnknown": "无法提交该草稿操作。",
       "confirmDialog": {
-      "title": "确认资格覆盖",
-      "description": "这些草稿分配绕过了默认的资格或单元格匹配。",
-      "warningTitle": "{{user}} -> {{slot}} / {{position}}",
-      "warningReason": "{{user}} 不是该单元格中 {{position}} 的默认匹配。"
-    }
+        "title": "确认资格覆盖",
+        "description": "这些草稿分配绕过了默认的资格或单元格匹配。",
+        "warningTitle": "{{user}} -> {{slot}} / {{position}}",
+        "warningReason": "{{user}} 不是该单元格中 {{position}} 的默认匹配。"
+      }
     },
     "autoAssignDialog": {
       "title": "自动分配班次",
