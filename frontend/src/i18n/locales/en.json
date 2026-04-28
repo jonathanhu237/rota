@@ -854,6 +854,8 @@
     "gridDescription": "Check every shift you are available to work during this collection window.",
     "noShiftsForWeekday": "No shifts are available for this weekday.",
     "noQualifiedShifts": "You do not have any qualified shifts in this publication.",
+    "offSchedule": "Off-schedule",
+    "today": "Today",
     "stateMessage": {
       "draft": "Submissions open at {{time}}.",
       "collecting": "Submissions close at {{time}}. Update your availability before then.",

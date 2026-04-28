@@ -110,7 +110,7 @@
     },
     "dashboard": "仪表盘",
     "roster": "排班表",
-    "availability": "可用性",
+    "availability": "提交空闲时间",
     "requests": "调班申请",
     "leaves": "请假",
     "users": "用户",
@@ -844,8 +844,8 @@
     }
   },
   "availability": {
-    "title": "可用性",
-    "description": "查看当前发布并勾选您可以值班的班次。",
+    "title": "提交空闲时间",
+    "description": "选择您能值班的时段。",
     "empty": "当前没有可用的发布。",
     "currentPublication": "发布",
     "template": "模板",
@@ -853,6 +853,8 @@
     "gridDescription": "请勾选在本次收集窗口中您可以值班的所有班次。",
     "noShiftsForWeekday": "这一天没有可选班次。",
     "noQualifiedShifts": "您在这个发布中没有符合资格的班次。",
+    "offSchedule": "排班外",
+    "today": "今天",
     "stateMessage": {
       "draft": "将在 {{time}} 开放提交。",
       "collecting": "提交截止到 {{time}}，请在此之前更新您的可用性。",
