@@ -116,6 +116,14 @@ export function AppSidebar() {
     },
   ]
 
+  const accountItems: NavItem[] = [
+    {
+      title: t("sidebar.settings"),
+      url: "/settings",
+      icon: Settings,
+    },
+  ]
+
   const adminItems: NavItem[] = [
     {
       title: t("sidebar.users"),
@@ -207,6 +215,12 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         )}
+        <SidebarGroup>
+          <SidebarGroupLabel>{t("sidebar.groups.account")}</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>{accountItems.map(renderItem)}</SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>

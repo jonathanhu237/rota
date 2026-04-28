@@ -105,7 +105,8 @@
     "appDescription": "排班系统",
     "groups": {
       "mySchedule": "我的排班",
-      "manage": "管理"
+      "manage": "管理",
+      "account": "账号"
     },
     "dashboard": "仪表盘",
     "roster": "排班表",
@@ -117,7 +118,7 @@
     "templates": "模板",
     "publications": "发布",
     "toggleTheme": "切换主题",
-    "settings": "前往设置",
+    "settings": "设置",
     "logout": "退出登录",
     "openNavigation": "打开导航"
   },

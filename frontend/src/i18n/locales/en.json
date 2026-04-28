@@ -105,7 +105,8 @@
     "appDescription": "Scheduling System",
     "groups": {
       "mySchedule": "My schedule",
-      "manage": "Manage"
+      "manage": "Manage",
+      "account": "Account"
     },
     "dashboard": "Dashboard",
     "roster": "Roster",

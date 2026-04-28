@@ -70,28 +70,37 @@ The page SHALL load each card's data from independent TanStack queries so that a
 
 ### Requirement: Sidebar navigation grouping
 
-The application sidebar SHALL render its navigation entries grouped by audience, not as a single flat list. Two groups are defined:
+The application sidebar SHALL render its navigation entries grouped by audience, not as a single flat list. Three groups are defined:
 
 - **My schedule** — visible to every authenticated user. Contains, in order: `Dashboard` (`/`), `Roster` (`/roster`), `Availability` (`/availability`), `Requests` (`/requests`, with the unread-count badge per the existing `Pending-count badge excludes pool` requirement), `Leaves` (`/leaves`).
 - **Manage** — visible only when `user.is_admin` is true. Contains, in order: `Users` (`/users`), `Positions` (`/positions`), `Templates` (`/templates`), `Publications` (`/publications`).
+- **Account** — visible to every authenticated user, rendered after the "Manage" group when present. Contains: `Settings` (`/settings`). The avatar-dropdown footer SHALL continue to expose the `Settings` entry as well; the two entries are intentional duplicates so users who don't discover the avatar dropdown still have a navigation path.
 
 Each group SHALL render with a `<SidebarGroupLabel>` heading. The "Manage" group SHALL NOT be rendered (no empty header) when the viewer is not an admin. Sidebar header (logo) and footer (avatar dropdown) sections are not affected by this requirement.
 
-#### Scenario: Employee sees one sidebar group
+#### Scenario: Employee sees the schedule and account sidebar groups
 
 - **GIVEN** an authenticated user with `is_admin = false`
 - **WHEN** the user loads any page in the authenticated layout
-- **THEN** the sidebar renders exactly one group labeled "My schedule"
-- **AND** the group contains 5 items: Dashboard, Roster, Availability, Requests, Leaves
+- **THEN** the sidebar renders two groups in order: "My schedule" first, "Account" second
+- **AND** the "My schedule" group contains 5 items: Dashboard, Roster, Availability, Requests, Leaves
+- **AND** the "Account" group contains 1 item: Settings linking to `/settings`
 - **AND** no group labeled "Manage" is rendered
 
-#### Scenario: Admin sees both sidebar groups
+#### Scenario: Admin sees all three sidebar groups
 
 - **GIVEN** an authenticated user with `is_admin = true`
 - **WHEN** the user loads any page in the authenticated layout
-- **THEN** the sidebar renders two groups: "My schedule" first, "Manage" second
+- **THEN** the sidebar renders three groups in order: "My schedule", "Manage", "Account"
 - **AND** the "My schedule" group contains 5 items
 - **AND** the "Manage" group contains 4 items: Users, Positions, Templates, Publications
+- **AND** the "Account" group contains 1 item: Settings linking to `/settings`
+
+#### Scenario: Settings remains in the avatar dropdown
+
+- **WHEN** any authenticated user opens the avatar-footer dropdown
+- **THEN** the dropdown still includes a `Settings` item that navigates to `/settings`
+- **AND** clicking either the dropdown entry or the sidebar Account-group entry navigates to the same `/settings` page
 
 #### Scenario: Leaves entry replaces the legacy Leave/My leaves pair
 

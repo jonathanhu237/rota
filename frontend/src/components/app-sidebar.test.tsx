@@ -123,11 +123,13 @@ describe("AppSidebar", () => {
 
     await user.click(screen.getByText("Alice Example"))
 
-    expect(await screen.findByText("sidebar.toggleTheme")).toBeInTheDocument()
-    expect(screen.getByText("sidebar.settings")).toBeInTheDocument()
-    expect(screen.getByText("sidebar.logout")).toBeInTheDocument()
+    const toggleTheme = await screen.findByText("sidebar.toggleTheme")
+    expect(toggleTheme).toBeInTheDocument()
+    const dropdown = toggleTheme.closest("[role='menu']") as HTMLElement
+    expect(within(dropdown).getByText("sidebar.settings")).toBeInTheDocument()
+    expect(within(dropdown).getByText("sidebar.logout")).toBeInTheDocument()
 
-    await user.click(screen.getByText("sidebar.settings"))
+    await user.click(within(dropdown).getByText("sidebar.settings"))
 
     expect(routerMocks.navigate).toHaveBeenCalledWith({ to: "/settings" })
   })
@@ -157,6 +159,40 @@ describe("AppSidebar", () => {
     expect(screen.queryByText("sidebar.groups.manage")).not.toBeInTheDocument()
     expect(screen.queryByText("sidebar.users")).not.toBeInTheDocument()
     expect(screen.queryByText("sidebar.publications")).not.toBeInTheDocument()
+  })
+
+  it("renders the account group with a settings link for every user", () => {
+    renderAppSidebar()
+
+    const accountGroup = screen
+      .getByText("sidebar.groups.account")
+      .closest("[data-slot='sidebar-group']")
+    expect(accountGroup).not.toBeNull()
+
+    const settingsLink = within(accountGroup as HTMLElement)
+      .getByText("sidebar.settings")
+      .closest("a")
+    expect(settingsLink).toHaveAttribute("href", "/settings")
+  })
+
+  it("keeps the settings entry in the avatar dropdown alongside the new sidebar entry", async () => {
+    const user = userEvent.setup()
+    renderAppSidebar()
+
+    await user.click(screen.getByText("Alice Example"))
+
+    // Wait for the dropdown to open (toggleTheme only exists inside it).
+    const toggleTheme = await screen.findByText("sidebar.toggleTheme")
+    const dropdown = toggleTheme.closest("[role='menu']") as HTMLElement
+    expect(within(dropdown).getByText("sidebar.settings")).toBeInTheDocument()
+
+    // The sidebar Account group also exposes the settings entry as a link.
+    const accountGroup = screen
+      .getByText("sidebar.groups.account")
+      .closest("[data-slot='sidebar-group']") as HTMLElement
+    expect(
+      within(accountGroup).getByText("sidebar.settings").closest("a"),
+    ).toHaveAttribute("href", "/settings")
   })
 
   it("renders admin management navigation as a separate group", () => {
