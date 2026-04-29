@@ -116,7 +116,7 @@
     "users": "用户",
     "positions": "岗位",
     "templates": "模板",
-    "publications": "发布",
+    "publications": "排班计划",
     "toggleTheme": "切换主题",
     "settings": "设置",
     "logout": "退出登录",
@@ -199,9 +199,9 @@
     "welcome": "欢迎，{{name}}",
     "description": "这是您的排班系统概览。",
     "currentPublication": {
-      "title": "当前发布",
+      "title": "当前排班计划",
       "description": "当前排班周期和下一步操作。",
-      "empty": "暂无活跃发布。",
+      "empty": "暂无活跃的排班计划。",
       "window": "{{from}} - {{until}}",
       "copy": {
         "preparing": "排班还在筹备中。",
@@ -209,11 +209,11 @@
       },
       "cta": {
         "collectingEmployee": "提交空闲时间",
-        "collectingAdmin": "查看发布详情",
+        "collectingAdmin": "查看排班计划详情",
         "assigningAdmin": "打开分配面板",
         "published": "查看排班表",
-        "draftAdmin": "查看发布详情",
-        "noneAdmin": "新建发布"
+        "draftAdmin": "查看排班计划详情",
+        "noneAdmin": "新建排班计划"
       }
     },
     "todo": {
@@ -235,7 +235,7 @@
         "users": "用户",
         "positions": "岗位",
         "templates": "模板",
-        "publications": "发布"
+        "publications": "排班计划"
       }
     }
   },
@@ -578,16 +578,16 @@
     }
   },
   "publications": {
-    "title": "发布管理",
+    "title": "排班计划管理",
     "description": "基于模板创建可提交空闲时间的时间窗口，并跟踪其状态。",
-    "createPublication": "创建发布",
+    "createPublication": "新建排班计划",
     "name": "名称",
     "submissionStartAt": "开始收集时间",
     "submissionEndAt": "结束收集时间",
     "plannedActiveFrom": "计划生效时间",
     "plannedActiveUntil": "计划结束时间",
-    "empty": "暂无发布。",
-    "pageSummary": "显示第 {{start}}-{{end}} 条，共 {{total}} 条发布",
+    "empty": "暂无排班计划。",
+    "pageSummary": "显示第 {{start}}-{{end}} 条，共 {{total}} 条排班计划",
     "table": {
       "name": "名称",
       "template": "模板",
@@ -611,18 +611,18 @@
       "ended": "已结束"
     },
     "form": {
-      "createTitle": "创建发布",
+      "createTitle": "新建排班计划",
       "createDescription": "选择一个模板，并设置提交窗口。",
       "template": "模板",
       "selectTemplate": "请选择模板",
-      "noTemplates": "请先创建模板，再发布班次。",
-      "submitCreate": "创建发布",
+      "noTemplates": "请先创建模板，再新建排班计划。",
+      "submitCreate": "新建排班计划",
       "submittingCreate": "创建中..."
     },
     "detail": {
-      "description": "查看发布元数据及其当前生效状态。",
-      "loadErrorTitle": "加载发布失败",
-      "loadErrorDescription": "当前无法加载该发布。",
+      "description": "查看排班计划元数据及其当前生效状态。",
+      "loadErrorTitle": "加载排班计划失败",
+      "loadErrorDescription": "当前无法加载该排班计划。",
       "template": "模板",
       "state": "状态",
       "submissionStartAt": "开始收集时间",
@@ -640,48 +640,48 @@
         "collecting": "可提交时间截止到 {{time}}。",
         "assigning": "提交已关闭。请查看候选人并完成班次分配。",
         "published": "排班已对员工公示，他们可以在生效前提出换班请求。",
-        "active": "该发布已于 {{time}} 生效。",
-        "ended": "该发布已于 {{time}} 结束。"
+        "active": "该排班计划已于 {{time}} 生效。",
+        "ended": "该排班计划已于 {{time}} 结束。"
       }
     },
     "actions": {
-      "delete": "删除发布",
+      "delete": "删除排班计划",
       "publish": "公示",
       "activate": "生效",
       "end": "结束",
       "openAssignmentBoard": "打开分配面板",
       "viewShiftChanges": "查看换班请求",
-      "viewExisting": "查看当前发布"
+      "viewExisting": "查看当前排班计划"
     },
     "publishDialog": {
-      "title": "公示发布",
+      "title": "公示排班计划",
       "description": "公示后排班将对员工可见，他们可以提出换班请求。是否继续？",
       "confirm": "确认公示",
       "cancel": "取消",
       "submitting": "公示中..."
     },
     "activateDialog": {
-      "title": "生效发布",
+      "title": "生效排班计划",
       "description": "生效后排班将被锁定，所有待处理的换班请求都会失效。是否继续？",
       "confirm": "确认生效",
       "submitting": "生效中..."
     },
     "endDialog": {
-      "title": "结束发布",
+      "title": "结束排班计划",
       "description": "现在结束 {{name}} 吗？结束后它将从当前排班视图中消失。",
       "confirm": "确认结束",
       "submitting": "结束中..."
     },
     "deleteDialog": {
-      "title": "删除发布",
+      "title": "删除排班计划",
       "description": "确认删除 {{name}}？此操作无法撤销。",
-      "confirm": "确认删除发布",
+      "confirm": "确认删除排班计划",
       "submitting": "删除中..."
     },
     "shiftChanges": {
       "title": "换班请求",
       "description": "{{name}} 的换班请求（管理员只读视图）。",
-      "backToPublication": "返回发布详情",
+      "backToPublication": "返回排班计划详情",
       "loadError": "当前无法加载换班请求。",
       "empty": "当前没有换班请求。",
       "filter": {
@@ -725,27 +725,27 @@
       "invalidWindow": "开始收集、结束收集、计划生效和计划结束时间必须按时间顺序排列"
     },
     "success": {
-      "created": "发布创建成功。",
-      "deleted": "发布删除成功。",
-      "published": "发布已成功公示。",
-      "activated": "发布已成功生效。",
-      "ended": "发布已成功结束。",
-      "updated": "发布已更新。"
+      "created": "排班计划创建成功。",
+      "deleted": "排班计划删除成功。",
+      "published": "排班计划已成功公示。",
+      "activated": "排班计划已成功生效。",
+      "ended": "排班计划已成功结束。",
+      "updated": "排班计划已更新。"
     },
     "errors": {
       "FORBIDDEN": "无权限访问",
       "INVALID_OCCURRENCE_DATE": "请选择生效窗口内的周一。",
-      "INVALID_PUBLICATION_WINDOW": "发布时间窗口顺序不正确",
+      "INVALID_PUBLICATION_WINDOW": "排班计划时间窗口顺序不正确",
       "INVALID_REQUEST": "请求无效",
       "INTERNAL_ERROR": "服务器内部错误",
-      "PUBLICATION_ALREADY_EXISTS": "当前已经存在一个未结束的发布。",
-      "PUBLICATION_NOT_ACTIVE": "当前发布不处于已生效状态。",
-      "PUBLICATION_NOT_ASSIGNING": "当前发布现在不能修改分配。",
-      "PUBLICATION_NOT_MUTABLE": "当前发布现在不能再编辑排班。",
-      "PUBLICATION_NOT_COLLECTING": "当前发布不在可提交空闲时间的阶段。",
-      "PUBLICATION_NOT_DELETABLE": "只有草稿状态的发布可以删除。",
-      "PUBLICATION_NOT_PUBLISHED": "当前发布还没有进入公示状态。",
-      "PUBLICATION_NOT_FOUND": "发布不存在",
+      "PUBLICATION_ALREADY_EXISTS": "当前已经存在一个未结束的排班计划。",
+      "PUBLICATION_NOT_ACTIVE": "当前排班计划不处于已生效状态。",
+      "PUBLICATION_NOT_ASSIGNING": "当前排班计划现在不能修改分配。",
+      "PUBLICATION_NOT_MUTABLE": "当前排班计划现在不能再编辑。",
+      "PUBLICATION_NOT_COLLECTING": "当前排班计划不在可提交空闲时间的阶段。",
+      "PUBLICATION_NOT_DELETABLE": "只有草稿状态的排班计划可以删除。",
+      "PUBLICATION_NOT_PUBLISHED": "当前排班计划还没有进入公示状态。",
+      "PUBLICATION_NOT_FOUND": "排班计划不存在",
       "TEMPLATE_NOT_FOUND": "模板不存在",
       "TEMPLATE_SHIFT_NOT_FOUND": "模板班次不存在",
       "ASSIGNMENT_USER_ALREADY_IN_SLOT": "该用户已在此时段被分配到其他岗位。",
@@ -768,7 +768,7 @@
     "descriptionEditable": "按星期和时间查看覆盖情况，并为 {{name}} 暂存分配调整。",
     "descriptionReadOnly": "{{name}} 已经生效，当前面板为只读。",
     "autoAssign": "自动分配",
-    "backToPublication": "返回发布详情",
+    "backToPublication": "返回排班计划详情",
     "loadError": "当前无法加载分配面板。",
     "emptyWeekday": "这一天没有排班班次。",
     "shiftSummary": "{{startTime}}-{{endTime}}",
@@ -842,7 +842,7 @@
     "description": "查看当前已生效的每周排班。",
     "descriptionWithPublication": "正在显示 {{name}} 的当前每周排班。",
     "loadError": "当前无法加载排班表。",
-    "empty": "当前没有已生效的发布。",
+    "empty": "当前没有已生效的排班计划。",
     "emptyWeek": "本周没有排班班次。",
     "previousWeek": "上一周",
     "nextWeek": "下一周",
@@ -856,20 +856,20 @@
   "availability": {
     "title": "提交空闲时间",
     "description": "选择您能值班的时段。",
-    "empty": "当前没有可用的发布。",
-    "currentPublication": "发布",
+    "empty": "当前没有可用的排班计划。",
+    "currentPublication": "排班计划",
     "template": "模板",
     "gridTitle": "我的班次空闲时间",
     "gridDescription": "请勾选在本次收集窗口中您可以值班的所有班次。",
     "noShiftsForWeekday": "这一天没有可选班次。",
-    "noQualifiedShifts": "您在这个发布中没有符合资格的班次。",
+    "noQualifiedShifts": "您在这个排班计划中没有符合资格的班次。",
     "offSchedule": "排班外",
     "today": "今天",
     "stateMessage": {
       "draft": "将在 {{time}} 开放提交。",
       "collecting": "提交截止到 {{time}}，请在此之前更新您的空闲时间。",
       "assigning": "提交已关闭，管理员正在分配班次。",
-      "active": "当前发布已经生效，不能再修改空闲时间；请到排班表查看最终分配。"
+      "active": "当前排班计划已经生效，不能再修改空闲时间；请到排班表查看最终分配。"
     },
     "shift": {
       "timeRange": "{{startTime}}-{{endTime}}",
@@ -882,14 +882,14 @@
       "INTERNAL_ERROR": "服务器内部错误",
       "NOT_QUALIFIED": "您没有该班次的任职资格。",
       "PUBLICATION_NOT_COLLECTING": "只有在提交开放期间才能修改空闲时间。",
-      "PUBLICATION_NOT_FOUND": "发布不存在",
+      "PUBLICATION_NOT_FOUND": "排班计划不存在",
       "TEMPLATE_SHIFT_NOT_FOUND": "模板班次不存在",
       "UNAUTHORIZED": "未授权"
     }
   },
   "requests": {
     "title": "调班申请",
-    "description": "查看当前已发布排班的调班、转让和释放申请。",
+    "description": "查看当前已公示排班的调班、转让和释放申请。",
     "descriptionWithPublication": "{{name}} 的调班申请。",
     "empty": "当前没有任何调班申请。",
     "unknownUser": "用户 #{{id}}",
@@ -981,8 +981,8 @@
       "INVALID_OCCURRENCE_DATE": "请选择该班次有效且尚未开始的日期。",
       "INVALID_REQUEST": "请求无效",
       "INTERNAL_ERROR": "发生了错误，请稍后重试。",
-      "PUBLICATION_NOT_FOUND": "发布不存在",
-      "PUBLICATION_NOT_PUBLISHED": "该发布尚未发布。",
+      "PUBLICATION_NOT_FOUND": "排班计划不存在",
+      "PUBLICATION_NOT_PUBLISHED": "该排班计划尚未公示。",
       "SHIFT_CHANGE_EXPIRED": "该申请已过期。",
       "SHIFT_CHANGE_INVALIDATED": "该申请已失效。",
       "SHIFT_CHANGE_INVALID_TYPE": "无效的申请类型。",
@@ -1054,7 +1054,7 @@
       "INTERNAL_ERROR": "发生了错误，请稍后重试。",
       "LEAVE_NOT_FOUND": "请假不存在",
       "LEAVE_NOT_OWNER": "您无权取消该请假。",
-      "PUBLICATION_NOT_ACTIVE": "只能对当前启用的发布请假。",
+      "PUBLICATION_NOT_ACTIVE": "只能对当前启用的排班计划请假。",
       "SHIFT_CHANGE_INVALID_TYPE": "请假仅支持指定同事或公共池代班。",
       "SHIFT_CHANGE_NOT_OWNER": "您无权使用该班次。",
       "SHIFT_CHANGE_NOT_QUALIFIED": "所选同事没有该岗位资格。",
