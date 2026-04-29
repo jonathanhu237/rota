@@ -13,6 +13,7 @@ export type DraftAssignOp = {
   userName: string
   userEmail: string
   isUnqualified: boolean
+  isUnsubmitted: boolean
   error?: string
 }
 
@@ -53,12 +54,14 @@ export type DraftCellInput = {
   weekday: number
   positionID: number
   isUnqualified?: boolean
+  isUnsubmitted?: boolean
 }
 
 export type ProjectedAssignment = AssignmentBoardAssignment & {
   isDraft?: boolean
   isRemoved?: boolean
   isUnqualified?: boolean
+  isUnsubmitted?: boolean
   draftOpID?: string
   error?: string
 }
@@ -106,6 +109,7 @@ export function enqueueAssign(
       userName: input.name,
       userEmail: input.email ?? "",
       isUnqualified: input.isUnqualified ?? false,
+      isUnsubmitted: input.isUnsubmitted ?? false,
     },
   ])
 }
@@ -162,6 +166,7 @@ export function enqueueMove(
       weekday: to.weekday,
       positionID: to.positionID,
       isUnqualified: to.isUnqualified,
+      isUnsubmitted: to.isUnsubmitted,
     })
   }
 
@@ -241,6 +246,7 @@ export function enqueueAdd(
     weekday: to.weekday,
     positionID: to.positionID,
     isUnqualified: to.isUnqualified,
+    isUnsubmitted: to.isUnsubmitted,
   })
 }
 
@@ -332,6 +338,7 @@ export function applyDraftToBoard(
                 ...assignment,
                 isDraft: true,
                 isUnqualified: op.isUnqualified,
+                isUnsubmitted: op.isUnsubmitted,
                 draftOpID: op.id,
                 error: op.error,
               }
@@ -350,6 +357,7 @@ export function applyDraftToBoard(
         email: op.userEmail,
         isDraft: true,
         isUnqualified: op.isUnqualified,
+        isUnsubmitted: op.isUnsubmitted,
         draftOpID: op.id,
         error: op.error,
       },
@@ -466,6 +474,7 @@ function makeAssignOp(
     userName: user.name,
     userEmail: user.email ?? "",
     isUnqualified: cell.isUnqualified ?? false,
+    isUnsubmitted: cell.isUnsubmitted ?? false,
   }
 }
 

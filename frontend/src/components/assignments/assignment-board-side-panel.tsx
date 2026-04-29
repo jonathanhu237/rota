@@ -37,18 +37,9 @@ export function AssignmentBoardSidePanel({
   const [sortMode, setSortMode] = useState<SortMode>("hours")
   const positionNames = useMemo(() => derivePositionNames(slots), [slots])
   const gapCount = useMemo(() => getGapCount(projectedSlots), [projectedSlots])
-  const allHours = useMemo(
-    () =>
-      [...directory.values()].map((employee) =>
-        computeUserHours(slots, renderDraftState, employee.user_id),
-      ),
-    [directory, renderDraftState, slots],
-  )
-  const stats = useMemo(() => computeDirectoryStats(allHours), [allHours])
-  const employees = useMemo(() => {
+  const directorySections = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase()
-
-    return [...directory.values()]
+    const rows = [...directory.values()]
       .map((employee) => ({
         employee,
         totalHours: computeUserHours(slots, renderDraftState, employee.user_id),
@@ -56,6 +47,8 @@ export function AssignmentBoardSidePanel({
       .filter(({ employee }) =>
         employee.name.toLowerCase().includes(normalizedSearch),
       )
+    const submitted = rows
+      .filter(({ employee }) => employee.submittedSlots.size > 0)
       .sort((left, right) => {
         if (sortMode === "name") {
           return left.employee.name.localeCompare(right.employee.name)
@@ -67,7 +60,24 @@ export function AssignmentBoardSidePanel({
 
         return left.employee.name.localeCompare(right.employee.name)
       })
+    const notSubmitted = rows
+      .filter(({ employee }) => employee.submittedSlots.size === 0)
+      .sort((left, right) => left.employee.name.localeCompare(right.employee.name))
+
+    return { submitted, notSubmitted }
   }, [directory, renderDraftState, search, slots, sortMode])
+
+  const stats = useMemo(
+    () =>
+      computeDirectoryStats(
+        [...directory.values()]
+          .filter((employee) => employee.submittedSlots.size > 0)
+          .map((employee) =>
+            computeUserHours(slots, renderDraftState, employee.user_id),
+          ),
+      ),
+    [directory, renderDraftState, slots],
+  )
 
   return (
     <aside className="flex max-h-[760px] flex-col rounded-lg border bg-card">
@@ -94,7 +104,7 @@ export function AssignmentBoardSidePanel({
                 <>
                   {" · "}
                   <span className="text-amber-700 dark:text-amber-300">
-                    {t("assignments.directory.zeroCount", {
+                    {t("assignments.directory.unassignedCount", {
                       count: stats.zeroCount,
                     })}
                   </span>
@@ -131,27 +141,59 @@ export function AssignmentBoardSidePanel({
         </div>
       </header>
 
-      <div className="grid gap-2 overflow-y-auto p-4">
-        {employees.length === 0 ? (
+      <div className="grid gap-4 overflow-y-auto p-4">
+        {directorySections.submitted.length +
+          directorySections.notSubmitted.length ===
+        0 ? (
           <p className="text-sm text-muted-foreground">
             {t("assignments.directory.empty")}
           </p>
         ) : (
-          employees.map(({ employee, totalHours }) => (
-            <AssignmentBoardEmployeeRow
-              key={employee.user_id}
-              employee={employee}
-              totalHours={totalHours}
-              positionNames={[...employee.position_ids]
-                .map((positionID) => positionNames.get(positionID) ?? `#${positionID}`)
-                .sort((left, right) => left.localeCompare(right))}
-              disabled={disabled}
-            />
-          ))
+          <>
+            <section className="grid gap-2">
+              <h4 className="text-xs font-medium text-muted-foreground">
+                {t("assignments.directory.submitted", {
+                  count: directorySections.submitted.length,
+                })}
+              </h4>
+              {directorySections.submitted.map(({ employee, totalHours }) => (
+                <AssignmentBoardEmployeeRow
+                  key={employee.user_id}
+                  employee={employee}
+                  totalHours={totalHours}
+                  positionNames={positionLabels(employee, positionNames)}
+                  disabled={disabled}
+                />
+              ))}
+            </section>
+            <section className="grid gap-2 rounded-lg bg-muted/40 p-2">
+              <h4 className="text-xs font-medium text-muted-foreground">
+                {t("assignments.directory.notSubmitted", {
+                  count: directorySections.notSubmitted.length,
+                })}
+              </h4>
+              {directorySections.notSubmitted.map(({ employee, totalHours }) => (
+                <AssignmentBoardEmployeeRow
+                  key={employee.user_id}
+                  employee={employee}
+                  totalHours={totalHours}
+                  positionNames={positionLabels(employee, positionNames)}
+                  disabled={disabled}
+                  showHours={false}
+                />
+              ))}
+            </section>
+          </>
         )}
       </div>
     </aside>
   )
+}
+
+function positionLabels(employee: Employee, positionNames: Map<number, string>) {
+  return [...employee.position_ids]
+    .map((positionID) => positionNames.get(positionID) ?? `#${positionID}`)
+    .sort((left, right) => left.localeCompare(right))
 }
 
 function derivePositionNames(slots: AssignmentBoardSlot[]) {

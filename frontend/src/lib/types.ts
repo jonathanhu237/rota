@@ -130,6 +130,7 @@ export type AssignmentBoardEmployee = {
   name: string
   email: string
   position_ids: number[]
+  submitted_slots: SlotRef[]
 }
 
 export type AssignmentBoardAssignment = {

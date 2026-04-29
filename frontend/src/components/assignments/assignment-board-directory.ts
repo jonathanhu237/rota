@@ -5,6 +5,7 @@ export type Employee = {
   name: string
   email: string
   position_ids: Set<number>
+  submittedSlots: Set<string>
 }
 
 export type DirectoryStats = {
@@ -27,10 +28,19 @@ export function deriveEmployeeDirectory(
       name: employee.name,
       email: employee.email,
       position_ids: new Set(employee.position_ids),
+      submittedSlots: new Set(
+        employee.submitted_slots.map((slot) =>
+          slotWeekdayKey(slot.slot_id, slot.weekday),
+        ),
+      ),
     })
   }
 
   return directory
+}
+
+export function slotWeekdayKey(slotID: number, weekday: number) {
+  return `${slotID}:${weekday}`
 }
 
 export function computeDirectoryStats(hours: number[]): DirectoryStats {

@@ -14,11 +14,13 @@ export function AssignmentBoardEmployeeRow({
   totalHours,
   positionNames,
   disabled,
+  showHours = true,
 }: {
   employee: Employee
   totalHours: number
   positionNames: string[]
   disabled: boolean
+  showHours?: boolean
 }) {
   const { t } = useTranslation()
   const { attributes, listeners, setNodeRef, transform, isDragging } =
@@ -54,11 +56,17 @@ export function AssignmentBoardEmployeeRow({
           <GripVertical className="size-4 text-muted-foreground" aria-hidden />
           <div className="min-w-0">
             <div className="truncate text-sm font-medium">{employee.name}</div>
-            <div className="text-xs text-muted-foreground">
-              {t("assignments.directory.hours", {
-                hours: formatHours(totalHours),
-              })}
-            </div>
+            {showHours ? (
+              <div className="text-xs text-muted-foreground">
+                {t("assignments.directory.hours", {
+                  hours: formatHours(totalHours),
+                })}
+              </div>
+            ) : (
+              <div className="text-xs text-muted-foreground">
+                {t("assignments.directory.notSubmittedTag")}
+              </div>
+            )}
           </div>
         </div>
       </div>

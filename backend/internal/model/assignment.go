@@ -44,10 +44,16 @@ type AssignmentCandidate struct {
 }
 
 type AssignmentBoardEmployee struct {
-	UserID      int64
-	Name        string
-	Email       string
-	PositionIDs []int64
+	UserID         int64
+	Name           string
+	Email          string
+	PositionIDs    []int64
+	SubmittedSlots []SubmittedSlot
+}
+
+type SubmittedSlot struct {
+	SlotID  int64
+	Weekday int
 }
 
 type AssignmentParticipant struct {

@@ -561,11 +561,19 @@ func newAssignmentBoardResponse(result *service.AssignmentBoardResult) assignmen
 	for _, employee := range result.Employees {
 		positionIDs := make([]int64, len(employee.PositionIDs))
 		copy(positionIDs, employee.PositionIDs)
+		submittedSlots := make([]assignmentBoardSlotRefValue, 0, len(employee.SubmittedSlots))
+		for _, submittedSlot := range employee.SubmittedSlots {
+			submittedSlots = append(submittedSlots, assignmentBoardSlotRefValue{
+				SlotID:  submittedSlot.SlotID,
+				Weekday: submittedSlot.Weekday,
+			})
+		}
 		employees = append(employees, assignmentBoardEmployeeResponse{
-			UserID:      employee.UserID,
-			Name:        employee.Name,
-			Email:       employee.Email,
-			PositionIDs: positionIDs,
+			UserID:         employee.UserID,
+			Name:           employee.Name,
+			Email:          employee.Email,
+			PositionIDs:    positionIDs,
+			SubmittedSlots: submittedSlots,
 		})
 	}
 

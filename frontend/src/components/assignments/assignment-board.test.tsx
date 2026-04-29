@@ -94,10 +94,34 @@ const slots: AssignmentBoardSlot[] = [
 ]
 
 const employees: AssignmentBoardEmployee[] = [
-  { user_id: 10, name: "Alice", email: "alice@example.com", position_ids: [101] },
-  { user_id: 11, name: "Bob", email: "bob@example.com", position_ids: [101] },
-  { user_id: 12, name: "Dana", email: "dana@example.com", position_ids: [101] },
-  { user_id: 13, name: "Cara", email: "cara@example.com", position_ids: [102] },
+  {
+    user_id: 10,
+    name: "Alice",
+    email: "alice@example.com",
+    position_ids: [101],
+    submitted_slots: [{ slot_id: 2, weekday: 1 }],
+  },
+  {
+    user_id: 11,
+    name: "Bob",
+    email: "bob@example.com",
+    position_ids: [101],
+    submitted_slots: [{ slot_id: 1, weekday: 1 }],
+  },
+  {
+    user_id: 12,
+    name: "Dana",
+    email: "dana@example.com",
+    position_ids: [101],
+    submitted_slots: [],
+  },
+  {
+    user_id: 13,
+    name: "Cara",
+    email: "cara@example.com",
+    position_ids: [102],
+    submitted_slots: [{ slot_id: 1, weekday: 1 }],
+  },
 ]
 
 type AssignmentBoardProps = ComponentProps<typeof AssignmentBoard>
@@ -138,9 +162,9 @@ describe("AssignmentBoard", () => {
 
     expect(getDirectoryRowNames(directory)).toEqual([
       "Alice",
-      "Dana",
       "Bob",
       "Cara",
+      "Dana",
     ])
 
     await user.click(
@@ -163,23 +187,17 @@ describe("AssignmentBoard", () => {
 
     await user.click(getButtonForText("Bob (2h)"))
 
-    expect(screen.getByText("assignments.drafts.toRemove")).toBeInTheDocument()
+    expect(screen.getByText("Bob (0h)")).toHaveClass("line-through")
+    expect(
+      screen.getByLabelText("assignments.drafts.undoRemove"),
+    ).toBeInTheDocument()
     expect(
       screen.getByRole("button", { name: "assignments.drafts.submit" }),
     ).toBeEnabled()
 
-    const stagedButton = screen
-      .getByText("assignments.drafts.toRemove")
-      .closest("button")
-    if (!stagedButton) {
-      throw new Error("Missing staged unassign button")
-    }
+    await user.click(screen.getByLabelText("assignments.drafts.undoRemove"))
 
-    await user.click(stagedButton)
-
-    expect(
-      screen.queryByText("assignments.drafts.toRemove"),
-    ).not.toBeInTheDocument()
+    expect(screen.getByText("Bob (2h)")).not.toHaveClass("line-through")
     expect(
       screen.getByRole("button", { name: "assignments.drafts.submit" }),
     ).toBeDisabled()
@@ -192,7 +210,7 @@ describe("AssignmentBoard", () => {
     await user.click(getButtonForText("Bob (2h)"))
 
     expect(
-      screen.queryByText("assignments.drafts.toRemove"),
+      screen.queryByLabelText("assignments.drafts.undoRemove"),
     ).not.toBeInTheDocument()
     expect(
       screen.getByRole("button", { name: "assignments.drafts.submit" }),
@@ -344,6 +362,75 @@ describe("AssignmentBoard", () => {
     expect(onDraftRefresh).toHaveBeenCalled()
   })
 
+  it("opens the confirm dialog for unsubmitted draft assignments", async () => {
+    const user = userEvent.setup()
+    renderBoard({
+      initialDraftState: {
+        ops: [
+          {
+            id: "assign-1",
+            kind: "assign",
+            slotID: 2,
+            weekday: 1,
+            positionID: 101,
+            userID: 12,
+            userName: "Dana",
+            userEmail: "dana@example.com",
+            isUnqualified: false,
+            isUnsubmitted: true,
+          },
+        ],
+      },
+    })
+
+    await user.click(
+      screen.getByRole("button", { name: "assignments.drafts.submit" }),
+    )
+
+    expect(
+      screen.getByText("assignments.drafts.confirmDialog.titleUnsubmitted"),
+    ).toBeInTheDocument()
+  })
+
+  it("registers beforeunload only when drafts exist", () => {
+    const addSpy = vi.spyOn(window, "addEventListener")
+    const removeSpy = vi.spyOn(window, "removeEventListener")
+
+    const { unmount } = renderBoard()
+
+    expect(addSpy).not.toHaveBeenCalledWith(
+      "beforeunload",
+      expect.any(Function),
+    )
+    unmount()
+
+    const renderedWithDraft = renderBoard({
+      initialDraftState: {
+        ops: [
+          {
+            id: "assign-1",
+            kind: "assign",
+            slotID: 2,
+            weekday: 1,
+            positionID: 101,
+            userID: 10,
+            userName: "Alice",
+            userEmail: "alice@example.com",
+            isUnqualified: false,
+            isUnsubmitted: false,
+          },
+        ],
+      },
+    })
+
+    expect(addSpy).toHaveBeenCalledWith("beforeunload", expect.any(Function))
+    renderedWithDraft.unmount()
+    expect(removeSpy).toHaveBeenCalledWith("beforeunload", expect.any(Function))
+
+    addSpy.mockRestore()
+    removeSpy.mockRestore()
+  })
+
   it("clears drafts and refreshes after a successful draft submit", async () => {
     const user = userEvent.setup()
     const onDraftAssign = vi.fn().mockResolvedValue(undefined)
@@ -362,6 +449,7 @@ describe("AssignmentBoard", () => {
             userName: "Alice",
             userEmail: "alice@example.com",
             isUnqualified: false,
+            isUnsubmitted: false,
           },
         ],
       },
@@ -450,6 +538,7 @@ function makeSubmitDraftState(): DraftState {
         userName: "Alice",
         userEmail: "alice@example.com",
         isUnqualified: false,
+        isUnsubmitted: false,
       },
       {
         id: "assign-3",
@@ -461,6 +550,7 @@ function makeSubmitDraftState(): DraftState {
         userName: "Dana",
         userEmail: "dana@example.com",
         isUnqualified: false,
+        isUnsubmitted: false,
       },
     ],
   }

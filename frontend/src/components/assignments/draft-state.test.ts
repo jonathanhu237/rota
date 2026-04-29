@@ -15,6 +15,7 @@ import {
   enqueueReplace,
   enqueueSwap,
   getBoardCellKey,
+  removeDraftOp,
 } from "./draft-state"
 
 const slots: AssignmentBoardSlot[] = [
@@ -104,10 +105,34 @@ const slots: AssignmentBoardSlot[] = [
 ]
 
 const employees: AssignmentBoardEmployee[] = [
-  { user_id: 10, name: "Alice", email: "alice@example.com", position_ids: [101] },
-  { user_id: 11, name: "Bob", email: "bob@example.com", position_ids: [101] },
-  { user_id: 12, name: "Cara", email: "cara@example.com", position_ids: [101] },
-  { user_id: 13, name: "Dana", email: "dana@example.com", position_ids: [102] },
+  {
+    user_id: 10,
+    name: "Alice",
+    email: "alice@example.com",
+    position_ids: [101],
+    submitted_slots: [{ slot_id: 2, weekday: 1 }],
+  },
+  {
+    user_id: 11,
+    name: "Bob",
+    email: "bob@example.com",
+    position_ids: [101],
+    submitted_slots: [{ slot_id: 1, weekday: 1 }],
+  },
+  {
+    user_id: 12,
+    name: "Cara",
+    email: "cara@example.com",
+    position_ids: [101],
+    submitted_slots: [{ slot_id: 2, weekday: 1 }],
+  },
+  {
+    user_id: 13,
+    name: "Dana",
+    email: "dana@example.com",
+    position_ids: [102],
+    submitted_slots: [{ slot_id: 2, weekday: 1 }],
+  },
 ]
 
 describe("draft state reducers", () => {
@@ -308,7 +333,46 @@ describe("draft state reducers", () => {
       weekday: 2,
       positionID: 102,
       isUnqualified: true,
+      isUnsubmitted: true,
     })
+  })
+
+  it("tracks unsubmitted assignment state through enqueue, projection, and cancel", () => {
+    const directory = deriveEmployeeDirectory(employees)
+    const state = resolveAssignmentBoardDrop({
+      directory,
+      draftState: emptyDraftState,
+      source: {
+        kind: "directory-employee",
+        employee: directory.get(10)!,
+      },
+      target: {
+        kind: "seat",
+        slotID: 3,
+        weekday: 2,
+        positionID: 102,
+        headcountIndex: 0,
+        filledBy: null,
+        cellUserIDs: [],
+      },
+    })
+
+    expect(state.ops).toHaveLength(1)
+    expect(state.ops[0]).toMatchObject({
+      kind: "assign",
+      userID: 10,
+      isUnqualified: true,
+      isUnsubmitted: true,
+    })
+
+    const projected = applyDraftToBoard(slots, state)
+    expect(projected.get(getBoardCellKey(3, 2, 102))?.[0]).toMatchObject({
+      user_id: 10,
+      isUnqualified: true,
+      isUnsubmitted: true,
+    })
+
+    expect(removeDraftOp(state, state.ops[0].id)).toEqual(emptyDraftState)
   })
 
   it("keeps draft entries independent from selection changes", () => {

@@ -205,10 +205,10 @@
       "window": "{{from}} - {{until}}",
       "copy": {
         "preparing": "排班还在筹备中。",
-        "awaiting": "可用性收集已结束，等待排班。"
+        "awaiting": "空闲时间收集已结束，等待排班。"
       },
       "cta": {
-        "collectingEmployee": "提交可用性",
+        "collectingEmployee": "提交空闲时间",
         "collectingAdmin": "查看发布详情",
         "assigningAdmin": "打开分配面板",
         "published": "查看排班表",
@@ -579,7 +579,7 @@
   },
   "publications": {
     "title": "发布管理",
-    "description": "基于模板创建可提交可用性的时间窗口，并跟踪其状态。",
+    "description": "基于模板创建可提交空闲时间的时间窗口，并跟踪其状态。",
     "createPublication": "创建发布",
     "name": "名称",
     "submissionStartAt": "开始收集时间",
@@ -742,7 +742,7 @@
       "PUBLICATION_NOT_ACTIVE": "当前发布不处于已生效状态。",
       "PUBLICATION_NOT_ASSIGNING": "当前发布现在不能修改分配。",
       "PUBLICATION_NOT_MUTABLE": "当前发布现在不能再编辑排班。",
-      "PUBLICATION_NOT_COLLECTING": "当前发布不在可提交可用性的阶段。",
+      "PUBLICATION_NOT_COLLECTING": "当前发布不在可提交空闲时间的阶段。",
       "PUBLICATION_NOT_DELETABLE": "只有草稿状态的发布可以删除。",
       "PUBLICATION_NOT_PUBLISHED": "当前发布还没有进入公示状态。",
       "PUBLICATION_NOT_FOUND": "发布不存在",
@@ -758,7 +758,7 @@
     },
     "assignmentBoard": {
       "showAllQualified": "显示所有具备资格的员工",
-      "didNotSubmitAvailability": "未提交可用性",
+      "didNotSubmitAvailability": "未提交空闲时间",
       "publishedWarning": "该排班已经对员工可见。在这里修改分配可能会使待处理的调班申请失效。",
       "activeWarning": "该排班已经生效。在这里做出的修改会立即生效。"
     }
@@ -791,30 +791,40 @@
       "empty": "没有匹配的员工。",
       "hours": "{{hours}} 小时",
       "fairness": "平均 {{avg}}h · 范围 {{min}}h–{{max}}h · 标准差 {{stddev}}h",
-      "zeroCount": "{{count}} 人无班"
+      "submitted": "已提交空闲时间 ({{count}})",
+      "notSubmitted": "未提交空闲时间 ({{count}})",
+      "notSubmittedTag": "未提交",
+      "unassignedCount": "{{count}} 人未排上"
     },
     "seat": {
       "empty": "空缺",
       "overflow": "超额"
     },
     "drafts": {
-      "pendingCount": "草稿：{{count}} 项待提交",
+      "pendingCount": "未提交的更改：{{count}} 项",
       "submit": "提交",
       "discard": "放弃草稿",
       "confirmAndSubmit": "确认并提交",
       "cancel": "取消",
       "changed": "草稿",
-      "added": "新增",
-      "toRemove": "移除",
+      "remove": "移除",
+      "undoRemove": "撤销移除",
       "warning": "警告",
+      "unqualifiedAria": "资格不匹配",
+      "unsubmittedAria": "未提交此班次的空闲时间",
       "userHoursLabel": "{{user}} ({{hours}}h)",
       "submitFailed": "无法提交 {{user}} 的草稿。请修正后重试。",
       "submitFailedUnknown": "无法提交该草稿操作。",
       "confirmDialog": {
         "title": "确认资格覆盖",
+        "titleUnsubmitted": "确认未提交破例",
+        "titleBoth": "确认资格 / 未提交破例",
         "description": "这些草稿分配绕过了默认的资格或单元格匹配。",
+        "unqualifiedSection": "资格不匹配 ({{count}})",
+        "unsubmittedSection": "未提交空闲时间 ({{count}})",
         "warningTitle": "{{user}} -> {{slot}} / {{position}}",
-        "warningReason": "{{user}} 不是该单元格中 {{position}} 的默认匹配。"
+        "warningReason": "{{user}} 没有“{{position}}”的资格。",
+        "unsubmittedReason": "{{user}} 没有提交此班次的空闲时间。"
       }
     },
     "autoAssignDialog": {
@@ -849,7 +859,7 @@
     "empty": "当前没有可用的发布。",
     "currentPublication": "发布",
     "template": "模板",
-    "gridTitle": "我的班次可用性",
+    "gridTitle": "我的班次空闲时间",
     "gridDescription": "请勾选在本次收集窗口中您可以值班的所有班次。",
     "noShiftsForWeekday": "这一天没有可选班次。",
     "noQualifiedShifts": "您在这个发布中没有符合资格的班次。",
@@ -857,9 +867,9 @@
     "today": "今天",
     "stateMessage": {
       "draft": "将在 {{time}} 开放提交。",
-      "collecting": "提交截止到 {{time}}，请在此之前更新您的可用性。",
+      "collecting": "提交截止到 {{time}}，请在此之前更新您的空闲时间。",
       "assigning": "提交已关闭，管理员正在分配班次。",
-      "active": "当前发布已经生效，不能再修改可用性；请到排班表查看最终分配。"
+      "active": "当前发布已经生效，不能再修改空闲时间；请到排班表查看最终分配。"
     },
     "shift": {
       "timeRange": "{{startTime}}-{{endTime}}",
@@ -871,7 +881,7 @@
       "INVALID_REQUEST": "请求无效",
       "INTERNAL_ERROR": "服务器内部错误",
       "NOT_QUALIFIED": "您没有该班次的任职资格。",
-      "PUBLICATION_NOT_COLLECTING": "只有在提交开放期间才能修改可用性。",
+      "PUBLICATION_NOT_COLLECTING": "只有在提交开放期间才能修改空闲时间。",
       "PUBLICATION_NOT_FOUND": "发布不存在",
       "TEMPLATE_SHIFT_NOT_FOUND": "模板班次不存在",
       "UNAUTHORIZED": "未授权"

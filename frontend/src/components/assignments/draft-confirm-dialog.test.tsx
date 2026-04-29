@@ -15,7 +15,7 @@ describe("DraftConfirmDialog", () => {
     const { getByRole, getByText } = renderWithProviders(
       <DraftConfirmDialog
         open
-        warnings={[
+        unqualifiedDrafts={[
           {
             id: "assign-1",
             userName: "Alice",
@@ -23,6 +23,7 @@ describe("DraftConfirmDialog", () => {
             positionName: "Kitchen",
           },
         ]}
+        unsubmittedDrafts={[]}
         isPending={false}
         onCancel={onCancel}
         onConfirm={onConfirm}
@@ -34,7 +35,7 @@ describe("DraftConfirmDialog", () => {
       getByText("assignments.drafts.confirmDialog.title"),
     ).toBeInTheDocument()
     expect(
-      getByText("assignments.drafts.confirmDialog.warningTitle"),
+      getByText("assignments.drafts.confirmDialog.unqualifiedSection"),
     ).toBeInTheDocument()
 
     await user.click(
@@ -48,7 +49,8 @@ describe("DraftConfirmDialog", () => {
     const { queryByText } = renderWithProviders(
       <DraftConfirmDialog
         open
-        warnings={[]}
+        unqualifiedDrafts={[]}
+        unsubmittedDrafts={[]}
         isPending={false}
         onCancel={vi.fn()}
         onConfirm={vi.fn()}
@@ -59,5 +61,58 @@ describe("DraftConfirmDialog", () => {
     expect(
       queryByText("assignments.drafts.confirmDialog.title"),
     ).not.toBeInTheDocument()
+  })
+
+  it("renders amber-only and both-severity dialog states", () => {
+    const warning = {
+      id: "assign-1",
+      userName: "Alice",
+      slotLabel: "Monday 09:00-11:00",
+      positionName: "Kitchen",
+    }
+
+    const { getByText, rerender, queryByText } = renderWithProviders(
+      <DraftConfirmDialog
+        open
+        unqualifiedDrafts={[]}
+        unsubmittedDrafts={[warning]}
+        isPending={false}
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    expect(
+      getByText("assignments.drafts.confirmDialog.titleUnsubmitted"),
+    ).toBeInTheDocument()
+    expect(
+      getByText("assignments.drafts.confirmDialog.unsubmittedSection"),
+    ).toBeInTheDocument()
+    expect(
+      queryByText("assignments.drafts.confirmDialog.unqualifiedSection"),
+    ).not.toBeInTheDocument()
+
+    rerender(
+      <DraftConfirmDialog
+        open
+        unqualifiedDrafts={[warning]}
+        unsubmittedDrafts={[{ ...warning, id: "assign-2" }]}
+        isPending={false}
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    expect(
+      getByText("assignments.drafts.confirmDialog.titleBoth"),
+    ).toBeInTheDocument()
+    expect(
+      getByText("assignments.drafts.confirmDialog.unqualifiedSection"),
+    ).toBeInTheDocument()
+    expect(
+      getByText("assignments.drafts.confirmDialog.unsubmittedSection"),
+    ).toBeInTheDocument()
   })
 })

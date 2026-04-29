@@ -133,10 +133,16 @@ type assignmentResponse struct {
 }
 
 type assignmentBoardEmployeeResponse struct {
-	UserID      int64   `json:"user_id"`
-	Name        string  `json:"name"`
-	Email       string  `json:"email"`
-	PositionIDs []int64 `json:"position_ids"`
+	UserID         int64                         `json:"user_id"`
+	Name           string                        `json:"name"`
+	Email          string                        `json:"email"`
+	PositionIDs    []int64                       `json:"position_ids"`
+	SubmittedSlots []assignmentBoardSlotRefValue `json:"submitted_slots"`
+}
+
+type assignmentBoardSlotRefValue struct {
+	SlotID  int64 `json:"slot_id"`
+	Weekday int   `json:"weekday"`
 }
 
 type assignmentBoardPositionResponse struct {

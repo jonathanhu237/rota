@@ -594,8 +594,13 @@ func TestPublicationHandler(t *testing.T) {
 			len(response.Slots[0].Positions) != 1 ||
 			len(response.Employees) != 2 ||
 			len(response.Employees[0].PositionIDs) != 1 ||
+			len(response.Employees[0].SubmittedSlots) != 1 ||
 			len(response.Slots[0].Positions[0].Assignments) != 1 {
 			t.Fatalf("unexpected response: %+v", response)
+		}
+		if response.Employees[0].SubmittedSlots[0].SlotID != 21 ||
+			response.Employees[0].SubmittedSlots[0].Weekday != 1 {
+			t.Fatalf("unexpected submitted_slots: %+v", response.Employees[0].SubmittedSlots)
 		}
 	})
 
@@ -950,10 +955,11 @@ func sampleAssignmentBoardResult() *service.AssignmentBoardResult {
 		Publication: samplePublication(),
 		Employees: []*model.AssignmentBoardEmployee{
 			{
-				UserID:      1,
-				Name:        "Worker",
-				Email:       "worker@example.com",
-				PositionIDs: []int64{7},
+				UserID:         1,
+				Name:           "Worker",
+				Email:          "worker@example.com",
+				PositionIDs:    []int64{7},
+				SubmittedSlots: []model.SubmittedSlot{{SlotID: 21, Weekday: 1}},
 			},
 			{
 				UserID:      2,

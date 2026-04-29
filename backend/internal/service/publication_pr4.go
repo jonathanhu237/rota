@@ -474,8 +474,15 @@ func cloneAssignmentBoardEmployees(
 		}
 		clonedEmployee := *employee
 		clonedEmployee.PositionIDs = append([]int64(nil), employee.PositionIDs...)
+		clonedEmployee.SubmittedSlots = append([]model.SubmittedSlot(nil), employee.SubmittedSlots...)
 		sort.Slice(clonedEmployee.PositionIDs, func(i, j int) bool {
 			return clonedEmployee.PositionIDs[i] < clonedEmployee.PositionIDs[j]
+		})
+		sort.Slice(clonedEmployee.SubmittedSlots, func(i, j int) bool {
+			if clonedEmployee.SubmittedSlots[i].SlotID != clonedEmployee.SubmittedSlots[j].SlotID {
+				return clonedEmployee.SubmittedSlots[i].SlotID < clonedEmployee.SubmittedSlots[j].SlotID
+			}
+			return clonedEmployee.SubmittedSlots[i].Weekday < clonedEmployee.SubmittedSlots[j].Weekday
 		})
 		cloned = append(cloned, &clonedEmployee)
 	}

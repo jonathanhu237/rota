@@ -831,6 +831,54 @@ func (r *PublicationRepository) ListAssignmentBoardEmployees(
 		return nil, err
 	}
 
+	if len(employees) == 0 {
+		return employees, nil
+	}
+
+	userIDs := make([]int64, 0, len(employees))
+	for _, employee := range employees {
+		userIDs = append(userIDs, employee.UserID)
+	}
+
+	const submissionsQuery = `
+		SELECT
+			asub.user_id,
+			asub.slot_id,
+			asub.weekday
+		FROM availability_submissions asub
+		WHERE asub.publication_id = $1
+			AND asub.user_id = ANY($2)
+		ORDER BY asub.user_id ASC, asub.slot_id ASC, asub.weekday ASC;
+	`
+
+	submissionRows, err := r.db.QueryContext(ctx, submissionsQuery, publicationID, pq.Array(userIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer submissionRows.Close()
+
+	for submissionRows.Next() {
+		var (
+			userID  int64
+			slotID  int64
+			weekday int
+		)
+		if err := submissionRows.Scan(&userID, &slotID, &weekday); err != nil {
+			return nil, err
+		}
+		employee := employeeByID[userID]
+		if employee == nil {
+			continue
+		}
+		employee.SubmittedSlots = append(employee.SubmittedSlots, model.SubmittedSlot{
+			SlotID:  slotID,
+			Weekday: weekday,
+		})
+	}
+	if err := submissionRows.Err(); err != nil {
+		return nil, err
+	}
+
 	return employees, nil
 }
 

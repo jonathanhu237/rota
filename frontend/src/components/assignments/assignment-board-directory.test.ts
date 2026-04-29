@@ -13,12 +13,17 @@ const employees: AssignmentBoardEmployee[] = [
     name: "Alice",
     email: "alice@example.com",
     position_ids: [101, 102],
+    submitted_slots: [
+      { slot_id: 1, weekday: 1 },
+      { slot_id: 2, weekday: 3 },
+    ],
   },
   {
     user_id: 11,
     name: "Bob",
     email: "bob@example.com",
     position_ids: [101],
+    submitted_slots: [],
   },
 ]
 
@@ -39,6 +44,13 @@ describe("deriveEmployeeDirectory", () => {
 
     expect(directory.get(10)?.position_ids).toEqual(new Set([101, 102]))
     expect(directory.get(11)?.position_ids).toEqual(new Set([101]))
+  })
+
+  it("converts submitted_slots to slot-weekday sets", () => {
+    const directory = deriveEmployeeDirectory(employees)
+
+    expect(directory.get(10)?.submittedSlots).toEqual(new Set(["1:1", "2:3"]))
+    expect(directory.get(11)?.submittedSlots).toEqual(new Set())
   })
 })
 

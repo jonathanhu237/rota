@@ -938,10 +938,11 @@ func (m *publicationRepositoryStatefulMock) ListAssignmentBoardEmployees(
 			return positionIDs[i] < positionIDs[j]
 		})
 		employees = append(employees, &model.AssignmentBoardEmployee{
-			UserID:      user.ID,
-			Name:        user.Name,
-			Email:       user.Email,
-			PositionIDs: positionIDs,
+			UserID:         user.ID,
+			Name:           user.Name,
+			Email:          user.Email,
+			PositionIDs:    positionIDs,
+			SubmittedSlots: mockSubmittedSlotsForUser(m.submissions, publicationID, user.ID),
 		})
 	}
 	sort.Slice(employees, func(i, j int) bool {
@@ -949,6 +950,30 @@ func (m *publicationRepositoryStatefulMock) ListAssignmentBoardEmployees(
 	})
 
 	return employees, nil
+}
+
+func mockSubmittedSlotsForUser(
+	submissions map[string]*model.AvailabilitySubmission,
+	publicationID int64,
+	userID int64,
+) []model.SubmittedSlot {
+	submittedSlots := make([]model.SubmittedSlot, 0)
+	for _, submission := range submissions {
+		if submission.PublicationID != publicationID || submission.UserID != userID {
+			continue
+		}
+		submittedSlots = append(submittedSlots, model.SubmittedSlot{
+			SlotID:  submission.SlotID,
+			Weekday: submission.Weekday,
+		})
+	}
+	sort.Slice(submittedSlots, func(i, j int) bool {
+		if submittedSlots[i].SlotID != submittedSlots[j].SlotID {
+			return submittedSlots[i].SlotID < submittedSlots[j].SlotID
+		}
+		return submittedSlots[i].Weekday < submittedSlots[j].Weekday
+	})
+	return submittedSlots
 }
 
 func TestPublicationServiceCreatePublication(t *testing.T) {

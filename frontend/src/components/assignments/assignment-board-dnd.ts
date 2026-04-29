@@ -1,4 +1,5 @@
 import type { Employee } from "@/components/assignments/assignment-board-directory"
+import { slotWeekdayKey } from "@/components/assignments/assignment-board-directory"
 import {
   enqueueAdd,
   enqueueRemove,
@@ -63,6 +64,12 @@ export function resolveAssignmentBoardDrop({
       directory,
       draggedUser.userID,
       target.positionID,
+    ),
+    isUnsubmitted: !didEmployeeSubmitSlot(
+      directory,
+      draggedUser.userID,
+      target.slotID,
+      target.weekday,
     ),
   }
 
@@ -150,4 +157,16 @@ function isEmployeeQualifiedForPosition(
   positionID: number,
 ) {
   return directory.get(userID)?.position_ids.has(positionID) ?? false
+}
+
+function didEmployeeSubmitSlot(
+  directory: Map<number, Employee>,
+  userID: number,
+  slotID: number,
+  weekday: number,
+) {
+  return (
+    directory.get(userID)?.submittedSlots.has(slotWeekdayKey(slotID, weekday)) ??
+    false
+  )
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   DndContext,
   DragOverlay,
@@ -115,11 +115,31 @@ export function AssignmentBoard({
     () => deriveEmployeeDirectory(employees),
     [employees],
   )
-  const warningEntries = useMemo(
+  const confirmWarnings = useMemo(
     () => getDraftConfirmWarnings(slots, draftState, t),
     [draftState, slots, t],
   )
+  const hasOverrideDrafts =
+    confirmWarnings.unqualifiedDrafts.length +
+      confirmWarnings.unsubmittedDrafts.length >
+    0
   const isDraftDisabled = isReadOnly || isPending || isSubmittingDraft
+
+  useEffect(() => {
+    if (draftState.ops.length === 0) {
+      return
+    }
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ""
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload)
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload)
+    }
+  }, [draftState.ops.length])
 
   const handleDragEnd = (event: DragEndEvent) => {
     const source = getDragSourceData(event.active.data.current)
@@ -163,7 +183,7 @@ export function AssignmentBoard({
       return
     }
 
-    if (warningEntries.length > 0) {
+    if (hasOverrideDrafts) {
       setIsConfirmOpen(true)
       return
     }
@@ -229,7 +249,8 @@ export function AssignmentBoard({
     <>
       <DraftConfirmDialog
         open={isConfirmOpen}
-        warnings={warningEntries}
+        unqualifiedDrafts={confirmWarnings.unqualifiedDrafts}
+        unsubmittedDrafts={confirmWarnings.unsubmittedDrafts}
         isPending={isSubmittingDraft}
         onCancel={() => setIsConfirmOpen(false)}
         onConfirm={() => void submitDrafts()}
@@ -345,10 +366,11 @@ function getDraftConfirmWarnings(
   slots: AssignmentBoardSlot[],
   draftState: DraftState,
   t: (key: string, options?: Record<string, unknown>) => string,
-): DraftConfirmWarning[] {
-  return draftState.ops
-    .filter((op) => op.kind === "assign" && op.isUnqualified)
-    .map((op) => {
+): {
+  unqualifiedDrafts: DraftConfirmWarning[]
+  unsubmittedDrafts: DraftConfirmWarning[]
+} {
+  const toWarning = (op: Extract<DraftOp, { kind: "assign" }>) => {
       const slotEntry = slots.find(
         (entry) =>
           entry.slot.id === op.slotID && entry.slot.weekday === op.weekday,
@@ -371,7 +393,18 @@ function getDraftConfirmWarnings(
         slotLabel: [weekdayLabel, shiftLabel].filter(Boolean).join(" "),
         positionName: positionEntry?.position.name ?? fallbackPosition,
       }
-    })
+  }
+
+  const assignOps = draftState.ops.filter(
+    (op): op is Extract<DraftOp, { kind: "assign" }> => op.kind === "assign",
+  )
+
+  return {
+    unqualifiedDrafts: assignOps.filter((op) => op.isUnqualified).map(toWarning),
+    unsubmittedDrafts: assignOps
+      .filter((op) => op.isUnsubmitted && !op.isUnqualified)
+      .map(toWarning),
+  }
 }
 
 function getDragSourceData(value: unknown): AssignmentBoardDragSource | null {

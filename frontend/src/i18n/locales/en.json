@@ -792,30 +792,40 @@
       "empty": "No employees match this search.",
       "hours": "{{hours}}h",
       "fairness": "avg {{avg}}h · range {{min}}–{{max}}h · σ {{stddev}}h",
-      "zeroCount": "{{count}} unassigned"
+      "submitted": "Submitted availability ({{count}})",
+      "notSubmitted": "No availability submitted ({{count}})",
+      "notSubmittedTag": "Not submitted",
+      "unassignedCount": "{{count}} not assigned"
     },
     "seat": {
       "empty": "Empty",
       "overflow": "Overflow"
     },
     "drafts": {
-      "pendingCount": "Drafts: {{count}} pending",
+      "pendingCount": "Unsubmitted changes: {{count}}",
       "submit": "Submit",
       "discard": "Discard drafts",
       "confirmAndSubmit": "Confirm and submit",
       "cancel": "Cancel",
       "changed": "Draft",
-      "added": "Added",
-      "toRemove": "Remove",
+      "remove": "Remove",
+      "undoRemove": "Undo removal",
       "warning": "Warning",
+      "unqualifiedAria": "Qualification mismatch",
+      "unsubmittedAria": "Availability not submitted for this shift",
       "userHoursLabel": "{{user}} ({{hours}}h)",
       "submitFailed": "Could not submit {{user}}. Fix the draft or retry.",
       "submitFailedUnknown": "Unable to submit this draft operation.",
       "confirmDialog": {
         "title": "Confirm qualification overrides",
+        "titleUnsubmitted": "Confirm availability exception",
+        "titleBoth": "Confirm qualification / availability exceptions",
         "description": "These draft assignments bypass the default qualification or cell match.",
+        "unqualifiedSection": "Qualification mismatch ({{count}})",
+        "unsubmittedSection": "Availability not submitted ({{count}})",
         "warningTitle": "{{user}} -> {{slot}} / {{position}}",
-        "warningReason": "{{user}} is not a default match for {{position}} in this cell."
+        "warningReason": "{{user}} is not qualified for {{position}}.",
+        "unsubmittedReason": "{{user}} did not submit availability for this shift."
       }
     },
     "autoAssignDialog": {

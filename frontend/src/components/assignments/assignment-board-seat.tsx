@@ -1,15 +1,17 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
-import { AlertTriangle, X } from "lucide-react"
+import { AlertTriangle, Undo2, X } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
-import type { Employee } from "@/components/assignments/assignment-board-directory"
+import {
+  slotWeekdayKey,
+  type Employee,
+} from "@/components/assignments/assignment-board-directory"
 import type {
   AssignmentBoardDragSource,
   AssignmentBoardDropTarget,
 } from "@/components/assignments/assignment-board-dnd"
 import type { ProjectedAssignment } from "@/components/assignments/draft-state"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -84,6 +86,8 @@ export function AssignmentBoardSeat({
   const dragClassName = getDragClassName({
     draggingUserID,
     directory,
+    slotID,
+    weekday,
     positionID,
   })
 
@@ -115,8 +119,7 @@ export function AssignmentBoardSeat({
           variant={filledBy.isUnqualified ? "destructive" : "secondary"}
           className={cn(
             "h-auto min-h-7 justify-between gap-1.5 whitespace-normal px-2 text-left",
-            filledBy.isDraft && "ring-1 ring-primary/30",
-            filledBy.isRemoved && "line-through opacity-70",
+            filledBy.isRemoved && "opacity-70",
           )}
           disabled={disabled || isReadOnly}
           title={filledBy.email}
@@ -132,18 +135,48 @@ export function AssignmentBoardSeat({
           {...(isDraggable ? listeners : {})}
         >
           <span className="inline-flex min-w-0 items-center gap-1">
-            {filledBy.isUnqualified && (
-              <AlertTriangle className="size-3.5" aria-hidden />
+            {filledBy.isDraft && !filledBy.isRemoved && (
+              <span
+                className="size-1.5 shrink-0 rounded-full bg-primary"
+                aria-hidden="true"
+                data-testid="assignment-draft-dot"
+              />
             )}
-            <span className="truncate">{filledLabel ?? filledBy.name}</span>
+            {filledBy.isUnqualified && (
+              <AlertTriangle
+                className="size-3.5 text-red-500"
+                role="img"
+                aria-label={t("assignments.drafts.unqualifiedAria")}
+              />
+            )}
+            {filledBy.isUnsubmitted && !filledBy.isUnqualified && (
+              <AlertTriangle
+                className="size-3.5 text-amber-500"
+                role="img"
+                aria-label={t("assignments.drafts.unsubmittedAria")}
+              />
+            )}
+            <span
+              className={cn(
+                "truncate",
+                filledBy.isRemoved && "line-through text-muted-foreground",
+              )}
+            >
+              {filledLabel ?? filledBy.name}
+            </span>
           </span>
-          {filledBy.isDraft && (
-            <Badge variant="outline">{t("assignments.drafts.added")}</Badge>
-          )}
           {filledBy.isRemoved ? (
-            <Badge variant="outline">{t("assignments.drafts.toRemove")}</Badge>
+            <Undo2
+              className="size-3 shrink-0"
+              aria-label={t("assignments.drafts.undoRemove")}
+            />
           ) : (
-            !isReadOnly && <X className="size-3" aria-hidden />
+            !isReadOnly && (
+              <X
+                className="size-3 shrink-0"
+                aria-label={t("assignments.drafts.remove")}
+              />
+            )
           )}
         </Button>
       )}
@@ -154,17 +187,32 @@ export function AssignmentBoardSeat({
 function getDragClassName({
   draggingUserID,
   directory,
+  slotID,
+  weekday,
   positionID,
 }: {
   draggingUserID: number | null
   directory: Map<number, Employee>
+  slotID: number
+  weekday: number
   positionID: number
 }) {
   if (draggingUserID === null) {
     return "border-border"
   }
 
-  return directory.get(draggingUserID)?.position_ids.has(positionID)
-    ? "border-emerald-500 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/25"
-    : "border-amber-500 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/25"
+  const draggedUser = directory.get(draggingUserID)
+  if (!draggedUser) {
+    return "border-border"
+  }
+
+  if (!draggedUser.position_ids.has(positionID)) {
+    return "border-red-500 bg-red-50 dark:border-red-800 dark:bg-red-950/25"
+  }
+
+  if (!draggedUser.submittedSlots.has(slotWeekdayKey(slotID, weekday))) {
+    return "border-amber-500 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/25"
+  }
+
+  return "border-emerald-500 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/25"
 }

@@ -243,13 +243,14 @@ function getVisibleAssignments({
     ]
   })
 
-  return [...projectedAssignments, ...removedAssignments].sort((left, right) => {
-    if (left.isRemoved !== right.isRemoved) {
-      return left.isRemoved ? 1 : -1
-    }
-
-    return left.assignment_id - right.assignment_id
-  })
+  // applyDraftToBoard already returns saved chips in their server order with
+  // pending-add drafts appended at the end (in DraftState.ops queue order).
+  // Re-sorting here used to displace saved chips visually because draft chips
+  // carry negative assignment_ids that sort to the front — see D-9. Preserve
+  // the projection's order, then tack pending-remove projections (which
+  // always belong to a saved chip — they're the saved chip with isRemoved
+  // overlaid) at the end so they don't compete for routine seat positions.
+  return [...projectedAssignments, ...removedAssignments]
 }
 
 function findOriginalAssignment(

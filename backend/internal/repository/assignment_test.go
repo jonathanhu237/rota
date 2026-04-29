@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -79,6 +80,67 @@ func TestAssignmentRepositoryIntegration(t *testing.T) {
 		}
 		if got.ID != user.ID || got.Status != user.Status {
 			t.Fatalf("unexpected user: %+v", got)
+		}
+	})
+
+	t.Run("ListAssignmentBoardEmployees carries submitted slots for target publication only", func(t *testing.T) {
+		db := openIntegrationDB(t)
+		repo := NewPublicationRepository(db)
+		template := seedTemplate(t, db, templateSeed{Name: "Submitted Slots Template"})
+		position := seedPosition(t, db, positionSeed{Name: "Submitted Slots Position"})
+		firstSlotID := seedTemplateSlot(t, db, template.ID, 1, "09:00", "12:00")
+		secondSlotID := seedTemplateSlot(t, db, template.ID, 2, "13:00", "16:00")
+		seedTemplateSlotPosition(t, db, firstSlotID, position.ID, 1)
+		seedTemplateSlotPosition(t, db, secondSlotID, position.ID, 1)
+		publication := seedPublication(t, db, publicationSeed{
+			TemplateID:        template.ID,
+			State:             model.PublicationStateAssigning,
+			SubmissionStartAt: testTime().Add(-4 * time.Hour),
+			SubmissionEndAt:   testTime().Add(-2 * time.Hour),
+			PlannedActiveFrom: testTime().Add(1 * time.Hour),
+			CreatedAt:         testTime().Add(-5 * time.Hour),
+		})
+		otherPublication := seedPublication(t, db, publicationSeed{
+			TemplateID:        template.ID,
+			State:             model.PublicationStateEnded,
+			SubmissionStartAt: testTime().Add(-14 * 24 * time.Hour),
+			SubmissionEndAt:   testTime().Add(-13 * 24 * time.Hour),
+			PlannedActiveFrom: testTime().Add(-12 * 24 * time.Hour),
+			CreatedAt:         testTime().Add(-15 * 24 * time.Hour),
+		})
+
+		submitter := seedUser(t, db, userSeed{Name: "Submitter", Email: "submitter@example.com"})
+		nonSubmitter := seedUser(t, db, userSeed{Name: "Non Submitter", Email: "non-submitter@example.com"})
+		otherSubmitter := seedUser(t, db, userSeed{Name: "Other Submitter", Email: "other-submitter@example.com"})
+		for _, userID := range []int64{submitter.ID, nonSubmitter.ID, otherSubmitter.ID} {
+			seedUserPosition(t, db, userID, position.ID)
+		}
+
+		seedSubmission(t, db, publication.ID, submitter.ID, firstSlotID, testTime())
+		seedSubmission(t, db, publication.ID, submitter.ID, secondSlotID, testTime().Add(time.Minute))
+		seedSubmission(t, db, otherPublication.ID, otherSubmitter.ID, firstSlotID, testTime().Add(2*time.Minute))
+
+		employees, err := repo.ListAssignmentBoardEmployees(ctx, publication.ID)
+		if err != nil {
+			t.Fatalf("list assignment board employees: %v", err)
+		}
+		submittedSlotsByUser := make(map[int64][]model.SubmittedSlot, len(employees))
+		for _, employee := range employees {
+			submittedSlotsByUser[employee.UserID] = employee.SubmittedSlots
+		}
+
+		wantSubmitterSlots := []model.SubmittedSlot{
+			{SlotID: firstSlotID, Weekday: 1},
+			{SlotID: secondSlotID, Weekday: 2},
+		}
+		if !reflect.DeepEqual(submittedSlotsByUser[submitter.ID], wantSubmitterSlots) {
+			t.Fatalf("unexpected submitted slots for target submitter: got %+v want %+v", submittedSlotsByUser[submitter.ID], wantSubmitterSlots)
+		}
+		if got := submittedSlotsByUser[nonSubmitter.ID]; len(got) != 0 {
+			t.Fatalf("expected non-submitter to carry no submitted slots, got %+v", got)
+		}
+		if got := submittedSlotsByUser[otherSubmitter.ID]; len(got) != 0 {
+			t.Fatalf("expected other-publication submissions to be excluded, got %+v", got)
 		}
 	})
 
