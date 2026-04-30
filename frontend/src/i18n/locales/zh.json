@@ -115,7 +115,7 @@
     "leaves": "请假",
     "users": "用户",
     "positions": "岗位",
-    "templates": "模板",
+    "templates": "排班模板",
     "publications": "排班计划",
     "toggleTheme": "切换主题",
     "settings": "设置",
@@ -234,7 +234,7 @@
       "links": {
         "users": "用户",
         "positions": "岗位",
-        "templates": "模板",
+        "templates": "排班模板",
         "publications": "排班计划"
       }
     }
@@ -383,15 +383,15 @@
     }
   },
   "templates": {
-    "title": "模板管理",
-    "description": "创建并维护可复用的每周时段模板。",
-    "createTemplate": "创建模板",
+    "title": "排班模板管理",
+    "description": "创建并维护可复用的每周时段排班模板。",
+    "createTemplate": "新建排班模板",
     "name": "名称",
     "descriptionLabel": "描述",
-    "empty": "暂无模板。",
+    "empty": "暂无排班模板。",
     "locked": "已锁定",
     "unlocked": "未锁定",
-    "pageSummary": "显示第 {{start}}-{{end}} 条，共 {{total}} 条模板",
+    "pageSummary": "显示第 {{start}}-{{end}} 条，共 {{total}} 条排班模板",
     "table": {
       "name": "名称",
       "shiftCount": "班次数量",
@@ -404,17 +404,17 @@
       "page": "第 {{page}} / {{totalPages}} 页"
     },
     "form": {
-      "createTitle": "创建模板",
-      "createDescription": "新增一个可复用的每周模板。",
-      "submitCreate": "创建模板",
+      "createTitle": "新建排班模板",
+      "createDescription": "新增一个可复用的每周排班模板。",
+      "submitCreate": "新建排班模板",
       "submittingCreate": "创建中...",
       "submitEdit": "保存更改",
       "submittingEdit": "保存中..."
     },
     "detail": {
-      "description": "更新模板信息并管理其每周时段和岗位配置。",
-      "loadErrorTitle": "加载模板失败",
-      "loadErrorDescription": "当前无法加载该模板。"
+      "description": "更新排班模板信息并管理其每周时段和岗位配置。",
+      "loadErrorTitle": "加载排班模板失败",
+      "loadErrorDescription": "当前无法加载该排班模板。"
     },
     "actions": {
       "clone": "克隆",
@@ -430,13 +430,13 @@
       "deleteShift": "删除班次"
     },
     "cloneDialog": {
-      "title": "克隆模板",
+      "title": "克隆排班模板",
       "description": "确认基于 {{name}} 创建一个未锁定副本？",
       "confirm": "确认克隆",
       "submitting": "克隆中..."
     },
     "deleteDialog": {
-      "title": "删除模板",
+      "title": "删除排班模板",
       "description": "确认删除 {{name}}？此操作无法撤销。",
       "confirm": "确认删除",
       "submitting": "删除中..."
@@ -463,17 +463,17 @@
       "submitting": "删除中..."
     },
     "slotsTitle": "每周时段",
-    "slotsDescription": "管理模板的时段，以及每个时段内的岗位配置和适用星期。",
-    "noSlots": "这个模板还没有添加任何时段。",
+    "slotsDescription": "管理排班模板的时段，以及每个时段内的岗位配置和适用星期。",
+    "noSlots": "这个排班模板还没有添加任何时段。",
     "noSlotsForWeekday": "这一天还没有任何时段。",
     "noPositionsForSlot": "这个时段还没有添加岗位配置。",
     "shiftsTitle": "每周班次",
-    "shiftsDescription": "按星期管理该模板的所有班次。",
+    "shiftsDescription": "按星期管理该排班模板的所有班次。",
     "positionsLoadError": "加载岗位列表失败，无法编辑时段岗位。",
     "noPositions": "请先创建岗位，再为时段添加岗位配置。",
     "noShiftsForWeekday": "这一天还没有任何班次。",
     "unknownPosition": "未知岗位",
-    "lockedBanner": "该模板已锁定，无法编辑或删除。如需修改，请先克隆。",
+    "lockedBanner": "该排班模板已锁定，无法编辑或删除。如需修改，请先克隆。",
     "slot": {
       "weekday": "适用星期",
       "startTime": "开始时间",
@@ -517,7 +517,7 @@
     },
     "shiftDialog": {
       "createTitle": "新增班次",
-      "createDescription": "为该模板新增一个每周班次。",
+      "createDescription": "为该排班模板新增一个每周班次。",
       "editTitle": "编辑班次",
       "editDescription": "更新所选的每周班次。",
       "submitCreate": "创建班次",
@@ -536,9 +536,9 @@
       "sun": "星期日"
     },
     "validation": {
-      "nameRequired": "请输入模板名称",
-      "nameTooLong": "模板名称不能超过 100 个字符",
-      "descriptionTooLong": "模板描述不能超过 500 个字符",
+      "nameRequired": "请输入排班模板名称",
+      "nameTooLong": "排班模板名称不能超过 100 个字符",
+      "descriptionTooLong": "排班模板描述不能超过 500 个字符",
       "weekdayRequired": "请选择星期",
       "invalidWeekday": "星期必须在星期一到星期日之间",
       "invalidShiftTime": "结束时间必须晚于开始时间",
@@ -546,10 +546,10 @@
       "invalidHeadcount": "所需人数至少为 1"
     },
     "success": {
-      "created": "模板创建成功。",
-      "updated": "模板更新成功。",
-      "deleted": "模板删除成功。",
-      "cloned": "模板克隆成功。",
+      "created": "排班模板创建成功。",
+      "updated": "排班模板更新成功。",
+      "deleted": "排班模板删除成功。",
+      "cloned": "排班模板克隆成功。",
       "slotCreated": "时段创建成功。",
       "slotUpdated": "时段更新成功。",
       "slotDeleted": "时段删除成功。",
@@ -568,8 +568,8 @@
       "INVALID_WEEKDAY": "星期必须在星期一到星期日之间",
       "INTERNAL_ERROR": "服务器内部错误",
       "POSITION_NOT_FOUND": "岗位不存在",
-      "TEMPLATE_LOCKED": "模板已锁定",
-      "TEMPLATE_NOT_FOUND": "模板不存在",
+      "TEMPLATE_LOCKED": "排班模板已锁定",
+      "TEMPLATE_NOT_FOUND": "排班模板不存在",
       "TEMPLATE_SLOT_NOT_FOUND": "模板时段不存在",
       "TEMPLATE_SLOT_OVERLAP": "该时段与同一天中已有的时段发生重叠。",
       "TEMPLATE_SLOT_POSITION_NOT_FOUND": "模板时段岗位不存在",
@@ -579,7 +579,7 @@
   },
   "publications": {
     "title": "排班计划管理",
-    "description": "基于模板创建可提交空闲时间的时间窗口，并跟踪其状态。",
+    "description": "基于排班模板创建可提交空闲时间的时间窗口，并跟踪其状态。",
     "createPublication": "新建排班计划",
     "name": "名称",
     "submissionStartAt": "开始收集时间",
@@ -590,7 +590,7 @@
     "pageSummary": "显示第 {{start}}-{{end}} 条，共 {{total}} 条排班计划",
     "table": {
       "name": "名称",
-      "template": "模板",
+      "template": "排班模板",
       "state": "状态",
       "submissionWindow": "提交窗口",
       "activeWindow": "生效窗口",
@@ -612,10 +612,10 @@
     },
     "form": {
       "createTitle": "新建排班计划",
-      "createDescription": "选择一个模板，并设置提交窗口。",
-      "template": "模板",
-      "selectTemplate": "请选择模板",
-      "noTemplates": "请先创建模板，再新建排班计划。",
+      "createDescription": "选择一个排班模板，并设置提交窗口。",
+      "template": "排班模板",
+      "selectTemplate": "请选择排班模板",
+      "noTemplates": "请先创建排班模板，再新建排班计划。",
       "submitCreate": "新建排班计划",
       "submittingCreate": "创建中..."
     },
@@ -623,7 +623,7 @@
       "description": "查看排班计划元数据及其当前生效状态。",
       "loadErrorTitle": "加载排班计划失败",
       "loadErrorDescription": "当前无法加载该排班计划。",
-      "template": "模板",
+      "template": "排班模板",
       "state": "状态",
       "submissionStartAt": "开始收集时间",
       "submissionEndAt": "结束收集时间",
@@ -715,7 +715,7 @@
       }
     },
     "validation": {
-      "templateRequired": "请选择模板",
+      "templateRequired": "请选择排班模板",
       "nameRequired": "请输入名称",
       "nameTooLong": "名称不能超过 100 个字符",
       "submissionStartRequired": "请选择开始收集时间",
@@ -746,7 +746,7 @@
       "PUBLICATION_NOT_DELETABLE": "只有草稿状态的排班计划可以删除。",
       "PUBLICATION_NOT_PUBLISHED": "当前排班计划还没有进入公示状态。",
       "PUBLICATION_NOT_FOUND": "排班计划不存在",
-      "TEMPLATE_NOT_FOUND": "模板不存在",
+      "TEMPLATE_NOT_FOUND": "排班模板不存在",
       "TEMPLATE_SHIFT_NOT_FOUND": "模板班次不存在",
       "ASSIGNMENT_USER_ALREADY_IN_SLOT": "该用户已在此时段被分配到其他岗位。",
       "ASSIGNMENT_TIME_CONFLICT": "该分配与用户已有的班次时间冲突。",
@@ -858,7 +858,7 @@
     "description": "选择您能值班的时段。",
     "empty": "当前没有可用的排班计划。",
     "currentPublication": "排班计划",
-    "template": "模板",
+    "template": "排班模板",
     "gridTitle": "我的班次空闲时间",
     "gridDescription": "请勾选在本次收集窗口中您可以值班的所有班次。",
     "noShiftsForWeekday": "这一天没有可选班次。",
