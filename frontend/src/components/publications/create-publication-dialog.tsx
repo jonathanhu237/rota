@@ -1,8 +1,9 @@
 import { useEffect, useEffectEvent } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
+import { Controller, useForm } from "react-hook-form"
 import { useTranslation } from "react-i18next"
 
+import { DateTimePicker } from "@/components/date-time-picker"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -46,6 +47,7 @@ export function CreatePublicationDialog({
     handleSubmit,
     reset,
     trigger,
+    control,
     formState: { errors },
   } = useForm<PublicationFormValues>({
     resolver: zodResolver(formSchema),
@@ -137,10 +139,19 @@ export function CreatePublicationDialog({
             <Label htmlFor="publication-submission-start">
               {t("publications.submissionStartAt")}
             </Label>
-            <Input
-              id="publication-submission-start"
-              type="datetime-local"
-              {...register("submission_start_at")}
+            <Controller
+              control={control}
+              name="submission_start_at"
+              render={({ field }) => (
+                <DateTimePicker
+                  id="publication-submission-start"
+                  value={field.value}
+                  onChange={field.onChange}
+                  placeholder={t("common.selectDate")}
+                  timeLabel={`${t("publications.submissionStartAt")} ${t("common.time")}`}
+                  aria-invalid={Boolean(errors.submission_start_at)}
+                />
+              )}
             />
             {errors.submission_start_at && (
               <p className="text-sm text-destructive">
@@ -152,10 +163,19 @@ export function CreatePublicationDialog({
             <Label htmlFor="publication-submission-end">
               {t("publications.submissionEndAt")}
             </Label>
-            <Input
-              id="publication-submission-end"
-              type="datetime-local"
-              {...register("submission_end_at")}
+            <Controller
+              control={control}
+              name="submission_end_at"
+              render={({ field }) => (
+                <DateTimePicker
+                  id="publication-submission-end"
+                  value={field.value}
+                  onChange={field.onChange}
+                  placeholder={t("common.selectDate")}
+                  timeLabel={`${t("publications.submissionEndAt")} ${t("common.time")}`}
+                  aria-invalid={Boolean(errors.submission_end_at)}
+                />
+              )}
             />
             {errors.submission_end_at && (
               <p className="text-sm text-destructive">
@@ -167,10 +187,19 @@ export function CreatePublicationDialog({
             <Label htmlFor="publication-planned-active-from">
               {t("publications.plannedActiveFrom")}
             </Label>
-            <Input
-              id="publication-planned-active-from"
-              type="datetime-local"
-              {...register("planned_active_from")}
+            <Controller
+              control={control}
+              name="planned_active_from"
+              render={({ field }) => (
+                <DateTimePicker
+                  id="publication-planned-active-from"
+                  value={field.value}
+                  onChange={field.onChange}
+                  placeholder={t("common.selectDate")}
+                  timeLabel={`${t("publications.plannedActiveFrom")} ${t("common.time")}`}
+                  aria-invalid={Boolean(errors.planned_active_from)}
+                />
+              )}
             />
             {errors.planned_active_from && (
               <p className="text-sm text-destructive">
@@ -182,10 +211,19 @@ export function CreatePublicationDialog({
             <Label htmlFor="publication-planned-active-until">
               {t("publications.plannedActiveUntil")}
             </Label>
-            <Input
-              id="publication-planned-active-until"
-              type="datetime-local"
-              {...register("planned_active_until")}
+            <Controller
+              control={control}
+              name="planned_active_until"
+              render={({ field }) => (
+                <DateTimePicker
+                  id="publication-planned-active-until"
+                  value={field.value}
+                  onChange={field.onChange}
+                  placeholder={t("common.selectDate")}
+                  timeLabel={`${t("publications.plannedActiveUntil")} ${t("common.time")}`}
+                  aria-invalid={Boolean(errors.planned_active_until)}
+                />
+              )}
             />
             {errors.planned_active_until && (
               <p className="text-sm text-destructive">

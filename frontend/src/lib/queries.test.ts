@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { QueryClient } from "@tanstack/react-query"
 
 const { putMock } = vi.hoisted(() => ({
   putMock: vi.fn(),
@@ -40,6 +41,7 @@ import {
   deleteAvailabilitySubmission,
   deleteAssignment,
   endPublication,
+  leavePreviewQueryOptions,
   previewSetupToken,
   requestEmailChange,
   requestPasswordReset,
@@ -211,6 +213,38 @@ describe("availability submissions", () => {
     await deleteAvailabilitySubmission(7, 21, 2)
 
     expect(deleteMock).toHaveBeenCalledWith("/publications/7/submissions/21/2")
+  })
+})
+
+describe("leave previews", () => {
+  beforeEach(() => {
+    deleteMock.mockReset()
+    getMock.mockReset()
+    postMock.mockReset()
+    patchMock.mockReset()
+    putMock.mockReset()
+  })
+
+  it("requests preview occurrences using YYYY-MM-DD query params", async () => {
+    getMock.mockResolvedValue({ data: { occurrences: [] } })
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+    })
+
+    await client.fetchQuery(
+      leavePreviewQueryOptions("2026-05-01", "2026-05-15"),
+    )
+
+    expect(getMock).toHaveBeenCalledWith("/users/me/leaves/preview", {
+      params: {
+        from: "2026-05-01",
+        to: "2026-05-15",
+      },
+    })
   })
 })
 

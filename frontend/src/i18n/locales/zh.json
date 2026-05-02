@@ -7,6 +7,8 @@
     "employee": "员工",
     "notAvailable": "暂无",
     "refreshing": "刷新中...",
+    "selectDate": "选择日期",
+    "time": "时间",
     "languages": {
       "en": "英文",
       "zh": "中文"

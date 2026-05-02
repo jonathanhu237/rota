@@ -7,6 +7,8 @@
     "employee": "Employee",
     "notAvailable": "Not available",
     "refreshing": "Refreshing...",
+    "selectDate": "Select date",
+    "time": "Time",
     "languages": {
       "en": "English",
       "zh": "Chinese"

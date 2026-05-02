@@ -70,8 +70,60 @@ describe("PublicationsTable", () => {
     await user.click(getByText("Week 17"))
     await user.click(getAllByRole("button", { name: "publications.actions.publish" })[0])
 
+    expect(onOpen).toHaveBeenCalledTimes(1)
     expect(onOpen).toHaveBeenCalledWith(publications[0])
     expect(onLifecycleAction).toHaveBeenCalledWith(publications[0], "publish")
+  })
+
+  it("does not open the row when a lifecycle action is keyboard activated", async () => {
+    const user = userEvent.setup()
+    const onOpen = vi.fn()
+    const onLifecycleAction = vi.fn()
+
+    const { getByRole } = renderWithProviders(
+      <PublicationsTable
+        isFetching={false}
+        isLoading={false}
+        onLifecycleAction={onLifecycleAction}
+        onOpen={onOpen}
+        onPageChange={vi.fn()}
+        pagination={pagination}
+        publications={publications}
+      />,
+    )
+
+    getByRole("button", { name: "publications.actions.publish" }).focus()
+    await user.keyboard("{Enter}")
+
+    expect(onLifecycleAction).toHaveBeenCalledWith(publications[0], "publish")
+    expect(onOpen).not.toHaveBeenCalled()
+  })
+
+  it("renders empty and loading states", () => {
+    const { getByText, rerender, container } = renderWithProviders(
+      <PublicationsTable
+        isFetching={false}
+        isLoading={false}
+        onLifecycleAction={vi.fn()}
+        onOpen={vi.fn()}
+        onPageChange={vi.fn()}
+        publications={[]}
+      />,
+    )
+
+    expect(getByText("publications.empty")).toBeInTheDocument()
+
+    rerender(
+      <PublicationsTable
+        isFetching={false}
+        isLoading
+        onLifecycleAction={vi.fn()}
+        onOpen={vi.fn()}
+        onPageChange={vi.fn()}
+        publications={[]}
+      />,
+    )
+    expect(container.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(5)
   })
 
   it("enables pagination buttons when there are more pages", () => {

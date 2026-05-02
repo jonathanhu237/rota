@@ -15,6 +15,7 @@ import { DeletePublicationDialog } from "@/components/publications/delete-public
 import { EndPublicationDialog } from "@/components/publications/end-publication-dialog"
 import { PublicationStateBadge } from "@/components/publications/publication-state-badge"
 import { PublishPublicationDialog } from "@/components/publications/publish-publication-dialog"
+import { DateTimePicker } from "@/components/date-time-picker"
 import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Card,
@@ -24,7 +25,6 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/toast"
 import { getTranslatedApiError } from "@/lib/api-error"
@@ -49,7 +49,7 @@ export const Route = createFileRoute("/_authenticated/publications/$publicationI
   component: PublicationDetailPage,
 })
 
-function PublicationDetailPage() {
+export function PublicationDetailPage() {
   const { publicationId } = Route.useParams()
   const numericPublicationID = Number(publicationId)
 
@@ -415,16 +415,17 @@ function PublicationDetailPage() {
                 {t("publications.detail.editPlannedActiveUntil")}
               </Label>
               <div className="flex flex-col gap-2 sm:flex-row">
-                <Input
+                <DateTimePicker
                   id="publication-planned-until-edit"
-                  type="datetime-local"
                   value={plannedUntilInput}
-                  onChange={(event) =>
+                  onChange={(value) =>
                     setPlannedUntilDraft({
                       publicationID: publication.id,
-                      value: event.target.value,
+                      value,
                     })
                   }
+                  placeholder={t("common.selectDate")}
+                  timeLabel={`${t("publications.detail.editPlannedActiveUntil")} ${t("common.time")}`}
                 />
                 <Button
                   type="submit"

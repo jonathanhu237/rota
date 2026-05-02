@@ -4,6 +4,7 @@ import { createFileRoute, Link } from "@tanstack/react-router"
 import { ArrowLeft, Copy, Send } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
+import { DatePicker } from "@/components/date-time-picker"
 import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Card,
@@ -12,7 +13,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
@@ -161,20 +161,20 @@ export function LeavePage() {
           <div className="grid gap-4 sm:grid-cols-[minmax(0,180px)_minmax(0,180px)]">
             <div className="grid gap-2">
               <Label htmlFor="leave-from">{t("leave.from")}</Label>
-              <Input
+              <DatePicker
                 id="leave-from"
-                type="date"
                 value={from}
-                onChange={(event) => setFrom(event.target.value)}
+                onChange={setFrom}
+                placeholder={t("common.selectDate")}
               />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="leave-to">{t("leave.to")}</Label>
-              <Input
+              <DatePicker
                 id="leave-to"
-                type="date"
                 value={to}
-                onChange={(event) => setTo(event.target.value)}
+                onChange={setTo}
+                placeholder={t("common.selectDate")}
               />
             </div>
           </div>

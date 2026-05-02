@@ -1,8 +1,9 @@
 import { useEffect, useEffectEvent } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm, useWatch } from "react-hook-form"
+import { Controller, useForm, useWatch } from "react-hook-form"
 import { useTranslation } from "react-i18next"
 
+import { TimePicker } from "@/components/date-time-picker"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -13,7 +14,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { TemplateSlot } from "@/lib/types"
 
@@ -56,7 +56,6 @@ export function TemplateSlotDialog({
   const formSchema = createTemplateSlotSchema(t)
 
   const {
-    register,
     handleSubmit,
     reset,
     setValue,
@@ -146,10 +145,17 @@ export function TemplateSlotDialog({
               <Label htmlFor="template-slot-start">
                 {t("templates.slot.startTime")}
               </Label>
-              <Input
-                id="template-slot-start"
-                type="time"
-                {...register("start_time")}
+              <Controller
+                control={control}
+                name="start_time"
+                render={({ field }) => (
+                  <TimePicker
+                    id="template-slot-start"
+                    value={field.value}
+                    onChange={field.onChange}
+                    aria-invalid={Boolean(errors.start_time)}
+                  />
+                )}
               />
               {errors.start_time && (
                 <p className="text-sm text-destructive">
@@ -161,10 +167,17 @@ export function TemplateSlotDialog({
               <Label htmlFor="template-slot-end">
                 {t("templates.slot.endTime")}
               </Label>
-              <Input
-                id="template-slot-end"
-                type="time"
-                {...register("end_time")}
+              <Controller
+                control={control}
+                name="end_time"
+                render={({ field }) => (
+                  <TimePicker
+                    id="template-slot-end"
+                    value={field.value}
+                    onChange={field.onChange}
+                    aria-invalid={Boolean(errors.end_time)}
+                  />
+                )}
               />
               {errors.end_time && (
                 <p className="text-sm text-destructive">

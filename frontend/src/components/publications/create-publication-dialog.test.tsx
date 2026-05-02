@@ -60,31 +60,35 @@ describe("CreatePublicationDialog", () => {
       "1",
     )
     await user.type(within(dialog).getByLabelText("publications.name"), "Week 17")
-    fireEvent.change(
-      within(dialog).getByLabelText("publications.submissionStartAt"),
-      { target: { value: "2026-04-17T09:00" } },
+    const submissionStart = await setDateTime(
+      dialog,
+      "publication-submission-start",
+      "2026-04-17T09:00",
     )
-    fireEvent.change(
-      within(dialog).getByLabelText("publications.submissionEndAt"),
-      { target: { value: "2026-04-17T12:00" } },
+    const submissionEnd = await setDateTime(
+      dialog,
+      "publication-submission-end",
+      "2026-04-17T12:00",
     )
-    fireEvent.change(
-      within(dialog).getByLabelText("publications.plannedActiveFrom"),
-      { target: { value: "2026-04-17T13:00" } },
+    const plannedActiveFrom = await setDateTime(
+      dialog,
+      "publication-planned-active-from",
+      "2026-04-17T13:00",
     )
-    fireEvent.change(
-      within(dialog).getByLabelText("publications.plannedActiveUntil"),
-      { target: { value: "2026-05-01T13:00" } },
+    const plannedActiveUntil = await setDateTime(
+      dialog,
+      "publication-planned-active-until",
+      "2026-05-01T13:00",
     )
     await user.click(dialog.querySelector('button[type="submit"]')!)
 
     expect(onSubmit).toHaveBeenCalledWith({
       template_id: 1,
       name: "Week 17",
-      submission_start_at: "2026-04-17T09:00",
-      submission_end_at: "2026-04-17T12:00",
-      planned_active_from: "2026-04-17T13:00",
-      planned_active_until: "2026-05-01T13:00",
+      submission_start_at: submissionStart,
+      submission_end_at: submissionEnd,
+      planned_active_from: plannedActiveFrom,
+      planned_active_until: plannedActiveUntil,
     })
   })
 
@@ -109,21 +113,25 @@ describe("CreatePublicationDialog", () => {
       "1",
     )
     await user.type(within(dialog).getByLabelText("publications.name"), "Week 17")
-    fireEvent.change(
-      within(dialog).getByLabelText("publications.submissionStartAt"),
-      { target: { value: "2026-04-17T12:00" } },
+    await setDateTime(
+      dialog,
+      "publication-submission-start",
+      "2026-04-17T12:00",
     )
-    fireEvent.change(
-      within(dialog).getByLabelText("publications.submissionEndAt"),
-      { target: { value: "2026-04-17T11:00" } },
+    await setDateTime(
+      dialog,
+      "publication-submission-end",
+      "2026-04-17T11:00",
     )
-    fireEvent.change(
-      within(dialog).getByLabelText("publications.plannedActiveFrom"),
-      { target: { value: "2026-04-17T13:00" } },
+    await setDateTime(
+      dialog,
+      "publication-planned-active-from",
+      "2026-04-17T13:00",
     )
-    fireEvent.change(
-      within(dialog).getByLabelText("publications.plannedActiveUntil"),
-      { target: { value: "2026-05-01T13:00" } },
+    await setDateTime(
+      dialog,
+      "publication-planned-active-until",
+      "2026-05-01T13:00",
     )
     await user.click(dialog.querySelector('button[type="submit"]')!)
 
@@ -133,3 +141,14 @@ describe("CreatePublicationDialog", () => {
     expect(onSubmit).not.toHaveBeenCalled()
   })
 })
+
+function setDateTime(
+  dialog: HTMLElement,
+  id: string,
+  value: string,
+) {
+  fireEvent.change(within(dialog).getByTestId(`${id}-value`), {
+    target: { value },
+  })
+  return value
+}
