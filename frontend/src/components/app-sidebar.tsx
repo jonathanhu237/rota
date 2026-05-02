@@ -39,6 +39,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  SidebarTrigger,
 } from "@/components/ui/sidebar"
 import api from "@/lib/axios"
 import {
@@ -154,7 +155,11 @@ export function AppSidebar() {
 
     return (
       <SidebarMenuItem key={item.url}>
-        <SidebarMenuButton render={<Link to={item.url} />} isActive={isActive}>
+        <SidebarMenuButton
+          render={<Link to={item.url} />}
+          isActive={isActive}
+          tooltip={item.title}
+        >
           <item.icon />
           <span>{item.title}</span>
           {item.badge !== undefined && item.badge > 0 && (
@@ -180,23 +185,29 @@ export function AppSidebar() {
       .slice(0, 2) ?? ""
 
   return (
-    <Sidebar>
+    <Sidebar collapsible="icon">
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" render={<Link to="/" />}>
-              <div className="bg-primary text-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg text-sm font-bold">
-                R
-              </div>
-              <div className="flex flex-col gap-0.5 leading-none">
-                <span className="font-semibold">Rota</span>
-                <span className="text-xs text-muted-foreground">
-                  {t("sidebar.appDescription")}
-                </span>
-              </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <div className="flex items-center gap-1 group-data-[collapsible=icon]:flex-col">
+          <SidebarMenu className="min-w-0 flex-1">
+            <SidebarMenuItem>
+              <SidebarMenuButton size="lg" render={<Link to="/" />}>
+                <div className="bg-primary text-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg text-sm font-bold">
+                  R
+                </div>
+                <div className="flex flex-col gap-0.5 leading-none">
+                  <span className="font-semibold">Rota</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t("sidebar.appDescription")}
+                  </span>
+                </div>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+          <SidebarTrigger
+            aria-label={t("sidebar.toggleNavigation")}
+            className="hidden shrink-0 md:inline-flex"
+          />
+        </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>

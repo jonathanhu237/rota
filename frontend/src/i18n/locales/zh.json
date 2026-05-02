@@ -122,7 +122,8 @@
     "toggleTheme": "切换主题",
     "settings": "设置",
     "logout": "退出登录",
-    "openNavigation": "打开导航"
+    "openNavigation": "打开导航",
+    "toggleNavigation": "收起或展开导航"
   },
   "settings": {
     "title": "设置",

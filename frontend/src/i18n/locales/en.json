@@ -122,7 +122,8 @@
     "toggleTheme": "Toggle theme",
     "settings": "Settings",
     "logout": "Logout",
-    "openNavigation": "Open navigation"
+    "openNavigation": "Open navigation",
+    "toggleNavigation": "Toggle navigation"
   },
   "settings": {
     "title": "Settings",
