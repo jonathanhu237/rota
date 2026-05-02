@@ -161,20 +161,13 @@ describe("AppSidebar", () => {
     expect(screen.queryByText("sidebar.publications")).not.toBeInTheDocument()
   })
 
-  it("exposes a desktop trigger that collapses the sidebar to icon mode", async () => {
-    const user = userEvent.setup()
+  it("uses the floating icon-collapse sidebar variant", () => {
     const { container } = renderAppSidebar()
 
     const sidebar = container.querySelector("[data-slot='sidebar']")
     expect(sidebar).toHaveAttribute("data-state", "expanded")
     expect(sidebar).toHaveAttribute("data-collapsible", "")
-
-    await user.click(
-      screen.getByRole("button", { name: "sidebar.toggleNavigation" }),
-    )
-
-    expect(sidebar).toHaveAttribute("data-state", "collapsed")
-    expect(sidebar).toHaveAttribute("data-collapsible", "icon")
+    expect(sidebar).toHaveAttribute("data-variant", "floating")
   })
 
   it("renders the account group with a settings link for every user", () => {

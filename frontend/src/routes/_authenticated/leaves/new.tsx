@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { createFileRoute, Link } from "@tanstack/react-router"
-import { ArrowLeft, Copy, Send } from "lucide-react"
+import { createFileRoute } from "@tanstack/react-router"
+import { Copy, Send } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { DatePicker } from "@/components/date-time-picker"
-import { Button, buttonVariants } from "@/components/ui/button"
+import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -143,18 +143,9 @@ export function LeavePage() {
     <div className="grid gap-6">
       <Card>
         <CardHeader>
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="grid gap-1">
-              <CardTitle>{t("leave.title")}</CardTitle>
-              <CardDescription>{t("leave.description")}</CardDescription>
-            </div>
-            <Link
-              to="/leaves"
-              className={buttonVariants({ variant: "outline" })}
-            >
-              <ArrowLeft />
-              {t("leaves.backToHistory")}
-            </Link>
+          <div className="grid gap-1">
+            <CardTitle>{t("leave.title")}</CardTitle>
+            <CardDescription>{t("leave.description")}</CardDescription>
           </div>
         </CardHeader>
         <CardContent className="grid gap-4">

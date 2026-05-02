@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Link, createFileRoute, redirect } from "@tanstack/react-router"
+import { createFileRoute, redirect } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
 import { AssignmentBoard } from "@/components/assignments/assignment-board"
@@ -188,13 +188,6 @@ function PublicationAssignmentsPage() {
                   {t("assignments.autoAssign")}
                 </Button>
               )}
-              <Link
-                className="text-sm font-medium text-foreground underline underline-offset-4"
-                params={{ publicationId: String(board.publication.id) }}
-                to="/publications/$publicationId"
-              >
-                {t("assignments.backToPublication")}
-              </Link>
             </div>
           </CardHeader>
           <CardContent>

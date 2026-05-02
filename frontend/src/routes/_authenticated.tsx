@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
+import { AppBreadcrumbs } from "@/components/app-breadcrumbs"
 import { AppSidebar } from "@/components/app-sidebar"
 import { ThemeProvider } from "@/components/theme-provider"
 import {
@@ -16,6 +17,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
+import { Separator } from "@/components/ui/separator"
 import { applyLanguagePreference } from "@/i18n"
 import { currentUserQueryOptions } from "@/lib/queries"
 
@@ -33,7 +35,7 @@ export const Route = createFileRoute("/_authenticated")({
   component: AuthenticatedLayout,
 })
 
-function AuthenticatedLayout() {
+export function AuthenticatedLayout() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -57,9 +59,10 @@ function AuthenticatedLayout() {
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>
-          <header className="sticky top-0 z-10 flex h-14 items-center border-b bg-background px-4 md:hidden">
-            <SidebarTrigger aria-label={t("sidebar.openNavigation")} />
-            <div className="ml-3 text-sm font-semibold">Rota</div>
+          <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
+            <SidebarTrigger aria-label={t("sidebar.toggleNavigation")} />
+            <Separator orientation="vertical" className="min-h-4" />
+            <AppBreadcrumbs />
           </header>
           <main className="flex-1 p-6">
             <Outlet />

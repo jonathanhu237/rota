@@ -125,6 +125,25 @@
     "openNavigation": "打开导航",
     "toggleNavigation": "收起或展开导航"
   },
+  "breadcrumbs": {
+    "dashboard": "首页",
+    "roster": "排班表",
+    "availability": "提交空闲时间",
+    "requests": "调班申请",
+    "leaves": "请假",
+    "requestLeave": "申请请假",
+    "leaveFallback": "请假 #{{id}}",
+    "settings": "设置",
+    "users": "用户",
+    "positions": "岗位",
+    "templates": "排班模板",
+    "templateFallback": "排班模板",
+    "publications": "排班计划",
+    "publicationFallback": "排班计划",
+    "assignments": "排班分配",
+    "shiftChanges": "调班申请",
+    "current": "当前页面"
+  },
   "settings": {
     "title": "设置",
     "description": "管理个人资料、密码、语言和主题。",

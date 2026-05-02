@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Link, createFileRoute, redirect } from "@tanstack/react-router"
+import { createFileRoute, redirect } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
 import { PublicationStateBadge } from "@/components/publications/publication-state-badge"
@@ -144,15 +144,6 @@ function PublicationShiftChangesPage() {
             <div className="pt-2">
               <PublicationStateBadge state={publication.state} />
             </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Link
-              className="text-sm font-medium text-foreground underline underline-offset-4"
-              params={{ publicationId: String(publication.id) }}
-              to="/publications/$publicationId"
-            >
-              {t("publications.shiftChanges.backToPublication")}
-            </Link>
           </div>
         </CardHeader>
         <CardContent className="grid gap-4">

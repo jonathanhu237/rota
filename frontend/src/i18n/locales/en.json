@@ -125,6 +125,25 @@
     "openNavigation": "Open navigation",
     "toggleNavigation": "Toggle navigation"
   },
+  "breadcrumbs": {
+    "dashboard": "Dashboard",
+    "roster": "Roster",
+    "availability": "Availability",
+    "requests": "Requests",
+    "leaves": "Leaves",
+    "requestLeave": "Request leave",
+    "leaveFallback": "Leave #{{id}}",
+    "settings": "Settings",
+    "users": "Users",
+    "positions": "Positions",
+    "templates": "Templates",
+    "templateFallback": "Template",
+    "publications": "Publications",
+    "publicationFallback": "Publication",
+    "assignments": "Assignments",
+    "shiftChanges": "Shift changes",
+    "current": "Current page"
+  },
   "settings": {
     "title": "Settings",
     "description": "Manage your profile, password, language, and theme.",

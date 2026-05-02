@@ -74,14 +74,13 @@ function renderPage() {
 }
 
 describe("LeavePage", () => {
-  it("renders the moved leave request page with a back link", async () => {
+  it("renders the moved leave request page without a duplicate back link", async () => {
     renderPage()
 
     expect(screen.getByText("leave.title")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "leaves.backToHistory" })).toHaveAttribute(
-      "href",
-      "/leaves",
-    )
+    expect(
+      screen.queryByRole("link", { name: "leaves.backToHistory" }),
+    ).not.toBeInTheDocument()
   })
 })
 
