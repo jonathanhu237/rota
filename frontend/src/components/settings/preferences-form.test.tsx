@@ -50,26 +50,19 @@ describe("PreferencesForm", () => {
     applyLanguagePreferenceMock.mockReset()
   })
 
-  it("renders language and theme enum values", () => {
+  it("renders language and theme selects with current values", () => {
     const { getByRole } = renderWithProviders(
       <PreferencesForm user={makeUser()} />,
     )
 
     expect(
-      getByRole("radio", { name: "settings.preferences.languageZh" }),
+      getByRole("combobox", { name: "settings.preferences.language" }),
     ).toBeInTheDocument()
     expect(
-      getByRole("radio", { name: "settings.preferences.languageEn" }),
+      getByRole("combobox", { name: "settings.preferences.theme" }),
     ).toBeInTheDocument()
-    expect(
-      getByRole("radio", { name: "settings.preferences.themeSystem" }),
-    ).toBeInTheDocument()
-    expect(
-      getByRole("radio", { name: "settings.preferences.themeLight" }),
-    ).toBeInTheDocument()
-    expect(
-      getByRole("radio", { name: "settings.preferences.themeDark" }),
-    ).toBeInTheDocument()
+    expect(getByRole("button", { name: "settings.common.save" }))
+      .toBeInTheDocument()
   })
 
   it("saves preferences and applies local language and theme state", async () => {
@@ -85,11 +78,17 @@ describe("PreferencesForm", () => {
       <PreferencesForm user={makeUser()} />,
     )
 
-    await user.click(
-      getByRole("radio", { name: "settings.preferences.languageZh" }),
+    await selectOption(
+      user,
+      getByRole,
+      "settings.preferences.language",
+      "settings.preferences.languageZh",
     )
-    await user.click(
-      getByRole("radio", { name: "settings.preferences.themeDark" }),
+    await selectOption(
+      user,
+      getByRole,
+      "settings.preferences.theme",
+      "settings.preferences.themeDark",
     )
     await user.click(getByRole("button", { name: "settings.common.save" }))
 
@@ -106,3 +105,16 @@ describe("PreferencesForm", () => {
     })
   })
 })
+
+async function selectOption(
+  user: ReturnType<typeof userEvent.setup>,
+  getByRole: ReturnType<typeof renderWithProviders>["getByRole"],
+  selectName: string,
+  optionName: string,
+) {
+  await user.click(getByRole("combobox", { name: selectName }))
+  await waitFor(() => {
+    expect(getByRole("option", { name: optionName })).toBeInTheDocument()
+  })
+  await user.click(getByRole("option", { name: optionName }))
+}

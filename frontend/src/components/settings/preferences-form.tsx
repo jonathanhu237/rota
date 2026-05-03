@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
+import { Controller, useForm } from "react-hook-form"
 import { useTranslation } from "react-i18next"
 
 import { updateOwnProfileMutation } from "@/components/settings/settings-api"
@@ -12,11 +12,28 @@ import {
 import { useTheme } from "@/components/theme-context"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useToast } from "@/components/ui/toast"
 import { applyLanguagePreference, normalizeLanguage } from "@/i18n"
 import type { User } from "@/lib/types"
 
 const preferencesSchema = createPreferencesSchema()
+const languageOptions = [
+  { value: "zh", labelKey: "settings.preferences.languageZh" },
+  { value: "en", labelKey: "settings.preferences.languageEn" },
+] as const
+const themeOptions = [
+  { value: "system", labelKey: "settings.preferences.themeSystem" },
+  { value: "light", labelKey: "settings.preferences.themeLight" },
+  { value: "dark", labelKey: "settings.preferences.themeDark" },
+] as const
 
 export function PreferencesForm({ user }: { user: User }) {
   const { t, i18n } = useTranslation()
@@ -33,8 +50,8 @@ export function PreferencesForm({ user }: { user: User }) {
     [i18n.resolvedLanguage, user.language_preference, user.theme_preference],
   )
   const {
-    register,
     handleSubmit,
+    control,
     reset,
     formState: { errors },
   } = useForm<PreferencesFormValues>({
@@ -64,72 +81,89 @@ export function PreferencesForm({ user }: { user: User }) {
       className="grid gap-5"
       onSubmit={handleSubmit((values) => mutation.mutate(values))}
     >
-      <fieldset className="grid gap-3">
-        <legend className="text-sm font-medium">
+      <div className="grid max-w-sm gap-2">
+        <Label id="language-preference-label">
           {t("settings.preferences.language")}
-        </legend>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="radio"
-            value="zh"
-            className="size-4"
-            {...register("language_preference")}
-          />
-          <span>{t("settings.preferences.languageZh")}</span>
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="radio"
-            value="en"
-            className="size-4"
-            {...register("language_preference")}
-          />
-          <span>{t("settings.preferences.languageEn")}</span>
-        </label>
+        </Label>
+        <Controller
+          control={control}
+          name="language_preference"
+          render={({ field }) => (
+            <Select
+              items={languageOptions.map((option) => ({
+                label: t(option.labelKey),
+                value: option.value,
+              }))}
+              value={field.value}
+              onValueChange={(value) => field.onChange(value)}
+            >
+              <SelectTrigger
+                aria-labelledby="language-preference-label"
+                aria-invalid={Boolean(errors.language_preference)}
+                className="w-full"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {languageOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {t(option.labelKey)}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          )}
+        />
         {errors.language_preference && (
           <p className="text-sm text-destructive">
             {errors.language_preference.message}
           </p>
         )}
-      </fieldset>
+      </div>
 
-      <fieldset className="grid gap-3">
-        <legend className="text-sm font-medium">
+      <div className="grid max-w-sm gap-2">
+        <Label id="theme-preference-label">
           {t("settings.preferences.theme")}
-        </legend>
-        <Label className="flex items-center gap-2 text-sm font-normal">
-          <input
-            type="radio"
-            value="system"
-            className="size-4"
-            {...register("theme_preference")}
-          />
-          <span>{t("settings.preferences.themeSystem")}</span>
         </Label>
-        <Label className="flex items-center gap-2 text-sm font-normal">
-          <input
-            type="radio"
-            value="light"
-            className="size-4"
-            {...register("theme_preference")}
-          />
-          <span>{t("settings.preferences.themeLight")}</span>
-        </Label>
-        <Label className="flex items-center gap-2 text-sm font-normal">
-          <input
-            type="radio"
-            value="dark"
-            className="size-4"
-            {...register("theme_preference")}
-          />
-          <span>{t("settings.preferences.themeDark")}</span>
-        </Label>
+        <Controller
+          control={control}
+          name="theme_preference"
+          render={({ field }) => (
+            <Select
+              items={themeOptions.map((option) => ({
+                label: t(option.labelKey),
+                value: option.value,
+              }))}
+              value={field.value}
+              onValueChange={(value) => field.onChange(value)}
+            >
+              <SelectTrigger
+                aria-labelledby="theme-preference-label"
+                aria-invalid={Boolean(errors.theme_preference)}
+                className="w-full"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {themeOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {t(option.labelKey)}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          )}
+        />
         {errors.theme_preference && (
           <p className="text-sm text-destructive">
             {errors.theme_preference.message}
           </p>
         )}
-      </fieldset>
+      </div>
 
       <div>
         <Button type="submit" disabled={mutation.isPending}>
