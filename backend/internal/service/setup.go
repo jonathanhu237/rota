@@ -173,12 +173,13 @@ func (h *setupFlowHelper) enqueueInvitationTx(
 	user *model.User,
 	rawToken string,
 ) error {
+	language := resolveInvitationEmailLanguage(ctx, user)
 	return h.enqueueEmailTx(ctx, tx, email.BuildInvitationMessage(email.TemplateData{
 		To:         user.Email,
 		Name:       user.Name,
 		BaseURL:    h.appBaseURL,
 		Token:      rawToken,
-		Language:   "en",
+		Language:   language,
 		Expiration: h.invitationTokenTTL,
 	}), repository.WithOutboxUserID(user.ID))
 }
@@ -189,12 +190,13 @@ func (h *setupFlowHelper) enqueuePasswordResetTx(
 	user *model.User,
 	rawToken string,
 ) error {
+	language := resolveRequestEmailLanguage(ctx, user)
 	return h.enqueueEmailTx(ctx, tx, email.BuildPasswordResetMessage(email.TemplateData{
 		To:         user.Email,
 		Name:       user.Name,
 		BaseURL:    h.appBaseURL,
 		Token:      rawToken,
-		Language:   "en",
+		Language:   language,
 		Expiration: h.passwordResetTokenTTL,
 	}), repository.WithOutboxUserID(user.ID))
 }
@@ -206,12 +208,13 @@ func (h *setupFlowHelper) enqueueEmailChangeConfirmTx(
 	newEmail string,
 	rawToken string,
 ) error {
+	language := resolveRequestEmailLanguage(ctx, user)
 	return h.enqueueEmailTx(ctx, tx, email.BuildEmailChangeConfirmMessage(email.TemplateData{
 		To:         newEmail,
 		Name:       user.Name,
 		BaseURL:    h.appBaseURL,
 		Token:      rawToken,
-		Language:   "en",
+		Language:   language,
 		Expiration: emailChangeTokenTTL,
 	}), repository.WithOutboxUserID(user.ID))
 }
@@ -222,10 +225,11 @@ func (h *setupFlowHelper) enqueueEmailChangeNoticeTx(
 	user *model.User,
 	newEmail string,
 ) error {
+	language := resolveRequestEmailLanguage(ctx, user)
 	return h.enqueueEmailTx(ctx, tx, email.BuildEmailChangeNoticeMessage(email.TemplateData{
 		To:              user.Email,
 		Name:            user.Name,
-		Language:        "en",
+		Language:        language,
 		NewEmailPartial: email.PartialMaskEmail(newEmail),
 	}), repository.WithOutboxUserID(user.ID))
 }

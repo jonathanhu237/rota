@@ -81,7 +81,7 @@ func main() {
 			slog.Error("Failed to initialize SMTP emailer", "error", err)
 			os.Exit(1)
 		}
-		logInsecureSMTPTLSWarning(slog.Default(), cfg.EmailMode, cfg.SMTPTLSMode)
+		logSMTPConfigurationWarnings(slog.Default(), cfg.EmailMode, cfg.SMTPTLSMode, cfg.SMTPPort)
 	default:
 		slog.Error("Invalid email mode", "email_mode", cfg.EmailMode)
 		os.Exit(1)
@@ -93,7 +93,7 @@ func main() {
 	defer stopSessionCleanup()
 	startSessionCleanup(cleanupCtx, db, 6*time.Hour, slog.Default())
 	var auditRecorder audit.Recorder = repository.NewAuditRecorder(db, slog.Default())
-	RunOutboxWorker(audit.WithRecorder(cleanupCtx, auditRecorder), outboxRepo, emailer, slog.Default())
+	RunOutboxWorker(audit.WithRecorder(cleanupCtx, auditRecorder), outboxRepo, emailer, slog.Default(), cfg.EmailSendTimeout)
 
 	setupTokenRepo := repository.NewSetupTokenRepository(db)
 	setupTxManager := repository.NewSetupTxManager(db)
@@ -268,11 +268,23 @@ func main() {
 }
 
 func logInsecureSMTPTLSWarning(logger *slog.Logger, emailMode, tlsMode string) {
-	if logger == nil || emailMode != "smtp" || tlsMode != "none" {
+	logSMTPConfigurationWarnings(logger, emailMode, tlsMode, 0)
+}
+
+func logSMTPConfigurationWarnings(logger *slog.Logger, emailMode, tlsMode string, port int) {
+	if logger == nil || emailMode != "smtp" {
 		return
 	}
 
-	logger.Warn("SMTP is configured without TLS — credentials and emails may be visible on the network", "tls_mode", tlsMode)
+	if tlsMode == "none" {
+		logger.Warn("SMTP is configured without TLS — credentials and emails may be visible on the network", "tls_mode", tlsMode)
+	}
+	switch {
+	case port == 465 && tlsMode != "implicit":
+		logger.Warn("SMTP port 465 usually requires implicit TLS", "smtp_port", port, "tls_mode", tlsMode)
+	case port == 587 && tlsMode == "implicit":
+		logger.Warn("SMTP port 587 usually expects STARTTLS", "smtp_port", port, "tls_mode", tlsMode)
+	}
 }
 
 type sessionCleanupDB interface {

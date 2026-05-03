@@ -1,0 +1,14 @@
+Hi {{.Name}},
+
+Your {{.RequestTypeLabel}} request was {{.OutcomeLabel}}{{if .ResponderName}} by {{.ResponderName}}{{end}}.
+
+{{if .RequesterShiftLabel}}Your shift: {{.RequesterShiftLabel}}
+{{end}}{{if .HasCounterpartShift}}Counterpart shift: {{.CounterpartShiftLabel}}
+{{end}}
+{{.CTALabel}}:
+{{.RequestsURL}}
+
+{{.FallbackLabel}}
+{{.RequestsURL}}
+
+{{.Footer}}

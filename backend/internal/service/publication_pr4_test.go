@@ -9,6 +9,7 @@ import (
 
 	"github.com/jonathanhu237/rota/backend/internal/audit"
 	"github.com/jonathanhu237/rota/backend/internal/audit/audittest"
+	"github.com/jonathanhu237/rota/backend/internal/email"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 )
@@ -427,7 +428,10 @@ func TestPublicationServiceCreateAssignment(t *testing.T) {
 		if messages[0].To != "alice@example.com" {
 			t.Fatalf("unexpected email recipient: %+v", messages[0])
 		}
-		if !strings.Contains(messages[0].Body, "administrator edited the referenced shift") {
+		if messages[0].Kind != email.KindShiftChangeResolved || messages[0].HTMLBody == "" {
+			t.Fatalf("expected rendered shift-change email, got %+v", messages[0])
+		}
+		if !strings.Contains(messages[0].Body, "invalidated") {
 			t.Fatalf("expected invalidation copy, got %q", messages[0].Body)
 		}
 	})

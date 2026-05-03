@@ -1,0 +1,11 @@
+{{define "content"}}
+<p style="margin:0 0 16px 0;">{{.Name}}，你好：</p>
+<p style="margin:0 0 18px 0;">你的{{.RequestTypeLabel}}申请{{if .ResponderName}}已由 {{.ResponderName}} 处理，{{end}}状态为 <strong>{{.OutcomeLabel}}</strong>。</p>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 18px 0;border:1px solid #e5e7eb;border-radius:6px;">
+  {{if .RequesterShiftLabel}}<tr><td style="padding:10px 12px;color:#6b7280;width:140px;">你的班次</td><td style="padding:10px 12px;">{{.RequesterShiftLabel}}</td></tr>{{end}}
+  {{if .HasCounterpartShift}}<tr><td style="padding:10px 12px;color:#6b7280;border-top:1px solid #e5e7eb;">对方班次</td><td style="padding:10px 12px;border-top:1px solid #e5e7eb;">{{.CounterpartShiftLabel}}</td></tr>{{end}}
+</table>
+<p style="margin:0 0 22px 0;"><a href="{{.RequestsURL}}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;border-radius:6px;padding:10px 16px;font-weight:600;">{{.CTALabel}}</a></p>
+<p style="margin:0 0 8px 0;color:#4b5563;">{{.FallbackLabel}}</p>
+<p style="margin:0;word-break:break-all;"><a href="{{.RequestsURL}}" style="color:#2563eb;">{{.RequestsURL}}</a></p>
+{{end}}

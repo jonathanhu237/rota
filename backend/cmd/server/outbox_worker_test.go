@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -33,7 +34,7 @@ func TestOutboxBackoff(t *testing.T) {
 	}
 }
 
-func TestProcessOutboxJobSuccessMarksSent(t *testing.T) {
+func TestOutboxWorkerProcessJobSuccessMarksSent(t *testing.T) {
 	repo := &outboxWorkerRepoMock{}
 	emailer := &workerEmailerMock{}
 
@@ -42,7 +43,14 @@ func TestProcessOutboxJobSuccessMarksSent(t *testing.T) {
 		repo,
 		emailer,
 		slog.New(slog.DiscardHandler),
-		repository.OutboxJob{ID: 11, Recipient: "user@example.com", Subject: "Subject", Body: "Body"},
+		repository.OutboxJob{
+			ID:        11,
+			Kind:      email.KindPasswordReset,
+			Recipient: "user@example.com",
+			Subject:   "Subject",
+			Body:      "Body",
+			HTMLBody:  "<p>Body</p>",
+		},
 	)
 
 	if repo.sentID != 11 {
@@ -51,9 +59,13 @@ func TestProcessOutboxJobSuccessMarksSent(t *testing.T) {
 	if repo.retryableID != 0 || repo.failedID != 0 {
 		t.Fatalf("unexpected retry/failed calls: retryable=%d failed=%d", repo.retryableID, repo.failedID)
 	}
+	msg := emailer.lastMessage()
+	if msg.Kind != email.KindPasswordReset || msg.HTMLBody != "<p>Body</p>" {
+		t.Fatalf("unexpected message passed to emailer: %+v", msg)
+	}
 }
 
-func TestProcessOutboxJobFailureSchedulesRetry(t *testing.T) {
+func TestOutboxWorkerProcessJobFailureSchedulesRetry(t *testing.T) {
 	repo := &outboxWorkerRepoMock{}
 	emailer := &workerEmailerMock{err: errors.New("smtp down")}
 	before := time.Now()
@@ -79,7 +91,7 @@ func TestProcessOutboxJobFailureSchedulesRetry(t *testing.T) {
 	}
 }
 
-func TestProcessOutboxJobFailureMarksFailedAndAuditsInvitation(t *testing.T) {
+func TestOutboxWorkerFailureMarksFailedAndAuditsInvitation(t *testing.T) {
 	repo := &outboxWorkerRepoMock{}
 	emailer := &workerEmailerMock{err: errors.New("smtp rejected")}
 	stub := audittest.New()
@@ -94,8 +106,9 @@ func TestProcessOutboxJobFailureMarksFailedAndAuditsInvitation(t *testing.T) {
 		repository.OutboxJob{
 			ID:         13,
 			UserID:     &userID,
+			Kind:       email.KindInvitation,
 			Recipient:  "invitee@example.com",
-			Subject:    "You've been invited to Rota",
+			Subject:    "[Rota] Rota 邀请",
 			Body:       "Body",
 			RetryCount: 7,
 		},
@@ -116,7 +129,28 @@ func TestProcessOutboxJobFailureMarksFailedAndAuditsInvitation(t *testing.T) {
 	}
 }
 
-func TestProcessOutboxJobRecoversPanic(t *testing.T) {
+func TestOutboxWorkerTimeoutSchedulesRetry(t *testing.T) {
+	repo := &outboxWorkerRepoMock{}
+	emailer := &workerEmailerMock{waitForContext: true}
+
+	processOutboxJobWithTimeout(
+		context.Background(),
+		repo,
+		emailer,
+		slog.New(slog.DiscardHandler),
+		repository.OutboxJob{ID: 15, Recipient: "user@example.com", Subject: "Subject", Body: "Body"},
+		time.Millisecond,
+	)
+
+	if repo.retryableID != 15 {
+		t.Fatalf("retryableID = %d, want 15", repo.retryableID)
+	}
+	if !strings.Contains(repo.lastError, "deadline exceeded") {
+		t.Fatalf("lastError = %q, want deadline exceeded", repo.lastError)
+	}
+}
+
+func TestOutboxWorkerProcessJobRecoversPanic(t *testing.T) {
 	repo := &outboxWorkerRepoMock{}
 	emailer := &workerEmailerMock{panicValue: "boom"}
 
@@ -176,13 +210,34 @@ func (m *outboxWorkerRepoMock) MarkFailed(ctx context.Context, id int64, lastErr
 }
 
 type workerEmailerMock struct {
-	err        error
-	panicValue any
+	mu             sync.Mutex
+	err            error
+	panicValue     any
+	waitForContext bool
+	messages       []email.Message
 }
 
 func (m *workerEmailerMock) Send(ctx context.Context, msg email.Message) error {
+	m.mu.Lock()
+	m.messages = append(m.messages, msg)
+	m.mu.Unlock()
+
 	if m.panicValue != nil {
 		panic(m.panicValue)
 	}
+	if m.waitForContext {
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	return m.err
+}
+
+func (m *workerEmailerMock) lastMessage() email.Message {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if len(m.messages) == 0 {
+		return email.Message{}
+	}
+	return m.messages[len(m.messages)-1]
 }

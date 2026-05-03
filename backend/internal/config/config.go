@@ -2,6 +2,9 @@ package config
 
 import (
 	"fmt"
+	"net"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/caarlos0/env/v11"
@@ -24,6 +27,7 @@ type Config struct {
 	SMTPPassword           string        `env:"SMTP_PASSWORD"`
 	SMTPFrom               string        `env:"SMTP_FROM"`
 	SMTPTLSMode            string        `env:"SMTP_TLS_MODE" envDefault:"starttls"`
+	EmailSendTimeout       time.Duration `env:"EMAIL_SEND_TIMEOUT" envDefault:"30s"`
 	AppBaseURL             string        `env:"APP_BASE_URL,required"`
 	InvitationTokenTTL     time.Duration `env:"INVITATION_TOKEN_TTL" envDefault:"72h"`
 	PasswordResetTokenTTL  time.Duration `env:"PASSWORD_RESET_TOKEN_TTL" envDefault:"1h"`
@@ -41,6 +45,9 @@ func Load() (*Config, error) {
 	if err := validateSMTPTLSMode(cfg.SMTPTLSMode); err != nil {
 		return nil, err
 	}
+	if err := validateEmailConfig(cfg); err != nil {
+		return nil, err
+	}
 	return &cfg, nil
 }
 
@@ -51,6 +58,57 @@ func validateSMTPTLSMode(mode string) error {
 	default:
 		return fmt.Errorf("invalid SMTP_TLS_MODE %q: must be one of starttls, implicit, none", mode)
 	}
+}
+
+func validateEmailConfig(cfg Config) error {
+	if cfg.EmailSendTimeout <= 0 {
+		return fmt.Errorf("EMAIL_SEND_TIMEOUT must be positive")
+	}
+
+	if cfg.EmailMode == "smtp" {
+		if strings.TrimSpace(cfg.SMTPHost) == "" {
+			return fmt.Errorf("SMTP_HOST is required when EMAIL_MODE=smtp")
+		}
+		if strings.TrimSpace(cfg.SMTPFrom) == "" {
+			return fmt.Errorf("SMTP_FROM is required when EMAIL_MODE=smtp")
+		}
+	}
+
+	if !strings.EqualFold(cfg.AppEnv, "production") {
+		return nil
+	}
+
+	if isLocalAppBaseURL(cfg.AppBaseURL) {
+		return fmt.Errorf("APP_BASE_URL must be a public URL in production")
+	}
+	if cfg.SMTPTLSMode == "none" && !isLocalhostOrLoopback(cfg.SMTPHost) {
+		return fmt.Errorf("SMTP_TLS_MODE=none is only allowed for localhost SMTP in production")
+	}
+	return nil
+}
+
+func isLocalAppBaseURL(rawURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return true
+	}
+	return isLocalhostOrLoopback(parsed.Hostname())
+}
+
+func isLocalhostOrLoopback(host string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(host))
+	if normalized == "" {
+		return false
+	}
+	if splitHost, _, err := net.SplitHostPort(normalized); err == nil {
+		normalized = splitHost
+	}
+	normalized = strings.Trim(normalized, "[]")
+	if normalized == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(normalized)
+	return ip != nil && ip.IsLoopback()
 }
 
 // DatabaseDSN builds a Postgres DSN from environment values.

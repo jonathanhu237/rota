@@ -566,6 +566,7 @@ func (s *PublicationService) enqueueShiftChangeRequestInvalidatedTx(
 		Outcome:       email.ShiftChangeOutcomeInvalidated,
 		Type:          email.ShiftChangeType(req.Type),
 		BaseURL:       s.appBaseURL,
+		Language:      resolveSystemEmailLanguage(requester),
 	}
 	requesterShift, err := s.resolveShiftChangeEmailShift(
 		ctx,
@@ -573,6 +574,7 @@ func (s *PublicationService) enqueueShiftChangeRequestInvalidatedTx(
 		req.RequesterAssignmentID,
 		deletedAssignmentID,
 		deletedAssignment,
+		&req.OccurrenceDate,
 	)
 	if err != nil {
 		s.logger.Warn("publication: load requester shift for invalidation email", "request_id", req.ID, "error", err)
@@ -586,6 +588,7 @@ func (s *PublicationService) enqueueShiftChangeRequestInvalidatedTx(
 			*req.CounterpartAssignmentID,
 			deletedAssignmentID,
 			deletedAssignment,
+			req.CounterpartOccurrenceDate,
 		)
 		if err != nil {
 			s.logger.Warn("publication: load counterpart shift for invalidation email", "request_id", req.ID, "error", err)
@@ -604,6 +607,7 @@ func (s *PublicationService) resolveShiftChangeEmailShift(
 	assignmentID int64,
 	deletedAssignmentID int64,
 	deletedAssignment *model.Assignment,
+	occurrenceDate *time.Time,
 ) (*email.ShiftRef, error) {
 	var assignment *model.Assignment
 	if deletedAssignment != nil && assignmentID == deletedAssignmentID {
@@ -628,7 +632,7 @@ func (s *PublicationService) resolveShiftChangeEmailShift(
 		return nil, ErrTemplateSlotPositionNotFound
 	}
 
-	ref := toShiftRef(shift)
+	ref := toShiftRefWithOccurrence(shift, occurrenceDate)
 	return &ref, nil
 }
 

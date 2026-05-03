@@ -111,7 +111,7 @@ func (h *AuthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := h.authService.RequestPasswordReset(r.Context(), req.Email); err != nil {
+	if err := h.authService.RequestPasswordReset(emailLanguageContext(r, nil), req.Email); err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
 		return
 	}

@@ -398,6 +398,9 @@ func (s *ShiftChangeService) CancelShiftChangeRequest(
 		NextState:       model.ShiftChangeStateCancelled,
 		DecidedByUserID: &viewerUserID,
 		Now:             now,
+		AfterUpdateTx: func(ctx context.Context, tx *sql.Tx) error {
+			return s.enqueueRequestResolvedTx(ctx, tx, req, email.ShiftChangeOutcomeCancelled, viewerUserID)
+		},
 	}); err != nil {
 		return err
 	}
@@ -805,11 +808,12 @@ func (s *ShiftChangeService) enqueueRequestCreatedTx(
 		RecipientName:  counterpart.Name,
 		RequesterName:  requester.Name,
 		Type:           email.ShiftChangeType(req.Type),
-		RequesterShift: toShiftRef(requesterShift),
+		RequesterShift: toShiftRefWithOccurrence(requesterShift, &req.OccurrenceDate),
 		BaseURL:        s.appBaseURL,
+		Language:       resolveRequestEmailLanguage(ctx, counterpart),
 	}
 	if counterpartShift != nil {
-		ref := toShiftRef(counterpartShift)
+		ref := toShiftRefWithOccurrence(counterpartShift, req.CounterpartOccurrenceDate)
 		data.CounterpartShift = &ref
 	}
 	msg := email.BuildShiftChangeRequestReceivedMessage(data)
@@ -854,14 +858,15 @@ func (s *ShiftChangeService) enqueueRequestResolvedTx(
 		Outcome:        outcome,
 		Type:           email.ShiftChangeType(req.Type),
 		ResponderName:  responder.Name,
-		RequesterShift: toShiftRef(requesterShift),
+		RequesterShift: toShiftRefWithOccurrence(requesterShift, &req.OccurrenceDate),
 		BaseURL:        s.appBaseURL,
+		Language:       resolveRequestEmailLanguage(ctx, requester),
 	}
 	if req.CounterpartAssignmentID != nil {
 		counterpartAssignment, err := s.publicationRepo.GetAssignment(ctx, *req.CounterpartAssignmentID)
 		if err == nil {
 			if counterpartShift := findPublicationShiftForAssignment(shiftIndex, counterpartAssignment); counterpartShift != nil {
-				ref := toShiftRef(counterpartShift)
+				ref := toShiftRefWithOccurrence(counterpartShift, req.CounterpartOccurrenceDate)
 				data.CounterpartShift = &ref
 			}
 		}

@@ -1,0 +1,8 @@
+{{define "content"}}
+<p style="margin:0 0 16px 0;">Hi {{.Name}},</p>
+<p style="margin:0 0 18px 0;">An administrator has invited you to Rota. Set your password to finish setting up your account.</p>
+<p style="margin:0 0 22px 0;"><a href="{{.ActionURL}}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;border-radius:6px;padding:10px 16px;font-weight:600;">{{.CTALabel}}</a></p>
+<p style="margin:0 0 8px 0;color:#4b5563;">{{.FallbackLabel}}</p>
+<p style="margin:0 0 18px 0;word-break:break-all;"><a href="{{.ActionURL}}" style="color:#2563eb;">{{.ActionURL}}</a></p>
+<p style="margin:0;color:#4b5563;">This link expires in {{.ExpirationText}}. If you were not expecting this invitation, you can ignore this email.</p>
+{{end}}

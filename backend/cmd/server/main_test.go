@@ -67,6 +67,57 @@ func TestLogInsecureSMTPTLSWarning(t *testing.T) {
 	}
 }
 
+func TestLogSMTPConfigurationWarnings(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		port     int
+		tlsMode  string
+		wantText string
+	}{
+		{
+			name:     "465 without implicit",
+			port:     465,
+			tlsMode:  "starttls",
+			wantText: "port 465 usually requires implicit TLS",
+		},
+		{
+			name:     "587 with implicit",
+			port:     587,
+			tlsMode:  "implicit",
+			wantText: "port 587 usually expects STARTTLS",
+		},
+		{
+			name:    "465 with implicit",
+			port:    465,
+			tlsMode: "implicit",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var output bytes.Buffer
+			logger := slog.New(slog.NewTextHandler(&output, nil))
+			logSMTPConfigurationWarnings(logger, "smtp", tt.tlsMode, tt.port)
+
+			written := output.String()
+			if tt.wantText == "" {
+				if written != "" {
+					t.Fatalf("expected no warning output, got %q", written)
+				}
+				return
+			}
+			if !strings.Contains(written, tt.wantText) {
+				t.Fatalf("expected warning %q, got %q", tt.wantText, written)
+			}
+		})
+	}
+}
+
 func TestStartSessionCleanupContinuesAfterError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

@@ -108,6 +108,7 @@ make prod-pull
 | `SMTP_PASSWORD` | empty | SMTP password. Do not commit real credentials. |
 | `SMTP_FROM` | `Rota <noreply@example.com>` | Default sender address. |
 | `SMTP_TLS_MODE` | `starttls` | SMTP TLS mode: `starttls`, `implicit`, or `none`. |
+| `EMAIL_SEND_TIMEOUT` | `30s` | Per-message outbox send timeout. |
 | `CADDY_SITE_ADDRESS` | `http://localhost` | Public site address for Caddy. Use a real domain in production. |
 | `APP_BASE_URL` | `http://localhost:5173` | Base URL embedded in invitation and reset emails. |
 | `INVITATION_TOKEN_TTL` | `72h` | Invitation link lifetime. |

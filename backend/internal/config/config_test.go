@@ -49,6 +49,10 @@ func TestLoadSMTPTLSMode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			setTestConfigEnv(t)
 			t.Setenv("EMAIL_MODE", tt.envMode)
+			if tt.envMode == "smtp" {
+				t.Setenv("SMTP_HOST", "smtp.example.com")
+				t.Setenv("SMTP_FROM", "Rota <noreply@example.com>")
+			}
 			if tt.tlsMode != "" {
 				t.Setenv("SMTP_TLS_MODE", tt.tlsMode)
 			}
@@ -69,6 +73,103 @@ func TestLoadSMTPTLSMode(t *testing.T) {
 			}
 			if got := cfg.SMTPTLSMode; got != tt.wantTLSMode {
 				t.Fatalf("SMTPTLSMode = %q, want %q", got, tt.wantTLSMode)
+			}
+		})
+	}
+}
+
+func TestLoadEmailSendTimeout(t *testing.T) {
+	t.Run("defaults to thirty seconds", func(t *testing.T) {
+		setTestConfigEnv(t)
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if cfg.EmailSendTimeout.String() != "30s" {
+			t.Fatalf("EmailSendTimeout = %s, want 30s", cfg.EmailSendTimeout)
+		}
+	})
+
+	t.Run("rejects non-positive duration", func(t *testing.T) {
+		setTestConfigEnv(t)
+		t.Setenv("EMAIL_SEND_TIMEOUT", "0s")
+
+		_, err := Load()
+		if err == nil || !strings.Contains(err.Error(), "EMAIL_SEND_TIMEOUT") {
+			t.Fatalf("Load() error = %v, want EMAIL_SEND_TIMEOUT error", err)
+		}
+	})
+}
+
+func TestLoadEmailConfigurationValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		mutate  func(t *testing.T)
+		wantErr string
+	}{
+		{
+			name: "smtp requires host",
+			mutate: func(t *testing.T) {
+				t.Setenv("EMAIL_MODE", "smtp")
+				t.Setenv("SMTP_HOST", "")
+				t.Setenv("SMTP_FROM", "Rota <noreply@example.com>")
+			},
+			wantErr: "SMTP_HOST",
+		},
+		{
+			name: "smtp requires sender",
+			mutate: func(t *testing.T) {
+				t.Setenv("EMAIL_MODE", "smtp")
+				t.Setenv("SMTP_HOST", "smtp.example.com")
+				t.Setenv("SMTP_FROM", "")
+			},
+			wantErr: "SMTP_FROM",
+		},
+		{
+			name: "production rejects localhost app url",
+			mutate: func(t *testing.T) {
+				t.Setenv("APP_ENV", "production")
+				t.Setenv("APP_BASE_URL", "http://localhost:5173")
+			},
+			wantErr: "APP_BASE_URL",
+		},
+		{
+			name: "production rejects insecure remote smtp",
+			mutate: func(t *testing.T) {
+				t.Setenv("APP_ENV", "production")
+				t.Setenv("APP_BASE_URL", "https://rota.example.com")
+				t.Setenv("SMTP_TLS_MODE", "none")
+				t.Setenv("SMTP_HOST", "smtp.example.com")
+			},
+			wantErr: "SMTP_TLS_MODE=none",
+		},
+		{
+			name: "production allows insecure localhost smtp",
+			mutate: func(t *testing.T) {
+				t.Setenv("APP_ENV", "production")
+				t.Setenv("APP_BASE_URL", "https://rota.example.com")
+				t.Setenv("SMTP_TLS_MODE", "none")
+				t.Setenv("SMTP_HOST", "localhost")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			setTestConfigEnv(t)
+			tt.mutate(t)
+
+			_, err := Load()
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Load() error = %v, want it to contain %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
 			}
 		})
 	}

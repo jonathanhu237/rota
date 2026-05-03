@@ -27,9 +27,11 @@ func TestOutboxRepositoryIntegration(t *testing.T) {
 			t.Fatalf("begin tx: %v", err)
 		}
 		if err := repo.EnqueueTx(ctx, tx, email.Message{
-			To:      "worker@example.com",
-			Subject: "Welcome",
-			Body:    "Body",
+			Kind:     email.KindInvitation,
+			To:       "worker@example.com",
+			Subject:  "Welcome",
+			Body:     "Body",
+			HTMLBody: "<p>Body</p>",
 		}, WithOutboxUserID(user.ID)); err != nil {
 			_ = tx.Rollback()
 			t.Fatalf("enqueue: %v", err)
@@ -49,7 +51,11 @@ func TestOutboxRepositoryIntegration(t *testing.T) {
 		if job.UserID == nil || *job.UserID != user.ID {
 			t.Fatalf("job userID = %v, want %d", job.UserID, user.ID)
 		}
-		if job.Recipient != "worker@example.com" || job.Subject != "Welcome" || job.Body != "Body" {
+		if job.Kind != email.KindInvitation ||
+			job.Recipient != "worker@example.com" ||
+			job.Subject != "Welcome" ||
+			job.Body != "Body" ||
+			job.HTMLBody != "<p>Body</p>" {
 			t.Fatalf("unexpected job: %+v", job)
 		}
 		if !outboxRowHasFutureAttempt(t, db, job.ID) {
@@ -96,6 +102,9 @@ func TestOutboxRepositoryIntegration(t *testing.T) {
 		}
 		if len(jobs) != 1 || jobs[0].ID != readyID {
 			t.Fatalf("expected only ready job %d, got %+v", readyID, jobs)
+		}
+		if jobs[0].Kind != email.KindUnknown || jobs[0].HTMLBody != "" {
+			t.Fatalf("legacy row should claim as unknown plain text, got %+v", jobs[0])
 		}
 	})
 

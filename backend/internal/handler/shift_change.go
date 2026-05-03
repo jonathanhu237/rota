@@ -113,7 +113,7 @@ func (h *ShiftChangeHandler) Create(w http.ResponseWriter, r *http.Request) {
 		counterpartOccurrenceDate = &parsed
 	}
 
-	request, err := h.shiftChangeService.CreateShiftChangeRequest(r.Context(), service.CreateShiftChangeInput{
+	request, err := h.shiftChangeService.CreateShiftChangeRequest(emailLanguageContext(r, user), service.CreateShiftChangeInput{
 		PublicationID:             publicationID,
 		RequesterUserID:           user.ID,
 		Type:                      model.ShiftChangeType(body.Type),
@@ -194,7 +194,7 @@ func (h *ShiftChangeHandler) Approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.shiftChangeService.ApproveShiftChangeRequest(r.Context(), requestID, user.ID); err != nil {
+	if err := h.shiftChangeService.ApproveShiftChangeRequest(emailLanguageContext(r, user), requestID, user.ID); err != nil {
 		h.writeError(w, err)
 		return
 	}
@@ -215,7 +215,7 @@ func (h *ShiftChangeHandler) Reject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.shiftChangeService.RejectShiftChangeRequest(r.Context(), requestID, user.ID); err != nil {
+	if err := h.shiftChangeService.RejectShiftChangeRequest(emailLanguageContext(r, user), requestID, user.ID); err != nil {
 		h.writeError(w, err)
 		return
 	}
@@ -236,7 +236,7 @@ func (h *ShiftChangeHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.shiftChangeService.CancelShiftChangeRequest(r.Context(), requestID, user.ID); err != nil {
+	if err := h.shiftChangeService.CancelShiftChangeRequest(emailLanguageContext(r, user), requestID, user.ID); err != nil {
 		h.writeError(w, err)
 		return
 	}

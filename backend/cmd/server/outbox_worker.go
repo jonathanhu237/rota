@@ -31,6 +31,7 @@ func RunOutboxWorker(
 	outboxRepo outboxWorkerRepository,
 	emailer email.Emailer,
 	logger *slog.Logger,
+	sendTimeout time.Duration,
 ) {
 	if logger == nil {
 		logger = slog.Default()
@@ -51,7 +52,7 @@ func RunOutboxWorker(
 				logger.Info("outbox worker stopped")
 				return
 			case <-ticker.C:
-				processOutboxTick(ctx, outboxRepo, emailer, logger)
+				processOutboxTickWithTimeout(ctx, outboxRepo, emailer, logger, sendTimeout)
 			}
 		}
 	}()
@@ -63,6 +64,16 @@ func processOutboxTick(
 	emailer email.Emailer,
 	logger *slog.Logger,
 ) {
+	processOutboxTickWithTimeout(ctx, outboxRepo, emailer, logger, 0)
+}
+
+func processOutboxTickWithTimeout(
+	ctx context.Context,
+	outboxRepo outboxWorkerRepository,
+	emailer email.Emailer,
+	logger *slog.Logger,
+	sendTimeout time.Duration,
+) {
 	jobs, err := outboxRepo.Claim(ctx, outboxBatchSize)
 	if err != nil {
 		logger.Error("outbox claim failed", "error", err)
@@ -70,7 +81,7 @@ func processOutboxTick(
 	}
 
 	for _, job := range jobs {
-		processOutboxJob(ctx, outboxRepo, emailer, logger, job)
+		processOutboxJobWithTimeout(ctx, outboxRepo, emailer, logger, job, sendTimeout)
 	}
 }
 
@@ -81,19 +92,46 @@ func processOutboxJob(
 	logger *slog.Logger,
 	job repository.OutboxJob,
 ) {
+	processOutboxJobWithTimeout(ctx, outboxRepo, emailer, logger, job, 0)
+}
+
+func processOutboxJobWithTimeout(
+	ctx context.Context,
+	outboxRepo outboxWorkerRepository,
+	emailer email.Emailer,
+	logger *slog.Logger,
+	job repository.OutboxJob,
+	sendTimeout time.Duration,
+) {
 	var sendErr error
-	func() {
+	sendCtx := ctx
+	cancel := func() {}
+	if sendTimeout > 0 {
+		sendCtx, cancel = context.WithTimeout(ctx, sendTimeout)
+	}
+	defer cancel()
+
+	sendDone := make(chan error, 1)
+	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				sendErr = fmt.Errorf("panic sending email: %v", recovered)
+				sendDone <- fmt.Errorf("panic sending email: %v", recovered)
 			}
 		}()
-		sendErr = emailer.Send(ctx, email.Message{
-			To:      job.Recipient,
-			Subject: job.Subject,
-			Body:    job.Body,
+		sendDone <- emailer.Send(sendCtx, email.Message{
+			Kind:     job.Kind,
+			To:       job.Recipient,
+			Subject:  job.Subject,
+			Body:     job.Body,
+			HTMLBody: job.HTMLBody,
 		})
 	}()
+
+	select {
+	case sendErr = <-sendDone:
+	case <-sendCtx.Done():
+		sendErr = sendCtx.Err()
+	}
 
 	if sendErr == nil {
 		if err := outboxRepo.MarkSent(ctx, job.ID); err != nil {
@@ -157,5 +195,5 @@ func recordOutboxFailureAudit(ctx context.Context, job repository.OutboxJob, las
 }
 
 func isInvitationOutboxJob(job repository.OutboxJob) bool {
-	return job.Subject == email.BuildInvitationMessage(email.TemplateData{}).Subject
+	return job.Kind == email.KindInvitation
 }

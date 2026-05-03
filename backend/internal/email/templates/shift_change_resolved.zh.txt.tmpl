@@ -1,0 +1,14 @@
+{{.Name}}，你好：
+
+你的{{.RequestTypeLabel}}申请{{if .ResponderName}}已由 {{.ResponderName}} 处理，{{end}}状态为 {{.OutcomeLabel}}。
+
+{{if .RequesterShiftLabel}}你的班次：{{.RequesterShiftLabel}}
+{{end}}{{if .HasCounterpartShift}}对方班次：{{.CounterpartShiftLabel}}
+{{end}}
+{{.CTALabel}}：
+{{.RequestsURL}}
+
+{{.FallbackLabel}}
+{{.RequestsURL}}
+
+{{.Footer}}

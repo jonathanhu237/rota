@@ -139,8 +139,9 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
 		return
 	}
+	actor, _ := currentUserFromRequest(r)
 
-	user, err := h.userService.CreateUser(r.Context(), service.CreateUserInput{
+	user, err := h.userService.CreateUser(emailLanguageContext(r, actor), service.CreateUserInput{
 		Email:   req.Email,
 		Name:    req.Name,
 		IsAdmin: req.IsAdmin,
@@ -245,7 +246,7 @@ func (h *UserHandler) RequestEmailChange(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	err := h.userService.RequestEmailChange(r.Context(), service.RequestEmailChangeInput{
+	err := h.userService.RequestEmailChange(emailLanguageContext(r, user), service.RequestEmailChangeInput{
 		UserID:          user.ID,
 		NewEmail:        req.NewEmail,
 		CurrentPassword: req.CurrentPassword,
@@ -274,7 +275,8 @@ func (h *UserHandler) ResendInvitation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.userService.ResendInvitation(r.Context(), id); err != nil {
+	actor, _ := currentUserFromRequest(r)
+	if err := h.userService.ResendInvitation(emailLanguageContext(r, actor), id); err != nil {
 		h.writeUserServiceError(w, err)
 		return
 	}

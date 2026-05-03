@@ -1,0 +1,14 @@
+{{.Name}}，你好：
+
+{{.RequesterName}} 向你发起了一条{{.RequestTypeLabel}}申请。
+
+对方班次：{{.RequesterShiftLabel}}
+{{if .HasCounterpartShift}}你的班次：{{.CounterpartShiftLabel}}
+{{end}}
+{{.CTALabel}}：
+{{.RequestsURL}}
+
+{{.FallbackLabel}}
+{{.RequestsURL}}
+
+{{.Footer}}

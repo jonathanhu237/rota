@@ -1,14 +1,18 @@
 package email
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net"
 	"net/mail"
 	"net/smtp"
+	"net/textproto"
 	"strings"
 	"time"
 )
@@ -18,10 +22,22 @@ type Emailer interface {
 }
 
 type Message struct {
-	To      string
-	Subject string
-	Body    string
+	Kind     string
+	To       string
+	Subject  string
+	Body     string
+	HTMLBody string
 }
+
+const (
+	KindUnknown                    = "unknown"
+	KindInvitation                 = "invitation"
+	KindPasswordReset              = "password_reset"
+	KindEmailChangeConfirm         = "email_change_confirm"
+	KindEmailChangeNotice          = "email_change_notice"
+	KindShiftChangeRequestReceived = "shift_change_request_received"
+	KindShiftChangeResolved        = "shift_change_resolved"
+)
 
 type TemplateData struct {
 	To              string
@@ -55,6 +71,11 @@ type SMTPEmailer struct {
 
 type LoggerEmailer struct {
 	writer io.Writer
+}
+
+type smtpSession struct {
+	client *smtp.Client
+	conn   net.Conn
 }
 
 type smtpTLSMode string
@@ -104,19 +125,28 @@ func (e *SMTPEmailer) Send(ctx context.Context, msg Message) error {
 	default:
 	}
 
-	client, err := e.dial(ctx)
+	session, err := e.dial(ctx)
 	if err != nil {
-		return err
+		return smtpContextError(ctx, err)
 	}
-	defer client.Close()
+	defer session.client.Close()
 
-	if err := e.handshake(client); err != nil {
+	stopContextWatch := watchSMTPContext(ctx, session.conn)
+	defer stopContextWatch()
+	if err := applySMTPDeadline(ctx, session.conn); err != nil {
 		return err
 	}
-	if err := e.deliver(client, msg); err != nil {
-		return err
+
+	if err := e.handshake(session.client); err != nil {
+		return smtpContextError(ctx, err)
 	}
-	return client.Quit()
+	if err := e.deliver(session.client, msg); err != nil {
+		return smtpContextError(ctx, err)
+	}
+	if err := session.client.Quit(); err != nil {
+		return smtpContextError(ctx, err)
+	}
+	return nil
 }
 
 func NewLoggerEmailer(writer io.Writer) *LoggerEmailer {
@@ -128,11 +158,16 @@ func NewLoggerEmailer(writer io.Writer) *LoggerEmailer {
 }
 
 func (e *LoggerEmailer) Send(_ context.Context, msg Message) error {
+	hasHTML := "no"
+	if msg.HTMLBody != "" {
+		hasHTML = "yes"
+	}
 	_, err := fmt.Fprintf(
 		e.writer,
-		"=== EMAIL (dev) ===\nTo: %s\nSubject: %s\n\n%s\n",
+		"=== EMAIL (dev) ===\nTo: %s\nSubject: %s\nHTML: %s\n\n%s\n",
 		msg.To,
 		msg.Subject,
+		hasHTML,
 		msg.Body,
 	)
 	return err
@@ -154,68 +189,23 @@ func BuildEmailChangeNoticeMessage(data TemplateData) Message {
 	return renderTemplate("email_change_notice", data)
 }
 
-type localizedTemplate struct {
-	subject string
-	body    func(TemplateData) string
-}
-
-var templates = map[string]map[string]localizedTemplate{
-	"en": {
-		"invitation": {
-			subject: "You've been invited to Rota",
-			body:    invitationBody,
-		},
-		"password_reset": {
-			subject: "Rota password reset",
-			body:    passwordResetBody,
-		},
-		"email_change_confirm": {
-			subject: "Confirm your email change",
-			body:    emailChangeConfirmBody,
-		},
-		"email_change_notice": {
-			subject: "Email change requested",
-			body:    emailChangeNoticeBody,
-		},
-	},
-	"zh": {
-		"invitation": {
-			subject: "You've been invited to Rota",
-			body:    invitationBody,
-		},
-		"password_reset": {
-			subject: "Rota password reset",
-			body:    passwordResetBody,
-		},
-		"email_change_confirm": {
-			subject: "确认邮箱变更",
-			body:    emailChangeConfirmBody,
-		},
-		"email_change_notice": {
-			subject: "邮箱变更请求",
-			body:    emailChangeNoticeBody,
-		},
-	},
-}
-
 func renderTemplate(kind string, data TemplateData) Message {
-	language := normalizeLanguage(data.Language)
-	template := templates[language][kind]
+	return renderAccountMessage(kind, data)
+}
 
-	return Message{
-		To:      data.To,
-		Subject: template.subject,
-		Body:    template.body(data),
+func NormalizeLanguage(language string) string {
+	switch strings.ToLower(strings.TrimSpace(language)) {
+	case "zh", "zh-cn", "zh-hans", "zh-hans-cn", "zh-tw", "zh-hant", "zh-hant-tw":
+		return "zh"
+	case "en", "en-us", "en-gb":
+		return "en"
+	default:
+		return "en"
 	}
 }
 
 func normalizeLanguage(language string) string {
-	switch strings.ToLower(strings.TrimSpace(language)) {
-	case "zh":
-		return "zh"
-	default:
-		return "en"
-	}
+	return NormalizeLanguage(language)
 }
 
 func setupPasswordLink(baseURL, token string) string {
@@ -224,41 +214,6 @@ func setupPasswordLink(baseURL, token string) string {
 
 func emailChangeConfirmLink(baseURL, token string) string {
 	return strings.TrimRight(baseURL, "/") + "/auth/confirm-email-change?token=" + token
-}
-
-func invitationBody(data TemplateData) string {
-	return fmt.Sprintf(
-		"Hi %s,\n\nAn administrator has added you to Rota. Set your password here:\n%s\n\nThis link expires in %s.\n",
-		data.Name,
-		setupPasswordLink(data.BaseURL, data.Token),
-		humanizeDuration(data.Expiration),
-	)
-}
-
-func passwordResetBody(data TemplateData) string {
-	return fmt.Sprintf(
-		"Hi %s,\n\nSomeone requested a password reset for your account. If this was you, use this link:\n%s\n\nThis link expires in %s.\nIf this was not you, you can ignore this email.\n",
-		data.Name,
-		setupPasswordLink(data.BaseURL, data.Token),
-		humanizeDuration(data.Expiration),
-	)
-}
-
-func emailChangeConfirmBody(data TemplateData) string {
-	return fmt.Sprintf(
-		"Hi %s,\n\nConfirm your Rota email change here:\n%s\n\nThis link expires in %s.\nIf this was not you, you can ignore this email.\n",
-		data.Name,
-		emailChangeConfirmLink(data.BaseURL, data.Token),
-		humanizeDuration(data.Expiration),
-	)
-}
-
-func emailChangeNoticeBody(data TemplateData) string {
-	return fmt.Sprintf(
-		"Hi %s,\n\nAn email-change request was made for your Rota account. The requested new address is %s.\n\nIf this was not you, change your password immediately.\n",
-		data.Name,
-		data.NewEmailPartial,
-	)
 }
 
 func PartialMaskEmail(value string) string {
@@ -307,7 +262,7 @@ func parseSMTPTLSMode(value string) (smtpTLSMode, error) {
 	}
 }
 
-func (e *SMTPEmailer) dial(ctx context.Context) (*smtp.Client, error) {
+func (e *SMTPEmailer) dial(ctx context.Context) (*smtpSession, error) {
 	switch e.tlsMode {
 	case smtpTLSModeImplicit:
 		return e.dialTLS(ctx)
@@ -316,9 +271,16 @@ func (e *SMTPEmailer) dial(ctx context.Context) (*smtp.Client, error) {
 	}
 }
 
-func (e *SMTPEmailer) dialPlain(ctx context.Context) (*smtp.Client, error) {
+func (e *SMTPEmailer) dialPlain(ctx context.Context) (*smtpSession, error) {
 	conn, err := e.dialer.DialContext(ctx, "tcp", e.addr)
 	if err != nil {
+		return nil, err
+	}
+
+	stopContextWatch := watchSMTPContext(ctx, conn)
+	defer stopContextWatch()
+	if err := applySMTPDeadline(ctx, conn); err != nil {
+		conn.Close()
 		return nil, err
 	}
 
@@ -327,18 +289,25 @@ func (e *SMTPEmailer) dialPlain(ctx context.Context) (*smtp.Client, error) {
 		conn.Close()
 		return nil, err
 	}
-	return client, nil
+	return &smtpSession{client: client, conn: conn}, nil
 }
 
-func (e *SMTPEmailer) dialTLS(ctx context.Context) (*smtp.Client, error) {
+func (e *SMTPEmailer) dialTLS(ctx context.Context) (*smtpSession, error) {
 	conn, err := e.dialer.DialContext(ctx, "tcp", e.addr)
 	if err != nil {
 		return nil, err
 	}
 
 	tlsConn := tls.Client(conn, e.cloneTLSConfig())
+	stopContextWatch := watchSMTPContext(ctx, tlsConn)
+	defer stopContextWatch()
+	if err := applySMTPDeadline(ctx, tlsConn); err != nil {
+		tlsConn.Close()
+		return nil, err
+	}
+
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
-		conn.Close()
+		tlsConn.Close()
 		return nil, err
 	}
 
@@ -347,7 +316,42 @@ func (e *SMTPEmailer) dialTLS(ctx context.Context) (*smtp.Client, error) {
 		tlsConn.Close()
 		return nil, err
 	}
-	return client, nil
+	return &smtpSession{client: client, conn: tlsConn}, nil
+}
+
+func watchSMTPContext(ctx context.Context, conn net.Conn) func() {
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = conn.Close()
+		case <-done:
+		}
+	}()
+	return func() {
+		close(done)
+	}
+}
+
+func applySMTPDeadline(ctx context.Context, conn net.Conn) error {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return nil
+	}
+	return conn.SetDeadline(deadline)
+}
+
+func smtpContextError(ctx context.Context, err error) error {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
+			return context.DeadlineExceeded
+		}
+	}
+	return err
 }
 
 func (e *SMTPEmailer) handshake(client *smtp.Client) error {
@@ -367,13 +371,10 @@ func (e *SMTPEmailer) handshake(client *smtp.Client) error {
 }
 
 func (e *SMTPEmailer) deliver(client *smtp.Client, msg Message) error {
-	payload := strings.Join([]string{
-		fmt.Sprintf("From: %s", e.fromLine),
-		fmt.Sprintf("To: %s", msg.To),
-		fmt.Sprintf("Subject: %s", msg.Subject),
-		"",
-		msg.Body,
-	}, "\r\n")
+	payload, err := e.renderPayload(msg)
+	if err != nil {
+		return err
+	}
 
 	if err := client.Mail(e.from); err != nil {
 		return err
@@ -386,11 +387,87 @@ func (e *SMTPEmailer) deliver(client *smtp.Client, msg Message) error {
 	if err != nil {
 		return err
 	}
-	if _, err := io.WriteString(writer, payload); err != nil {
+	if _, err := writer.Write(payload); err != nil {
 		writer.Close()
 		return err
 	}
 	return writer.Close()
+}
+
+func (e *SMTPEmailer) renderPayload(msg Message) ([]byte, error) {
+	var body bytes.Buffer
+	writeMessageHeaders(&body, map[string]string{
+		"From":         e.fromLine,
+		"To":           msg.To,
+		"Subject":      mime.QEncoding.Encode("utf-8", msg.Subject),
+		"MIME-Version": "1.0",
+	})
+
+	if msg.HTMLBody == "" {
+		writeMessageHeaders(&body, map[string]string{
+			"Content-Type":              "text/plain; charset=UTF-8",
+			"Content-Transfer-Encoding": "8bit",
+		})
+		body.WriteString("\r\n")
+		body.WriteString(normalizeCRLF(msg.Body))
+		return body.Bytes(), nil
+	}
+
+	multipartWriter := multipart.NewWriter(&body)
+	writeMessageHeaders(&body, map[string]string{
+		"Content-Type": `multipart/alternative; boundary="` + multipartWriter.Boundary() + `"`,
+	})
+	body.WriteString("\r\n")
+
+	if err := writeMIMEPart(multipartWriter, "text/plain; charset=UTF-8", msg.Body); err != nil {
+		return nil, err
+	}
+	if err := writeMIMEPart(multipartWriter, "text/html; charset=UTF-8", msg.HTMLBody); err != nil {
+		return nil, err
+	}
+	if err := multipartWriter.Close(); err != nil {
+		return nil, err
+	}
+	return body.Bytes(), nil
+}
+
+func writeMessageHeaders(body *bytes.Buffer, headers map[string]string) {
+	for _, key := range []string{
+		"From",
+		"To",
+		"Subject",
+		"MIME-Version",
+		"Content-Type",
+		"Content-Transfer-Encoding",
+	} {
+		value, ok := headers[key]
+		if !ok {
+			continue
+		}
+		body.WriteString(key)
+		body.WriteString(": ")
+		body.WriteString(value)
+		body.WriteString("\r\n")
+	}
+}
+
+func writeMIMEPart(writer *multipart.Writer, contentType string, value string) error {
+	header := make(textproto.MIMEHeader)
+	header.Set("Content-Type", contentType)
+	header.Set("Content-Transfer-Encoding", "8bit")
+
+	part, err := writer.CreatePart(header)
+	if err != nil {
+		return err
+	}
+	_, err = io.WriteString(part, normalizeCRLF(value))
+	return err
+}
+
+func normalizeCRLF(value string) string {
+	value = strings.ReplaceAll(value, "\r\n", "\n")
+	value = strings.ReplaceAll(value, "\r", "\n")
+	return strings.ReplaceAll(value, "\n", "\r\n")
 }
 
 func (e *SMTPEmailer) cloneTLSConfig() *tls.Config {

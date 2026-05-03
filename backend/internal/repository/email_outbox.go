@@ -11,9 +11,11 @@ import (
 type OutboxJob struct {
 	ID         int64
 	UserID     *int64
+	Kind       string
 	Recipient  string
 	Subject    string
 	Body       string
+	HTMLBody   string
 	RetryCount int
 }
 
@@ -46,8 +48,8 @@ func (r *OutboxRepository) EnqueueTx(ctx context.Context, tx *sql.Tx, msg email.
 	}
 
 	const query = `
-		INSERT INTO email_outbox (user_id, recipient, subject, body)
-		VALUES ($1, $2, $3, $4);
+		INSERT INTO email_outbox (user_id, kind, recipient, subject, body, html_body)
+		VALUES ($1, $2, $3, $4, $5, $6);
 	`
 
 	var userID sql.NullInt64
@@ -55,7 +57,7 @@ func (r *OutboxRepository) EnqueueTx(ctx context.Context, tx *sql.Tx, msg email.
 		userID = sql.NullInt64{Int64: *options.userID, Valid: true}
 	}
 
-	_, err := tx.ExecContext(ctx, query, userID, msg.To, msg.Subject, msg.Body)
+	_, err := tx.ExecContext(ctx, query, userID, normalizeOutboxKind(msg.Kind), msg.To, msg.Subject, msg.Body, nullableOutboxHTMLBody(msg.HTMLBody))
 	return err
 }
 
@@ -76,7 +78,7 @@ func (r *OutboxRepository) Claim(ctx context.Context, batchSize int) ([]OutboxJo
 			LIMIT $1
 			FOR UPDATE SKIP LOCKED
 		)
-		RETURNING id, user_id, recipient, subject, body, retry_count;
+		RETURNING id, user_id, kind, recipient, subject, body, html_body, retry_count;
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, batchSize, int(outboxClaimLease/time.Second))
@@ -146,15 +148,18 @@ type outboxJobScanner interface {
 
 func scanOutboxJob(scanner outboxJobScanner) (OutboxJob, error) {
 	var (
-		job    OutboxJob
-		userID sql.NullInt64
+		job      OutboxJob
+		userID   sql.NullInt64
+		htmlBody sql.NullString
 	)
 	if err := scanner.Scan(
 		&job.ID,
 		&userID,
+		&job.Kind,
 		&job.Recipient,
 		&job.Subject,
 		&job.Body,
+		&htmlBody,
 		&job.RetryCount,
 	); err != nil {
 		return OutboxJob{}, err
@@ -162,5 +167,22 @@ func scanOutboxJob(scanner outboxJobScanner) (OutboxJob, error) {
 	if userID.Valid {
 		job.UserID = &userID.Int64
 	}
+	if htmlBody.Valid {
+		job.HTMLBody = htmlBody.String
+	}
 	return job, nil
+}
+
+func normalizeOutboxKind(kind string) string {
+	if kind == "" {
+		return email.KindUnknown
+	}
+	return kind
+}
+
+func nullableOutboxHTMLBody(body string) sql.NullString {
+	if body == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: body, Valid: true}
 }

@@ -1,6 +1,8 @@
 package service
 
 import (
+	"time"
+
 	"github.com/jonathanhu237/rota/backend/internal/email"
 	"github.com/jonathanhu237/rota/backend/internal/model"
 )
@@ -112,14 +114,19 @@ func hasOverlapInSet(shifts []*model.PublicationShift) bool {
 }
 
 func toShiftRef(shift *model.PublicationShift) email.ShiftRef {
+	return toShiftRefWithOccurrence(shift, nil)
+}
+
+func toShiftRefWithOccurrence(shift *model.PublicationShift, occurrenceDate *time.Time) email.ShiftRef {
 	if shift == nil {
 		return email.ShiftRef{}
 	}
 
 	return email.ShiftRef{
-		Weekday:      weekdayLabel(shift.Weekday),
-		StartTime:    shift.StartTime,
-		EndTime:      shift.EndTime,
-		PositionName: shift.PositionName,
+		Weekday:        weekdayLabel(shift.Weekday),
+		StartTime:      shift.StartTime,
+		EndTime:        shift.EndTime,
+		PositionName:   shift.PositionName,
+		OccurrenceDate: occurrenceDate,
 	}
 }

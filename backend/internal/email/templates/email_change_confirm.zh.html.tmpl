@@ -1,0 +1,8 @@
+{{define "content"}}
+<p style="margin:0 0 16px 0;">{{.Name}}，你好：</p>
+<p style="margin:0 0 18px 0;">请确认此邮箱地址，以完成你的 Rota 账号邮箱变更。</p>
+<p style="margin:0 0 22px 0;"><a href="{{.ActionURL}}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;border-radius:6px;padding:10px 16px;font-weight:600;">{{.CTALabel}}</a></p>
+<p style="margin:0 0 8px 0;color:#4b5563;">{{.FallbackLabel}}</p>
+<p style="margin:0 0 18px 0;word-break:break-all;"><a href="{{.ActionURL}}" style="color:#2563eb;">{{.ActionURL}}</a></p>
+<p style="margin:0;color:#4b5563;">此链接将在 {{.ExpirationText}} 后过期。如果这不是你本人操作，请忽略这封邮件。</p>
+{{end}}
