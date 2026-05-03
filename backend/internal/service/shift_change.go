@@ -55,12 +55,21 @@ type shiftChangeDeps interface {
 
 // ShiftChangeService orchestrates the swap / give / pool lifecycle.
 type ShiftChangeService struct {
-	shiftChangeRepo shiftChangeRepository
-	publicationRepo shiftChangeDeps
-	outboxRepo      setupOutboxRepository
-	logger          *slog.Logger
-	clock           Clock
-	appBaseURL      string
+	shiftChangeRepo  shiftChangeRepository
+	publicationRepo  shiftChangeDeps
+	outboxRepo       setupOutboxRepository
+	logger           *slog.Logger
+	clock            Clock
+	appBaseURL       string
+	brandingProvider emailBrandingProvider
+}
+
+type ShiftChangeServiceOption func(*ShiftChangeService)
+
+func WithShiftChangeBrandingProvider(provider emailBrandingProvider) ShiftChangeServiceOption {
+	return func(service *ShiftChangeService) {
+		service.brandingProvider = provider
+	}
 }
 
 // NewShiftChangeService constructs a ShiftChangeService. If logger is nil,
@@ -72,6 +81,7 @@ func NewShiftChangeService(
 	appBaseURL string,
 	clock Clock,
 	logger *slog.Logger,
+	opts ...ShiftChangeServiceOption,
 ) *ShiftChangeService {
 	if clock == nil {
 		clock = realClock{}
@@ -79,7 +89,7 @@ func NewShiftChangeService(
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &ShiftChangeService{
+	service := &ShiftChangeService{
 		shiftChangeRepo: shiftChangeRepo,
 		publicationRepo: publicationRepo,
 		outboxRepo:      outboxRepo,
@@ -87,6 +97,10 @@ func NewShiftChangeService(
 		clock:           clock,
 		appBaseURL:      appBaseURL,
 	}
+	for _, opt := range opts {
+		opt(service)
+	}
+	return service
 }
 
 // CreateShiftChangeInput is the admin-authoritative input shape for the
@@ -794,6 +808,10 @@ func (s *ShiftChangeService) enqueueRequestCreatedTx(
 	if s.outboxRepo == nil || req.CounterpartUserID == nil {
 		return nil
 	}
+	branding, err := resolveEmailBranding(ctx, s.brandingProvider)
+	if err != nil {
+		return err
+	}
 	counterpart, err := s.publicationRepo.GetUserByID(ctx, *req.CounterpartUserID)
 	if err != nil {
 		return err
@@ -811,6 +829,7 @@ func (s *ShiftChangeService) enqueueRequestCreatedTx(
 		RequesterShift: toShiftRefWithOccurrence(requesterShift, &req.OccurrenceDate),
 		BaseURL:        s.appBaseURL,
 		Language:       resolveRequestEmailLanguage(ctx, counterpart),
+		Branding:       branding,
 	}
 	if counterpartShift != nil {
 		ref := toShiftRefWithOccurrence(counterpartShift, req.CounterpartOccurrenceDate)
@@ -829,6 +848,10 @@ func (s *ShiftChangeService) enqueueRequestResolvedTx(
 ) error {
 	if s.outboxRepo == nil {
 		return nil
+	}
+	branding, err := resolveEmailBranding(ctx, s.brandingProvider)
+	if err != nil {
+		return err
 	}
 	requester, err := s.publicationRepo.GetUserByID(ctx, req.RequesterUserID)
 	if err != nil {
@@ -861,6 +884,7 @@ func (s *ShiftChangeService) enqueueRequestResolvedTx(
 		RequesterShift: toShiftRefWithOccurrence(requesterShift, &req.OccurrenceDate),
 		BaseURL:        s.appBaseURL,
 		Language:       resolveRequestEmailLanguage(ctx, requester),
+		Branding:       branding,
 	}
 	if req.CounterpartAssignmentID != nil {
 		counterpartAssignment, err := s.publicationRepo.GetAssignment(ctx, *req.CounterpartAssignmentID)

@@ -86,12 +86,13 @@ type publicationShiftChangeRepository interface {
 }
 
 type PublicationService struct {
-	publicationRepo publicationRepository
-	shiftChangeRepo publicationShiftChangeRepository
-	outboxRepo      setupOutboxRepository
-	logger          *slog.Logger
-	clock           Clock
-	appBaseURL      string
+	publicationRepo  publicationRepository
+	shiftChangeRepo  publicationShiftChangeRepository
+	outboxRepo       setupOutboxRepository
+	logger           *slog.Logger
+	clock            Clock
+	appBaseURL       string
+	brandingProvider emailBrandingProvider
 }
 
 type PublicationServiceOption func(*PublicationService)
@@ -166,6 +167,12 @@ func WithPublicationShiftChangeNotifications(
 		if logger != nil {
 			service.logger = logger
 		}
+	}
+}
+
+func WithPublicationBrandingProvider(provider emailBrandingProvider) PublicationServiceOption {
+	return func(service *PublicationService) {
+		service.brandingProvider = provider
 	}
 }
 

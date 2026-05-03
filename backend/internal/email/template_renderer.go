@@ -16,6 +16,7 @@ var templateFS embed.FS
 type emailTemplateView struct {
 	Subject               string
 	ProductName           string
+	OrganizationName      string
 	Name                  string
 	ActionURL             string
 	CTALabel              string
@@ -30,12 +31,13 @@ type emailTemplateView struct {
 	RequesterShiftLabel   string
 	CounterpartShiftLabel string
 	RequestsURL           string
+	HasOrganizationName   bool
 	HasCounterpartShift   bool
 }
 
 func renderAccountMessage(kind string, data TemplateData) Message {
 	language := normalizeLanguage(data.Language)
-	view := baseTemplateView(kind, language, data.Name)
+	view := baseTemplateView(kind, language, data.Name, data.Branding)
 	view.ExpirationText = humanizeDurationForLanguage(data.Expiration, language)
 
 	switch kind {
@@ -59,7 +61,7 @@ func renderAccountMessage(kind string, data TemplateData) Message {
 
 func renderShiftChangeRequestReceivedMessage(data ShiftChangeRequestReceivedData) Message {
 	language := normalizeLanguage(data.Language)
-	view := baseTemplateView(KindShiftChangeRequestReceived, language, data.RecipientName)
+	view := baseTemplateView(KindShiftChangeRequestReceived, language, data.RecipientName, data.Branding)
 	view.ActionURL = requestsLink(data.BaseURL)
 	view.RequestsURL = view.ActionURL
 	view.CTALabel = localizedString(language, "View request", "查看申请")
@@ -76,12 +78,12 @@ func renderShiftChangeRequestReceivedMessage(data ShiftChangeRequestReceivedData
 
 func renderShiftChangeResolvedMessage(data ShiftChangeResolvedData) Message {
 	language := normalizeLanguage(data.Language)
-	view := baseTemplateView(KindShiftChangeResolved, language, data.RecipientName)
+	view := baseTemplateView(KindShiftChangeResolved, language, data.RecipientName, data.Branding)
 	view.ActionURL = requestsLink(data.BaseURL)
 	view.RequestsURL = view.ActionURL
 	view.CTALabel = localizedString(language, "View request", "查看申请")
 	view.OutcomeLabel = shiftChangeOutcomeLabel(data.Outcome, language)
-	view.Subject = shiftChangeResolvedSubject(data.Outcome, language)
+	view.Subject = shiftChangeResolvedSubject(data.Outcome, language, data.Branding)
 	view.ResponderName = data.ResponderName
 	view.RequestTypeLabel = shiftChangeTypeLabel(data.Type, language)
 	if !isZeroShiftRef(data.RequesterShift) {
@@ -95,14 +97,17 @@ func renderShiftChangeResolvedMessage(data ShiftChangeResolvedData) Message {
 	return renderMessage(KindShiftChangeResolved, language, data.To, view)
 }
 
-func baseTemplateView(kind string, language string, name string) emailTemplateView {
-	subject := subjectFor(kind, language)
+func baseTemplateView(kind string, language string, name string, branding Branding) emailTemplateView {
+	normalizedBranding := NormalizeBranding(branding)
+	subject := subjectFor(kind, language, normalizedBranding)
 	return emailTemplateView{
-		Subject:       subject,
-		ProductName:   "Rota",
-		Name:          displayName(name, language),
-		FallbackLabel: localizedString(language, "If the button does not work, copy and paste this link into your browser:", "如果按钮无法打开，请复制以下链接到浏览器："),
-		Footer:        localizedString(language, "This is an automated Rota notification.", "这是一封 Rota 自动通知邮件。"),
+		Subject:             subject,
+		ProductName:         normalizedBranding.ProductName,
+		OrganizationName:    normalizedBranding.OrganizationName,
+		Name:                displayName(name, language),
+		FallbackLabel:       localizedString(language, "If the button does not work, copy and paste this link into your browser:", "如果按钮无法打开，请复制以下链接到浏览器："),
+		Footer:              localizedFooter(language, normalizedBranding),
+		HasOrganizationName: normalizedBranding.OrganizationName != "",
 	}
 }
 
@@ -144,21 +149,23 @@ func mustRenderHTML(kind string, language string, view emailTemplateView) string
 	return body.String()
 }
 
-func subjectFor(kind string, language string) string {
+func subjectFor(kind string, language string, branding Branding) string {
+	normalizedBranding := NormalizeBranding(branding)
+	productName := normalizedBranding.ProductName
 	subjects := map[string]map[string]string{
 		"en": {
-			KindInvitation:                 "Invitation to Rota",
-			KindPasswordReset:              "Reset your Rota password",
-			KindEmailChangeConfirm:         "Confirm your Rota email change",
-			KindEmailChangeNotice:          "Rota email change requested",
+			KindInvitation:                 fmt.Sprintf("Invitation to %s", productName),
+			KindPasswordReset:              fmt.Sprintf("Reset your %s password", productName),
+			KindEmailChangeConfirm:         fmt.Sprintf("Confirm your %s email change", productName),
+			KindEmailChangeNotice:          fmt.Sprintf("%s email change requested", productName),
 			KindShiftChangeRequestReceived: "New shift change request",
 			KindShiftChangeResolved:        "Shift change request update",
 		},
 		"zh": {
-			KindInvitation:                 "Rota 邀请",
-			KindPasswordReset:              "重置 Rota 密码",
-			KindEmailChangeConfirm:         "确认 Rota 邮箱变更",
-			KindEmailChangeNotice:          "Rota 邮箱变更请求",
+			KindInvitation:                 fmt.Sprintf("%s 邀请", productName),
+			KindPasswordReset:              fmt.Sprintf("重置 %s 密码", productName),
+			KindEmailChangeConfirm:         fmt.Sprintf("确认 %s 邮箱变更", productName),
+			KindEmailChangeNotice:          fmt.Sprintf("%s 邮箱变更请求", productName),
 			KindShiftChangeRequestReceived: "新的换班申请",
 			KindShiftChangeResolved:        "换班申请状态更新",
 		},
@@ -167,14 +174,15 @@ func subjectFor(kind string, language string) string {
 	if subject == "" {
 		subject = subjects["en"][kind]
 	}
-	return "[Rota] " + subject
+	return fmt.Sprintf("[%s] %s", productName, subject)
 }
 
-func shiftChangeResolvedSubject(outcome ShiftChangeOutcome, language string) string {
+func shiftChangeResolvedSubject(outcome ShiftChangeOutcome, language string, branding Branding) string {
+	productName := NormalizeBranding(branding).ProductName
 	if normalizeLanguage(language) == "zh" {
-		return "[Rota] 换班申请" + shiftChangeOutcomeLabel(outcome, language)
+		return fmt.Sprintf("[%s] 换班申请%s", productName, shiftChangeOutcomeLabel(outcome, language))
 	}
-	return "[Rota] Shift change request " + shiftChangeOutcomeLabel(outcome, language)
+	return fmt.Sprintf("[%s] Shift change request %s", productName, shiftChangeOutcomeLabel(outcome, language))
 }
 
 func displayName(name string, language string) string {
@@ -190,6 +198,23 @@ func localizedString(language string, en string, zh string) string {
 		return zh
 	}
 	return en
+}
+
+func localizedFooter(language string, branding Branding) string {
+	normalizedBranding := NormalizeBranding(branding)
+	if normalizeLanguage(language) == "zh" {
+		if normalizedBranding.OrganizationName != "" {
+			return fmt.Sprintf("这是一封来自%s的%s自动通知邮件。", normalizedBranding.OrganizationName, normalizedBranding.ProductName)
+		}
+		if normalizedBranding.ProductName == DefaultProductName {
+			return "这是一封 Rota 自动通知邮件。"
+		}
+		return fmt.Sprintf("这是一封%s自动通知邮件。", normalizedBranding.ProductName)
+	}
+	if normalizedBranding.OrganizationName != "" {
+		return fmt.Sprintf("This is an automated %s notification from %s.", normalizedBranding.ProductName, normalizedBranding.OrganizationName)
+	}
+	return fmt.Sprintf("This is an automated %s notification.", normalizedBranding.ProductName)
 }
 
 func humanizeDurationForLanguage(duration time.Duration, language string) string {

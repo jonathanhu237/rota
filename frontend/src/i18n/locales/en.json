@@ -16,7 +16,7 @@
   },
   "login": {
     "title": "Login",
-    "description": "Enter your credentials to access Rota.",
+    "description": "Enter your credentials to access {{productName}}.",
     "email": "Email",
     "emailPlaceholder": "you@example.com",
     "emailRequired": "Email is required",
@@ -39,7 +39,7 @@
   },
   "forgotPassword": {
     "title": "Forgot password",
-    "description": "Enter your email and we'll send a reset link if an account exists.",
+    "description": "Enter your email and we'll send a {{productName}} reset link if an account exists.",
     "email": "Email",
     "emailPlaceholder": "you@example.com",
     "unexpectedError": "An unexpected error occurred",
@@ -58,8 +58,8 @@
   "setupPassword": {
     "title": "Set password",
     "loading": "Loading invitation...",
-    "invitationDescription": "You've been invited to Rota. Set your password to activate your account.",
-    "resetDescription": "Set a new password for your account.",
+    "invitationDescription": "You've been invited to {{productName}}. Set your password to activate your account.",
+    "resetDescription": "Set a new password for your {{productName}} account.",
     "email": "Email",
     "password": "Password",
     "confirmPassword": "Confirm password",
@@ -153,7 +153,7 @@
     },
     "profile": {
       "title": "Profile",
-      "description": "Update the name shown across Rota.",
+      "description": "Update the name shown across the app.",
       "name": "Name",
       "saved": "Profile updated."
     },
@@ -205,9 +205,25 @@
       "themeDark": "Dark",
       "saved": "Preferences updated."
     },
+    "branding": {
+      "title": "Branding",
+      "description": "Customize the product name shown in the app and emails.",
+      "productName": "Product name",
+      "organizationName": "Organization name",
+      "organizationNamePlaceholder": "Optional",
+      "saved": "Branding updated.",
+      "errors": {
+        "default": "Could not update branding.",
+        "INVALID_REQUEST": "Check the product and organization names.",
+        "VERSION_CONFLICT": "Branding was updated elsewhere. Review the latest values and try again."
+      }
+    },
     "validation": {
       "nameRequired": "Name is required",
       "nameMax": "Name must be at most 100 characters",
+      "productNameRequired": "Product name is required",
+      "productNameMax": "Product name must be at most 60 characters",
+      "organizationNameMax": "Organization name must be at most 100 characters",
       "emailRequired": "Email is required",
       "emailInvalid": "Please enter a valid email address",
       "currentPasswordRequired": "Current password is required",

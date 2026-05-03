@@ -47,6 +47,7 @@ type TemplateData struct {
 	Language        string
 	Expiration      time.Duration
 	NewEmailPartial string
+	Branding        Branding
 }
 
 type SMTPConfig struct {

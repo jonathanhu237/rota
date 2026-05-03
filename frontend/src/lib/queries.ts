@@ -4,6 +4,7 @@ import { isAxiosError } from "axios"
 import api from "./axios"
 import type {
   AssignmentBoard,
+  Branding,
   Leave,
   LeaveCategory,
   LeavePreviewOccurrence,
@@ -41,6 +42,8 @@ export type PasswordResetRequestResponse = {
 }
 
 export type SetupTokenPreviewResponse = SetupTokenPreview
+
+export type BrandingResponse = Branding
 
 export type PositionsResponse = {
   positions: Position[]
@@ -136,6 +139,12 @@ export type UpdateOwnProfileInput = {
   theme_preference?: ThemePreference | null
 }
 
+export type UpdateBrandingInput = {
+  product_name: string
+  organization_name: string
+  version: number
+}
+
 export type CreatePositionInput = {
   name: string
   description: string
@@ -198,6 +207,19 @@ export type CreateAssignmentInput = {
   position_id: number
 }
 
+export const brandingFallback: Branding = {
+  product_name: "Rota",
+  organization_name: "",
+  version: 1,
+  created_at: "",
+  updated_at: "",
+}
+
+export const brandingQueryOptions = queryOptions({
+  queryKey: ["branding"],
+  queryFn: async () => getBranding(),
+})
+
 export const currentUserQueryOptions = queryOptions({
   queryKey: ["auth", "me"],
   queryFn: async () => {
@@ -212,6 +234,15 @@ export const currentUserQueryOptions = queryOptions({
     return failureCount < 2
   },
 })
+
+export async function getBranding() {
+  try {
+    const res = await api.get<BrandingResponse>("/branding")
+    return res.data
+  } catch {
+    return brandingFallback
+  }
+}
 
 export const usersQueryOptions = (page: number, pageSize: number) =>
   queryOptions({
@@ -482,6 +513,11 @@ export async function requestEmailChange(input: RequestEmailChangeInput) {
 export async function updateOwnProfile(input: UpdateOwnProfileInput) {
   const res = await api.put<UserResponse>("/users/me", input)
   return res.data.user
+}
+
+export async function updateBranding(input: UpdateBrandingInput) {
+  const res = await api.put<BrandingResponse>("/branding", input)
+  return res.data
 }
 
 export async function resendInvitation(userID: number) {

@@ -50,6 +50,7 @@ func main() {
 	userPositionRepo := repository.NewUserPositionRepository(db)
 	leaveRepo := repository.NewLeaveRepository(db)
 	outboxRepo := repository.NewOutboxRepository(db)
+	brandingRepo := repository.NewBrandingRepository(db)
 	if err := service.EnsureBootstrapAdmin(ctx, service.BootstrapAdminInput{
 		Email:    cfg.BootstrapAdminEmail,
 		Password: cfg.BootstrapAdminPassword,
@@ -98,6 +99,7 @@ func main() {
 	setupTokenRepo := repository.NewSetupTokenRepository(db)
 	setupTxManager := repository.NewSetupTxManager(db)
 	authPasswordTxManager := repository.NewAuthPasswordTxManager(db, sessionExpires)
+	brandingService := service.NewBrandingService(brandingRepo)
 	authService := service.NewAuthService(
 		userRepo,
 		sessionStore,
@@ -109,6 +111,7 @@ func main() {
 			AppBaseURL:            cfg.AppBaseURL,
 			InvitationTokenTTL:    cfg.InvitationTokenTTL,
 			PasswordResetTokenTTL: cfg.PasswordResetTokenTTL,
+			BrandingProvider:      brandingService,
 		}),
 		service.WithAuthPasswordTxRunner(authPasswordTxManager),
 	)
@@ -121,6 +124,7 @@ func main() {
 			Logger:             slog.Default(),
 			AppBaseURL:         cfg.AppBaseURL,
 			InvitationTokenTTL: cfg.InvitationTokenTTL,
+			BrandingProvider:   brandingService,
 		}),
 	)
 	positionService := service.NewPositionService(positionRepo)
@@ -135,6 +139,7 @@ func main() {
 			cfg.AppBaseURL,
 			slog.Default(),
 		),
+		service.WithPublicationBrandingProvider(brandingService),
 	)
 	userPositionService := service.NewUserPositionService(userPositionRepo)
 
@@ -144,6 +149,7 @@ func main() {
 	userHandler := handler.NewUserHandler(userService)
 	positionHandler := handler.NewPositionHandler(positionService)
 	templateHandler := handler.NewTemplateHandler(templateService)
+	brandingHandler := handler.NewBrandingHandler(brandingService)
 	publicationHandler := handler.NewPublicationHandler(publicationService)
 	userPositionHandler := handler.NewUserPositionHandler(userPositionService)
 	shiftChangeService := service.NewShiftChangeService(
@@ -153,6 +159,7 @@ func main() {
 		cfg.AppBaseURL,
 		nil,
 		slog.Default(),
+		service.WithShiftChangeBrandingProvider(brandingService),
 	)
 	shiftChangeHandler := handler.NewShiftChangeHandler(shiftChangeService)
 	leaveService := service.NewLeaveService(
@@ -182,6 +189,8 @@ func main() {
 	// Register routes
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler.HealthCheck)
+	mux.HandleFunc("GET /branding", brandingHandler.Get)
+	mux.HandleFunc("PUT /branding", authHandler.RequireAdmin(brandingHandler.Update))
 	mux.HandleFunc(
 		"POST /auth/login",
 		handler.Chain(authHandler.Login, loginRateLimitByIP, loginRateLimitByEmail),

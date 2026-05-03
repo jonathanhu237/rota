@@ -1,6 +1,6 @@
 {{.Name}}，你好：
 
-管理员已邀请你加入 Rota。请设置密码来完成账号启用。
+{{if .HasOrganizationName}}{{.OrganizationName}} 的管理员已邀请你加入 {{.ProductName}}。请设置密码来完成账号启用。{{else}}管理员已邀请你加入 {{.ProductName}}。请设置密码来完成账号启用。{{end}}
 
 {{.CTALabel}}：
 {{.ActionURL}}

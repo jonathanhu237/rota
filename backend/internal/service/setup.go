@@ -49,6 +49,7 @@ type SetupFlowConfig struct {
 	PasswordResetTokenTTL time.Duration
 	Clock                 func() time.Time
 	RandomReader          io.Reader
+	BrandingProvider      emailBrandingProvider
 }
 
 type SetupTokenPreview struct {
@@ -73,6 +74,7 @@ type setupFlowHelper struct {
 	clock                 func() time.Time
 	randomReader          io.Reader
 	sessionRepoFactory    func(repository.DBTX) emailChangeSessionRepository
+	brandingProvider      emailBrandingProvider
 }
 
 func newSetupFlowHelper(config SetupFlowConfig) *setupFlowHelper {
@@ -101,6 +103,7 @@ func newSetupFlowHelper(config SetupFlowConfig) *setupFlowHelper {
 		passwordResetTokenTTL: config.PasswordResetTokenTTL,
 		clock:                 clock,
 		randomReader:          randomReader,
+		brandingProvider:      config.BrandingProvider,
 		sessionRepoFactory: func(db repository.DBTX) emailChangeSessionRepository {
 			return repository.NewSessionRepositoryWithDBTX(db, 0)
 		},
@@ -174,6 +177,10 @@ func (h *setupFlowHelper) enqueueInvitationTx(
 	rawToken string,
 ) error {
 	language := resolveInvitationEmailLanguage(ctx, user)
+	branding, err := resolveEmailBranding(ctx, h.brandingProvider)
+	if err != nil {
+		return err
+	}
 	return h.enqueueEmailTx(ctx, tx, email.BuildInvitationMessage(email.TemplateData{
 		To:         user.Email,
 		Name:       user.Name,
@@ -181,6 +188,7 @@ func (h *setupFlowHelper) enqueueInvitationTx(
 		Token:      rawToken,
 		Language:   language,
 		Expiration: h.invitationTokenTTL,
+		Branding:   branding,
 	}), repository.WithOutboxUserID(user.ID))
 }
 
@@ -191,6 +199,10 @@ func (h *setupFlowHelper) enqueuePasswordResetTx(
 	rawToken string,
 ) error {
 	language := resolveRequestEmailLanguage(ctx, user)
+	branding, err := resolveEmailBranding(ctx, h.brandingProvider)
+	if err != nil {
+		return err
+	}
 	return h.enqueueEmailTx(ctx, tx, email.BuildPasswordResetMessage(email.TemplateData{
 		To:         user.Email,
 		Name:       user.Name,
@@ -198,6 +210,7 @@ func (h *setupFlowHelper) enqueuePasswordResetTx(
 		Token:      rawToken,
 		Language:   language,
 		Expiration: h.passwordResetTokenTTL,
+		Branding:   branding,
 	}), repository.WithOutboxUserID(user.ID))
 }
 
@@ -209,6 +222,10 @@ func (h *setupFlowHelper) enqueueEmailChangeConfirmTx(
 	rawToken string,
 ) error {
 	language := resolveRequestEmailLanguage(ctx, user)
+	branding, err := resolveEmailBranding(ctx, h.brandingProvider)
+	if err != nil {
+		return err
+	}
 	return h.enqueueEmailTx(ctx, tx, email.BuildEmailChangeConfirmMessage(email.TemplateData{
 		To:         newEmail,
 		Name:       user.Name,
@@ -216,6 +233,7 @@ func (h *setupFlowHelper) enqueueEmailChangeConfirmTx(
 		Token:      rawToken,
 		Language:   language,
 		Expiration: emailChangeTokenTTL,
+		Branding:   branding,
 	}), repository.WithOutboxUserID(user.ID))
 }
 
@@ -226,11 +244,16 @@ func (h *setupFlowHelper) enqueueEmailChangeNoticeTx(
 	newEmail string,
 ) error {
 	language := resolveRequestEmailLanguage(ctx, user)
+	branding, err := resolveEmailBranding(ctx, h.brandingProvider)
+	if err != nil {
+		return err
+	}
 	return h.enqueueEmailTx(ctx, tx, email.BuildEmailChangeNoticeMessage(email.TemplateData{
 		To:              user.Email,
 		Name:            user.Name,
 		Language:        language,
 		NewEmailPartial: email.PartialMaskEmail(newEmail),
+		Branding:        branding,
 	}), repository.WithOutboxUserID(user.ID))
 }
 

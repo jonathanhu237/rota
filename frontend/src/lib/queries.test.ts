@@ -41,6 +41,8 @@ import {
   deleteAvailabilitySubmission,
   deleteAssignment,
   endPublication,
+  brandingFallback,
+  getBranding,
   leavePreviewQueryOptions,
   previewSetupToken,
   requestEmailChange,
@@ -48,9 +50,71 @@ import {
   replaceUserPositions,
   resendInvitation,
   setupPassword,
+  updateBranding,
   updatePublication,
   updateTemplate,
 } from "./queries"
+
+describe("branding queries", () => {
+  beforeEach(() => {
+    deleteMock.mockReset()
+    getMock.mockReset()
+    postMock.mockReset()
+    patchMock.mockReset()
+    putMock.mockReset()
+  })
+
+  it("returns API branding when available", async () => {
+    getMock.mockResolvedValue({
+      data: {
+        product_name: "排班系统",
+        organization_name: "Acme",
+        version: 2,
+        created_at: "2026-05-04T00:00:00Z",
+        updated_at: "2026-05-04T00:01:00Z",
+      },
+    })
+
+    await expect(getBranding()).resolves.toEqual({
+      product_name: "排班系统",
+      organization_name: "Acme",
+      version: 2,
+      created_at: "2026-05-04T00:00:00Z",
+      updated_at: "2026-05-04T00:01:00Z",
+    })
+    expect(getMock).toHaveBeenCalledWith("/branding")
+  })
+
+  it("falls back to Rota when public branding cannot be loaded", async () => {
+    getMock.mockRejectedValue(new Error("network"))
+
+    await expect(getBranding()).resolves.toEqual(brandingFallback)
+  })
+
+  it("updates branding through the admin endpoint", async () => {
+    putMock.mockResolvedValue({
+      data: {
+        product_name: "OpsHub",
+        organization_name: "",
+        version: 3,
+        created_at: "",
+        updated_at: "",
+      },
+    })
+
+    await updateBranding({
+      product_name: "OpsHub",
+      organization_name: "",
+      version: 2,
+    })
+
+    expect(putMock).toHaveBeenCalledWith("/branding", {
+      product_name: "OpsHub",
+      organization_name: "",
+      version: 2,
+    })
+  })
+})
 
 describe("replaceUserPositions", () => {
   beforeEach(() => {

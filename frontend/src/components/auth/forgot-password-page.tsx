@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, useState } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
+import { useQuery } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
 import { useTranslation } from "react-i18next"
 
@@ -15,7 +16,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { getApiErrorDetails, getTranslatedApiError } from "@/lib/api-error"
 import { createForgotPasswordSchema, type ForgotPasswordFormValues } from "./auth-schemas"
-import { requestPasswordReset as defaultRequestPasswordReset } from "@/lib/queries"
+import {
+  brandingFallback,
+  brandingQueryOptions,
+  requestPasswordReset as defaultRequestPasswordReset,
+} from "@/lib/queries"
 
 type ForgotPasswordPageProps = {
   requestPasswordReset?: (email: string) => Promise<void>
@@ -25,6 +30,8 @@ export function ForgotPasswordPage({
   requestPasswordReset = defaultRequestPasswordReset,
 }: ForgotPasswordPageProps) {
   const { t, i18n } = useTranslation()
+  const { data: branding = brandingFallback } = useQuery(brandingQueryOptions)
+  const productName = branding.product_name
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [isPending, setIsPending] = useState(false)
   const [submitError, setSubmitError] = useState<unknown>(null)
@@ -84,7 +91,9 @@ export function ForgotPasswordPage({
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>{t("forgotPassword.title")}</CardTitle>
-          <CardDescription>{t("forgotPassword.description")}</CardDescription>
+          <CardDescription>
+            {t("forgotPassword.description", { productName })}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {isSubmitted ? (

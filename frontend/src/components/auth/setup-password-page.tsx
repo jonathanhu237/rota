@@ -16,6 +16,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { getTranslatedApiError } from "@/lib/api-error"
 import {
+  brandingFallback,
+  brandingQueryOptions,
   previewSetupToken as previewSetupTokenQuery,
   setupPassword as setupPasswordQuery,
 } from "@/lib/queries"
@@ -40,6 +42,8 @@ export function SetupPasswordPage({
   onSuccess,
 }: SetupPasswordPageProps) {
   const { t, i18n } = useTranslation()
+  const { data: branding = brandingFallback } = useQuery(brandingQueryOptions)
+  const productName = branding.product_name
   const formSchema = createSetupPasswordSchema(t)
   const {
     register,
@@ -108,8 +112,8 @@ export function SetupPasswordPage({
           <CardTitle>{t("setupPassword.title")}</CardTitle>
           <CardDescription>
             {preview?.purpose === "password_reset"
-              ? t("setupPassword.resetDescription")
-              : t("setupPassword.invitationDescription")}
+              ? t("setupPassword.resetDescription", { productName })
+              : t("setupPassword.invitationDescription", { productName })}
           </CardDescription>
         </CardHeader>
         <CardContent>

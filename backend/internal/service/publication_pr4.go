@@ -551,6 +551,10 @@ func (s *PublicationService) enqueueShiftChangeRequestInvalidatedTx(
 	if s.outboxRepo == nil {
 		return nil
 	}
+	branding, err := resolveEmailBranding(ctx, s.brandingProvider)
+	if err != nil {
+		return err
+	}
 	requester, err := s.publicationRepo.GetUserByID(ctx, req.RequesterUserID)
 	if err != nil {
 		return err
@@ -567,6 +571,7 @@ func (s *PublicationService) enqueueShiftChangeRequestInvalidatedTx(
 		Type:          email.ShiftChangeType(req.Type),
 		BaseURL:       s.appBaseURL,
 		Language:      resolveSystemEmailLanguage(requester),
+		Branding:      branding,
 	}
 	requesterShift, err := s.resolveShiftChangeEmailShift(
 		ctx,

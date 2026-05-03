@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useMutation } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import { Link, useNavigate } from "@tanstack/react-router"
 import { useForm } from "react-hook-form"
 import { useTranslation } from "react-i18next"
@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import api from "@/lib/axios"
 import { getTranslatedApiError } from "@/lib/api-error"
+import { brandingFallback, brandingQueryOptions } from "@/lib/queries"
 
 type LoginForm = {
   email: string
@@ -27,6 +28,8 @@ type LoginForm = {
 export function LoginPage() {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
+  const { data: branding = brandingFallback } = useQuery(brandingQueryOptions)
+  const productName = branding.product_name
 
   const toggleLanguage = () => {
     void i18n.changeLanguage(i18n.resolvedLanguage === "zh" ? "en" : "zh")
@@ -93,7 +96,9 @@ export function LoginPage() {
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>{t("login.title")}</CardTitle>
-          <CardDescription>{t("login.description")}</CardDescription>
+          <CardDescription>
+            {t("login.description", { productName })}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4">

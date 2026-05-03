@@ -96,6 +96,13 @@ function renderAppSidebar(user: User = makeUser()) {
   })
   client.setQueryData(["auth", "me"], user)
   client.setQueryData(["me", "notifications", "unread-count"], 0)
+  client.setQueryData(["branding"], {
+    product_name: "Rota",
+    organization_name: "",
+    version: 1,
+    created_at: "",
+    updated_at: "",
+  })
 
   return render(
     <QueryClientProvider client={client}>
@@ -241,5 +248,40 @@ describe("AppSidebar", () => {
     expect(
       container.querySelector(`a[href="${legacyHistoryPath}"]`),
     ).not.toBeInTheDocument()
+  })
+
+  it("renders the configured product name without the organization name", () => {
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          staleTime: Infinity,
+        },
+      },
+    })
+    client.setQueryData(["auth", "me"], makeUser())
+    client.setQueryData(["me", "notifications", "unread-count"], 0)
+    client.setQueryData(["branding"], {
+      product_name: "排班系统",
+      organization_name: "Acme",
+      version: 2,
+      created_at: "",
+      updated_at: "",
+    })
+
+    render(
+      <QueryClientProvider client={client}>
+        <ToastProvider>
+          <TooltipProvider>
+            <SidebarProvider>
+              <AppSidebar />
+            </SidebarProvider>
+          </TooltipProvider>
+        </ToastProvider>
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByText("排班系统")).toBeInTheDocument()
+    expect(screen.queryByText("Acme")).not.toBeInTheDocument()
   })
 })

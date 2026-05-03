@@ -145,6 +145,7 @@ func resetIntegrationDB(ctx context.Context, db *sql.DB) error {
 
 	ordered := []string{
 		"audit_logs",
+		"app_branding",
 		"email_outbox",
 		"sessions",
 		"leaves",

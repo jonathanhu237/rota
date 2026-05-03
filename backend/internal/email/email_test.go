@@ -199,6 +199,117 @@ func TestBuildEmailChangeNoticeMessage(t *testing.T) {
 	}
 }
 
+func TestAccountEmailBranding(t *testing.T) {
+	t.Parallel()
+
+	branding := Branding{
+		ProductName:      "排班系统",
+		OrganizationName: "Acme",
+	}
+
+	invitation := BuildInvitationMessage(TemplateData{
+		To:         "worker@example.com",
+		Name:       "Worker",
+		BaseURL:    "https://app.example.com",
+		Token:      "setup-token",
+		Language:   "en",
+		Expiration: 72 * time.Hour,
+		Branding:   branding,
+	})
+	assertContainsAll(t, invitation.Subject, "[排班系统]", "Invitation to 排班系统")
+	assertContainsAll(t, invitation.Body, "administrator from Acme", "invited you to 排班系统", "notification from Acme")
+	assertContainsAll(t, invitation.HTMLBody, "排班系统", "Acme")
+
+	passwordReset := BuildPasswordResetMessage(TemplateData{
+		To:         "worker@example.com",
+		Name:       "Worker",
+		BaseURL:    "https://app.example.com",
+		Token:      "reset-token",
+		Language:   "en",
+		Expiration: time.Hour,
+		Branding:   branding,
+	})
+	assertContainsAll(t, passwordReset.Subject, "[排班系统]", "Reset your 排班系统 password")
+	assertContainsAll(t, passwordReset.Body, "your 排班系统 account", "notification from Acme")
+	assertContainsNone(t, passwordReset.Body, "invited you", "administrator from Acme")
+
+	notice := BuildEmailChangeNoticeMessage(TemplateData{
+		To:              "worker@example.com",
+		Name:            "Worker",
+		Language:        "zh",
+		NewEmailPartial: "w***@example.com",
+		Branding:        branding,
+	})
+	assertContainsAll(t, notice.Subject, "[排班系统]", "排班系统 邮箱变更请求")
+	assertContainsAll(t, notice.Body, "你的 排班系统 账号", "来自Acme的排班系统自动通知邮件")
+}
+
+func TestAccountEmailBrandingOmitsBlankOrganization(t *testing.T) {
+	t.Parallel()
+
+	msg := BuildInvitationMessage(TemplateData{
+		To:         "worker@example.com",
+		Name:       "Worker",
+		BaseURL:    "https://app.example.com",
+		Token:      "setup-token",
+		Language:   "en",
+		Expiration: 72 * time.Hour,
+		Branding:   Branding{ProductName: "OpsHub", OrganizationName: "  "},
+	})
+
+	assertContainsAll(t, msg.Subject, "[OpsHub]", "Invitation to OpsHub")
+	assertContainsAll(t, msg.Body, "invited you to OpsHub", "This is an automated OpsHub notification.")
+	assertContainsNone(t, msg.Body, "from  ", "from .", "administrator from")
+}
+
+func TestShiftChangeEmailBranding(t *testing.T) {
+	t.Parallel()
+
+	date := time.Date(2026, 5, 4, 0, 0, 0, 0, time.UTC)
+	branding := Branding{ProductName: "OpsHub", OrganizationName: "Acme"}
+
+	request := BuildShiftChangeRequestReceivedMessage(ShiftChangeRequestReceivedData{
+		To:            "bob@example.com",
+		RecipientName: "Bob",
+		RequesterName: "Alice",
+		Type:          ShiftChangeTypeSwap,
+		RequesterShift: ShiftRef{
+			Weekday:        "Mon",
+			StartTime:      "09:00",
+			EndTime:        "12:00",
+			PositionName:   "Front Desk",
+			OccurrenceDate: &date,
+		},
+		BaseURL:  "https://app.example.com",
+		Language: "en",
+		Branding: branding,
+	})
+	assertContainsAll(t, request.Subject, "[OpsHub]", "New shift change request")
+	assertContainsAll(t, request.Body, "This is an automated OpsHub notification from Acme.")
+	assertContainsNone(t, request.Body, "Rota")
+
+	resolved := BuildShiftChangeResolvedMessage(ShiftChangeResolvedData{
+		To:            "alice@example.com",
+		RecipientName: "Alice",
+		Outcome:       ShiftChangeOutcomeApproved,
+		Type:          ShiftChangeTypeSwap,
+		ResponderName: "Bob",
+		RequesterShift: ShiftRef{
+			Weekday:        "Mon",
+			StartTime:      "09:00",
+			EndTime:        "12:00",
+			PositionName:   "Front Desk",
+			OccurrenceDate: &date,
+		},
+		BaseURL:  "https://app.example.com",
+		Language: "zh",
+		Branding: Branding{ProductName: "排班系统", OrganizationName: "Acme"},
+	})
+	assertContainsAll(t, resolved.Subject, "[排班系统]", "换班申请已批准")
+	assertContainsAll(t, resolved.Body, "来自Acme的排班系统自动通知邮件")
+	assertContainsNone(t, resolved.Body, "Rota")
+}
+
 func TestParseAcceptLanguage(t *testing.T) {
 	t.Parallel()
 

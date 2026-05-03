@@ -13,6 +13,14 @@ export type User = {
   theme_preference: ThemePreference | null
 }
 
+export type Branding = {
+  product_name: string
+  organization_name: string
+  version: number
+  created_at: string
+  updated_at: string
+}
+
 export type SetupTokenPurpose = "invitation" | "password_reset"
 
 export type SetupTokenPreview = {

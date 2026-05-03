@@ -16,7 +16,12 @@ vi.mock("react-i18next", async () => {
   return {
     ...actual,
     useTranslation: () => ({
-      t: (key: string) => key,
+      t: (key: string, options?: Record<string, unknown>) => {
+        if (typeof options?.productName === "string") {
+          return `${key} ${options.productName}`
+        }
+        return key
+      },
       i18n: {
         language: "en",
         resolvedLanguage: "en",

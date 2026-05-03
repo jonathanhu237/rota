@@ -5,14 +5,23 @@ import { render } from "@testing-library/react"
 import { ToastProvider } from "@/components/ui/toast"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
-export function renderWithProviders(ui: ReactElement) {
-  const client = new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
+type RenderWithProvidersOptions = {
+  queryClient?: QueryClient
+}
+
+export function renderWithProviders(
+  ui: ReactElement,
+  options: RenderWithProvidersOptions = {},
+) {
+  const client =
+    options.queryClient ??
+    new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
       },
-    },
-  })
+    })
 
   return render(
     <QueryClientProvider client={client}>

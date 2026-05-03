@@ -50,6 +50,7 @@ type ShiftChangeRequestReceivedData struct {
 	CounterpartShift *ShiftRef // non-nil only for swap
 	BaseURL          string
 	Language         string
+	Branding         Branding
 }
 
 // ShiftChangeResolvedData drives the "your request was approved/rejected/
@@ -64,6 +65,7 @@ type ShiftChangeResolvedData struct {
 	CounterpartShift *ShiftRef
 	BaseURL          string
 	Language         string
+	Branding         Branding
 }
 
 // BuildShiftChangeRequestReceivedMessage builds the email sent to the

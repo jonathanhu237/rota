@@ -1,3 +1,4 @@
+import { QueryClient } from "@tanstack/react-query"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
@@ -5,7 +6,39 @@ import { renderWithProviders } from "@/test-utils/render"
 
 import { SetupPasswordPage } from "./setup-password-page"
 
+function queryClientWithBranding(productName: string) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  })
+  queryClient.setQueryData(["branding"], {
+    product_name: productName,
+    organization_name: "Acme",
+    version: 2,
+    created_at: "",
+    updated_at: "",
+  })
+  return queryClient
+}
+
 describe("SetupPasswordPage", () => {
+  it("renders the configured product name", async () => {
+    const previewSetupToken = vi.fn().mockResolvedValue({
+      email: "worker@example.com",
+      name: "Worker",
+      purpose: "invitation",
+    })
+
+    const { findByText, queryByText } = renderWithProviders(
+      <SetupPasswordPage token="token-123" previewSetupToken={previewSetupToken} />,
+      { queryClient: queryClientWithBranding("排班系统") },
+    )
+
+    expect(
+      await findByText("setupPassword.invitationDescription 排班系统"),
+    ).toBeInTheDocument()
+    expect(queryByText("Rota")).not.toBeInTheDocument()
+  })
+
   it("renders a loading state on mount and then the form after preview succeeds", async () => {
     const previewSetupToken = vi.fn().mockResolvedValue({
       email: "worker@example.com",

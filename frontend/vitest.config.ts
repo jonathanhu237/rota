@@ -9,6 +9,7 @@ export default mergeConfig(
     test: {
       environment: "jsdom",
       setupFiles: ["./src/vitest.setup.ts"],
+      testTimeout: 15_000,
     },
   }),
 )

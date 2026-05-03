@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
 import { EmailForm } from "@/components/settings/email-form"
+import { BrandingForm } from "@/components/settings/branding-form"
 import { PasswordForm } from "@/components/settings/password-form"
 import { PreferencesForm } from "@/components/settings/preferences-form"
 import { ProfileForm } from "@/components/settings/profile-form"
@@ -20,7 +21,7 @@ export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsPage,
 })
 
-function SettingsPage() {
+export function SettingsPage() {
   const { t } = useTranslation()
   const { data: user, isLoading } = useQuery(currentUserQueryOptions)
 
@@ -89,6 +90,20 @@ function SettingsPage() {
           <PreferencesForm user={user} />
         </CardContent>
       </Card>
+
+      {user.is_admin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("settings.branding.title")}</CardTitle>
+            <CardDescription>
+              {t("settings.branding.description")}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <BrandingForm />
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

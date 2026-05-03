@@ -42,6 +42,8 @@ import {
 } from "@/components/ui/sidebar"
 import api from "@/lib/axios"
 import {
+  brandingFallback,
+  brandingQueryOptions,
   currentUserQueryOptions,
   updateOwnProfile,
   unreadNotificationsQueryOptions,
@@ -55,6 +57,9 @@ export function AppSidebar() {
   const { toggleThemePreference } = useTheme()
 
   const { data: user } = useQuery(currentUserQueryOptions)
+  const { data: branding = brandingFallback } = useQuery(brandingQueryOptions)
+  const productName = branding.product_name
+  const productInitial = Array.from(productName.trim())[0]?.toUpperCase() ?? "R"
   const unreadCountQuery = useQuery(unreadNotificationsQueryOptions)
   const unreadCount = unreadCountQuery.data ?? 0
   const showUnreadBadge = !unreadCountQuery.isLoading && unreadCount > 0
@@ -190,10 +195,10 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link to="/" />}>
               <div className="bg-primary text-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg text-sm font-bold">
-                R
+                {productInitial}
               </div>
               <div className="flex flex-col gap-0.5 leading-none">
-                <span className="font-semibold">Rota</span>
+                <span className="font-semibold">{productName}</span>
                 <span className="text-xs text-muted-foreground">
                   {t("sidebar.appDescription")}
                 </span>
