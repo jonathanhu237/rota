@@ -77,9 +77,18 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    command:
+      [
+        "run",
+        "--config",
+        "/etc/caddy/Caddyfile.${CADDY_TLS_MODE:-auto}",
+        "--adapter",
+        "caddyfile",
+      ]
     volumes:
       - caddy_data:/data
       - caddy_config:/config
+      - ./certs:/certs:ro
 
 volumes:
   pgdata:

@@ -3,6 +3,28 @@
 ## Purpose
 TBD - created by archiving change seed-dev-data. Update Purpose after archive.
 ## Requirements
+### Requirement: Production Compose supports automatic and manual TLS
+
+The production Docker Compose stack SHALL support two Caddy TLS modes. `CADDY_TLS_MODE=auto` SHALL use Caddy automatic HTTPS for publicly reachable hostnames. `CADDY_TLS_MODE=manual` SHALL use a Caddy config that loads a caller-provided certificate chain and private key from `CADDY_TLS_CERT_FILE` and `CADDY_TLS_KEY_FILE`.
+
+The production stack SHALL mount the repository-local `./certs` directory into the Caddy container read-only at `/certs`. Certificate files under `./certs` SHALL be ignored by git, and certificate issuance or renewal SHALL remain an external operations responsibility.
+
+#### Scenario: Public deployment uses automatic HTTPS
+
+- **GIVEN** `.env` sets `CADDY_TLS_MODE=auto`
+- **WHEN** production Compose renders the Caddy service
+- **THEN** the Caddy command uses the automatic HTTPS Caddyfile
+- **AND** Caddy manages certificates for `CADDY_SITE_ADDRESS`
+
+#### Scenario: Intranet deployment uses caller-provided certificates
+
+- **GIVEN** `.env` sets `CADDY_TLS_MODE=manual`
+- **AND** `./certs/fullchain.pem` and `./certs/privkey.pem` exist on the server
+- **WHEN** production Compose renders the Caddy service
+- **THEN** the Caddy command uses the manual TLS Caddyfile
+- **AND** Caddy loads the certificate chain and private key from the configured in-container paths
+- **AND** the certificate directory is mounted read-only
+
 ### Requirement: Local-development data seeding command
 
 The project SHALL provide a `make seed` command (and equivalent `go run ./backend/cmd/seed`) that resets the configured Postgres database to one of four named scenarios in seconds. The command SHALL refuse to run when the configured `AppEnv` resolves to `production` and SHALL print a clear "WIPING database" banner before truncating tables.
@@ -61,4 +83,3 @@ The seeded data SHALL satisfy the existing schema constraints (foreign keys, UNI
 - **AND** stderr contains a message naming "production" and "refusing"
 - **AND** no `TRUNCATE` is executed
 - **AND** no row is modified
-

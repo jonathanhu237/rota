@@ -19,8 +19,10 @@ FROM caddy:2.10.2-alpine
 
 COPY --from=builder /app/dist /srv
 COPY Caddyfile /etc/caddy/Caddyfile
+COPY Caddyfile.auto /etc/caddy/Caddyfile.auto
+COPY Caddyfile.manual /etc/caddy/Caddyfile.manual
 
 EXPOSE 80 443
 
 ENTRYPOINT ["/usr/bin/caddy"]
-CMD ["run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+CMD ["run", "--config", "/etc/caddy/Caddyfile.auto", "--adapter", "caddyfile"]

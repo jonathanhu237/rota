@@ -64,7 +64,7 @@ Integration tests expect Postgres to be reachable with the configured `POSTGRES_
 ## Production Deployment
 
 1. Copy `.env.example` to `.env`.
-2. Fill in the production values, especially `POSTGRES_PASSWORD`, `BOOTSTRAP_ADMIN_PASSWORD`, `SMTP_*`, `APP_BASE_URL`, and `CADDY_SITE_ADDRESS`.
+2. Fill in the production values, especially `POSTGRES_PASSWORD`, `BOOTSTRAP_ADMIN_PASSWORD`, `SMTP_*`, `APP_BASE_URL`, `CADDY_SITE_ADDRESS`, and the Caddy TLS mode.
 3. Bring up the full stack:
    ```bash
    make prod-up
@@ -79,6 +79,26 @@ The production stack includes Postgres, a one-shot migration runner, the Go back
 - Set `CADDY_SITE_ADDRESS` to a real domain such as `rota.example.com` to let Caddy obtain and renew certificates automatically.
 - For local Docker testing, keep `CADDY_SITE_ADDRESS=http://localhost` so Caddy serves plain HTTP on port 80.
 - `APP_BASE_URL` must match the public URL you expect users to open from invitation and password-reset emails.
+
+Use `CADDY_TLS_MODE=auto` for a public domain where Caddy can complete ACME validation through public HTTP/TLS challenges:
+
+```env
+CADDY_SITE_ADDRESS=rota.example.com
+APP_BASE_URL=https://rota.example.com
+CADDY_TLS_MODE=auto
+```
+
+Use `CADDY_TLS_MODE=manual` when the service is only reachable on an intranet, but you already have a publicly trusted certificate for the hostname, for example one obtained through DNS-01 validation. Put the certificate files on the server under `./certs/` (ignored by git), and keep the in-container paths in `.env`:
+
+```env
+CADDY_SITE_ADDRESS=https://rota.example.com
+APP_BASE_URL=https://rota.example.com
+CADDY_TLS_MODE=manual
+CADDY_TLS_CERT_FILE=/certs/fullchain.pem
+CADDY_TLS_KEY_FILE=/certs/privkey.pem
+```
+
+The production Compose stack mounts `./certs` into the Caddy container read-only as `/certs`. Certificate issuance and renewal are intentionally handled outside this project, for example with `acme.sh` or `certbot` using DNS-01.
 
 ### Useful Production Commands
 
@@ -111,6 +131,9 @@ make prod-pull
 | `EMAIL_SEND_TIMEOUT` | `30s` | Per-message outbox send timeout. |
 | `CADDY_SITE_ADDRESS` | `http://localhost` | Public site address for Caddy. Use a real domain in production. |
 | `APP_BASE_URL` | `http://localhost:5173` | Base URL embedded in invitation and reset emails. |
+| `CADDY_TLS_MODE` | `auto` | Selects the Caddy config: `auto` for Caddy automatic HTTPS, `manual` for loading files from `CADDY_TLS_CERT_FILE` and `CADDY_TLS_KEY_FILE`. |
+| `CADDY_TLS_CERT_FILE` | `/certs/fullchain.pem` | Certificate chain path inside the Caddy container when `CADDY_TLS_MODE=manual`. |
+| `CADDY_TLS_KEY_FILE` | `/certs/privkey.pem` | Private key path inside the Caddy container when `CADDY_TLS_MODE=manual`. |
 | `INVITATION_TOKEN_TTL` | `72h` | Invitation link lifetime. |
 | `PASSWORD_RESET_TOKEN_TTL` | `1h` | Password reset link lifetime. |
 | `BOOTSTRAP_ADMIN_EMAIL` | `admin@example.com` | Initial admin email when the database is empty. |

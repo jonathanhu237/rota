@@ -1,0 +1,37 @@
+{$CADDY_SITE_ADDRESS:https://localhost} {
+	tls {$CADDY_TLS_CERT_FILE:/certs/fullchain.pem} {$CADDY_TLS_KEY_FILE:/certs/privkey.pem}
+
+	encode gzip
+	header {
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		# no-referrer prevents setup-token URLs from leaking through browser Referer headers.
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+	# uri_path keeps query strings (which may carry setup tokens) out of access logs
+	log_append request>uri_path {http.request.uri.path}
+	log {
+		output file /data/access.log
+		format filter {
+			wrap json
+			fields {
+				request>uri delete
+			}
+		}
+	}
+	@tls {
+		protocol https
+	}
+	header @tls Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	handle_path /api/* {
+		reverse_proxy backend:8080
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
