@@ -33,6 +33,7 @@ type stubPublicationService struct {
 	getPublicationRosterFunc           func(ctx context.Context, publicationID int64) (*service.RosterResult, error)
 	getPublicationRosterWithWeekFunc   func(ctx context.Context, publicationID int64, weekStart *time.Time) (*service.RosterResult, error)
 	getCurrentRosterFunc               func(ctx context.Context) (*service.RosterResult, error)
+	exportScheduleXLSXFunc             func(ctx context.Context, publicationID int64, viewer *model.User, opts service.ExportScheduleOptions) ([]byte, error)
 }
 
 func (s *stubPublicationService) ListPublications(ctx context.Context, input service.ListPublicationsInput) (*service.ListPublicationsResult, error) {
@@ -112,6 +113,15 @@ func (s *stubPublicationService) GetPublicationRoster(ctx context.Context, publi
 
 func (s *stubPublicationService) GetCurrentRoster(ctx context.Context) (*service.RosterResult, error) {
 	return s.getCurrentRosterFunc(ctx)
+}
+
+func (s *stubPublicationService) ExportScheduleXLSX(
+	ctx context.Context,
+	publicationID int64,
+	viewer *model.User,
+	opts service.ExportScheduleOptions,
+) ([]byte, error) {
+	return s.exportScheduleXLSXFunc(ctx, publicationID, viewer, opts)
 }
 
 func TestPublicationHandler(t *testing.T) {
@@ -849,6 +859,91 @@ func TestPublicationHandler(t *testing.T) {
 		req := requestWithPathValues(httptest.NewRequest(http.MethodGet, "/publications/1/roster", nil), map[string]string{"id": "1"})
 
 		handler.GetRoster(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusConflict, "PUBLICATION_NOT_ACTIVE")
+	})
+
+	t.Run("ExportScheduleXLSX returns workbook response", func(t *testing.T) {
+		t.Parallel()
+
+		called := false
+		handler := NewPublicationHandler(&stubPublicationService{
+			exportScheduleXLSXFunc: func(ctx context.Context, publicationID int64, viewer *model.User, opts service.ExportScheduleOptions) ([]byte, error) {
+				called = true
+				if publicationID != 1 {
+					t.Fatalf("expected publication id 1, got %d", publicationID)
+				}
+				if viewer == nil || viewer.ID != 7 {
+					t.Fatalf("unexpected viewer: %+v", viewer)
+				}
+				if opts.Language != "zh" {
+					t.Fatalf("expected lang zh, got %q", opts.Language)
+				}
+				return []byte("xlsx bytes"), nil
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithUser(
+			requestWithPathValues(httptest.NewRequest(http.MethodGet, "/publications/1/schedule.xlsx?lang=zh", nil), map[string]string{"id": "1"}),
+			&model.User{ID: 7},
+		)
+
+		handler.ExportScheduleXLSX(recorder, req)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", recorder.Code)
+		}
+		if got := recorder.Header().Get("Content-Type"); got != scheduleXLSXContentType {
+			t.Fatalf("expected XLSX content type, got %q", got)
+		}
+		if got := recorder.Header().Get("Content-Disposition"); got != `attachment; filename="schedule.xlsx"` {
+			t.Fatalf("unexpected content disposition: %q", got)
+		}
+		if got := recorder.Body.String(); got != "xlsx bytes" {
+			t.Fatalf("unexpected response body: %q", got)
+		}
+		if !called {
+			t.Fatal("expected service to be called")
+		}
+	})
+
+	t.Run("ExportScheduleXLSX maps invalid language", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			exportScheduleXLSXFunc: func(ctx context.Context, publicationID int64, viewer *model.User, opts service.ExportScheduleOptions) ([]byte, error) {
+				if opts.Language != "fr" {
+					t.Fatalf("expected lang fr, got %q", opts.Language)
+				}
+				return nil, service.ErrInvalidInput
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithUser(
+			requestWithPathValues(httptest.NewRequest(http.MethodGet, "/publications/1/schedule.xlsx?lang=fr", nil), map[string]string{"id": "1"}),
+			&model.User{ID: 7},
+		)
+
+		handler.ExportScheduleXLSX(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusBadRequest, "INVALID_REQUEST")
+	})
+
+	t.Run("ExportScheduleXLSX maps invisible publication", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewPublicationHandler(&stubPublicationService{
+			exportScheduleXLSXFunc: func(ctx context.Context, publicationID int64, viewer *model.User, opts service.ExportScheduleOptions) ([]byte, error) {
+				return nil, service.ErrPublicationNotActive
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithUser(
+			requestWithPathValues(httptest.NewRequest(http.MethodGet, "/publications/1/schedule.xlsx", nil), map[string]string{"id": "1"}),
+			&model.User{ID: 7},
+		)
+
+		handler.ExportScheduleXLSX(recorder, req)
 
 		assertErrorResponse(t, recorder, http.StatusConflict, "PUBLICATION_NOT_ACTIVE")
 	})

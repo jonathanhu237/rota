@@ -244,6 +244,7 @@ func main() {
 	mux.HandleFunc("POST /publications/{id}/publish", authHandler.RequireAdmin(publicationHandler.Publish))
 	mux.HandleFunc("POST /publications/{id}/activate", authHandler.RequireAdmin(publicationHandler.Activate))
 	mux.HandleFunc("POST /publications/{id}/end", authHandler.RequireAdmin(publicationHandler.End))
+	mux.HandleFunc("GET /publications/{id}/schedule.xlsx", authHandler.RequireAuth(publicationHandler.ExportScheduleXLSX))
 	mux.HandleFunc("GET /publications/{id}/roster", authHandler.RequireAuth(publicationHandler.GetRoster))
 	mux.HandleFunc("GET /publications/current", authHandler.RequireAuth(publicationHandler.GetCurrent))
 	mux.HandleFunc("GET /roster/current", authHandler.RequireAuth(publicationHandler.GetCurrentRoster))

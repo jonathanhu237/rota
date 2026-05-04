@@ -1,6 +1,7 @@
 import { useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
+import { DownloadIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { GiveDirectDialog } from "@/components/shift-changes/give-direct-dialog"
@@ -23,6 +24,11 @@ import {
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useToast } from "@/components/ui/toast"
+import {
+  downloadPublicationScheduleXLSX,
+  normalizeScheduleExportLanguage,
+} from "@/lib/publications"
 import {
   currentUserQueryOptions,
   publicationMembersQueryOptions,
@@ -36,8 +42,9 @@ export const Route = createFileRoute("/_authenticated/roster")({
 
 type DialogKind = "swap" | "give_direct" | "give_pool" | null
 
-function RosterPage() {
-  const { t } = useTranslation()
+export function RosterPage() {
+  const { t, i18n } = useTranslation()
+  const { toast } = useToast()
   const { data: currentUser } = useQuery(currentUserQueryOptions)
   const rosterQuery = useQuery(rosterCurrentQueryOptions)
   const [weekStart, setWeekStart] = useState<string | null>(null)
@@ -61,6 +68,24 @@ function RosterPage() {
   const [activeShift, setActiveShift] = useState<WeeklyRosterOwnShift | null>(
     null,
   )
+
+  const scheduleDownloadMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeRoster?.publication) {
+        throw new Error("Missing publication")
+      }
+      await downloadPublicationScheduleXLSX(
+        activeRoster.publication,
+        normalizeScheduleExportLanguage(i18n.resolvedLanguage ?? i18n.language),
+      )
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        description: t("roster.downloadFailed"),
+      })
+    },
+  })
 
   const handleShiftAction = (
     shift: WeeklyRosterOwnShift,
@@ -154,6 +179,20 @@ function RosterPage() {
             onClick={() => setWeekStart(addDays(roster.week_start, 7))}
           >
             {t("roster.nextWeek")}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="sm:ml-auto"
+            disabled={scheduleDownloadMutation.isPending}
+            onClick={() => scheduleDownloadMutation.mutate()}
+          >
+            <DownloadIcon data-icon="inline-start" />
+            {t(
+              scheduleDownloadMutation.isPending
+                ? "roster.downloading"
+                : "roster.downloadExcel",
+            )}
           </Button>
         </CardContent>
       </Card>

@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, redirect } from "@tanstack/react-router"
+import { DownloadIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { AssignmentBoard } from "@/components/assignments/assignment-board"
@@ -16,6 +17,10 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/components/ui/toast"
 import { getTranslatedApiError } from "@/lib/api-error"
+import {
+  downloadPublicationScheduleXLSX,
+  normalizeScheduleExportLanguage,
+} from "@/lib/publications"
 import {
   autoAssignPublication,
   createAssignment,
@@ -36,11 +41,11 @@ export const Route = createFileRoute(
   component: PublicationAssignmentsPage,
 })
 
-function PublicationAssignmentsPage() {
+export function PublicationAssignmentsPage() {
   const { publicationId } = Route.useParams()
   const numericPublicationID = Number(publicationId)
 
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [isAutoAssignDialogOpen, setIsAutoAssignDialogOpen] = useState(false)
@@ -124,6 +129,24 @@ function PublicationAssignmentsPage() {
     },
   })
 
+  const scheduleDownloadMutation = useMutation({
+    mutationFn: async () => {
+      if (!board?.publication) {
+        throw new Error("Missing publication")
+      }
+      await downloadPublicationScheduleXLSX(
+        board.publication,
+        normalizeScheduleExportLanguage(i18n.resolvedLanguage ?? i18n.language),
+      )
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        description: t("assignments.downloadFailed"),
+      })
+    },
+  })
+
   if (boardQuery.isLoading) {
     return (
       <div className="grid gap-4">
@@ -150,6 +173,10 @@ function PublicationAssignmentsPage() {
     publicationState !== "PUBLISHED" &&
     publicationState !== "ACTIVE"
   const canAutoAssign = board.publication.state === "ASSIGNING"
+  const canDownloadSchedule =
+    publicationState === "ASSIGNING" ||
+    publicationState === "PUBLISHED" ||
+    publicationState === "ACTIVE"
   const isPending =
     updateAssignmentMutation.isPending || autoAssignMutation.isPending
 
@@ -179,6 +206,21 @@ function PublicationAssignmentsPage() {
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {canDownloadSchedule && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={scheduleDownloadMutation.isPending}
+                  onClick={() => scheduleDownloadMutation.mutate()}
+                >
+                  <DownloadIcon data-icon="inline-start" />
+                  {t(
+                    scheduleDownloadMutation.isPending
+                      ? "assignments.downloading"
+                      : "assignments.downloadExcel",
+                  )}
+                </Button>
+              )}
               {canAutoAssign && (
                 <Button
                   type="button"

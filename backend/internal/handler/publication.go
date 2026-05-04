@@ -30,11 +30,14 @@ type publicationService interface {
 	EndPublication(ctx context.Context, publicationID int64) (*model.Publication, error)
 	GetPublicationRoster(ctx context.Context, publicationID int64, weekStart *time.Time) (*service.RosterResult, error)
 	GetCurrentRoster(ctx context.Context) (*service.RosterResult, error)
+	ExportScheduleXLSX(ctx context.Context, publicationID int64, viewer *model.User, opts service.ExportScheduleOptions) ([]byte, error)
 }
 
 type PublicationHandler struct {
 	publicationService publicationService
 }
+
+const scheduleXLSXContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 type publicationsResponse struct {
 	Publications []publicationResponse `json:"publications"`
@@ -536,6 +539,33 @@ func (h *PublicationHandler) GetRoster(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, http.StatusOK, newRosterResponse(result))
+}
+
+func (h *PublicationHandler) ExportScheduleXLSX(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUserFromRequest(r)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+		return
+	}
+
+	publicationID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	workbook, err := h.publicationService.ExportScheduleXLSX(r.Context(), publicationID, user, service.ExportScheduleOptions{
+		Language: r.URL.Query().Get("lang"),
+	})
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", scheduleXLSXContentType)
+	w.Header().Set("Content-Disposition", `attachment; filename="schedule.xlsx"`)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(workbook)
 }
 
 func (h *PublicationHandler) GetCurrentRoster(w http.ResponseWriter, r *http.Request) {

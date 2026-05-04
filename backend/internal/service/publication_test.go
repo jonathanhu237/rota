@@ -35,6 +35,7 @@ type publicationRepositoryStatefulMock struct {
 	users                    map[int64]*model.User
 	submissions              map[string]*model.AvailabilitySubmission
 	assignments              map[string]*model.Assignment
+	assignmentOverrides      map[int64]*model.AssignmentOverride
 	qualifiedByUser          map[int64]map[int64]struct{}
 	shiftChangeRequests      map[int64]*model.ShiftChangeRequest
 	assignmentOverrideCounts map[int64]int64
@@ -108,8 +109,9 @@ func newPublicationRepositoryStatefulMock() *publicationRepositoryStatefulMock {
 				Status: model.UserStatusDisabled,
 			},
 		},
-		submissions: make(map[string]*model.AvailabilitySubmission),
-		assignments: make(map[string]*model.Assignment),
+		submissions:         make(map[string]*model.AvailabilitySubmission),
+		assignments:         make(map[string]*model.Assignment),
+		assignmentOverrides: make(map[int64]*model.AssignmentOverride),
 		qualifiedByUser: map[int64]map[int64]struct{}{
 			7: {
 				101: {},
@@ -854,7 +856,47 @@ func (m *publicationRepositoryStatefulMock) ListPublicationAssignmentsForWeek(
 	publicationID int64,
 	weekStart time.Time,
 ) ([]*model.AssignmentParticipant, error) {
-	return m.ListPublicationAssignments(ctx, publicationID)
+	assignments, err := m.ListPublicationAssignments(ctx, publicationID)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, assignment := range assignments {
+		if assignment == nil {
+			continue
+		}
+		occurrenceDate := occurrenceDateForWeekday(weekStart, assignment.Weekday)
+		for _, override := range m.assignmentOverrides {
+			if override == nil ||
+				override.AssignmentID != assignment.AssignmentID ||
+				!model.NormalizeOccurrenceDate(override.OccurrenceDate).Equal(occurrenceDate) {
+				continue
+			}
+
+			user, ok := m.users[override.UserID]
+			if !ok {
+				continue
+			}
+			assignment.UserID = user.ID
+			assignment.Name = user.Name
+			assignment.Email = user.Email
+		}
+	}
+
+	sort.Slice(assignments, func(i, j int) bool {
+		if assignments[i].Weekday != assignments[j].Weekday {
+			return assignments[i].Weekday < assignments[j].Weekday
+		}
+		if assignments[i].SlotID != assignments[j].SlotID {
+			return assignments[i].SlotID < assignments[j].SlotID
+		}
+		if assignments[i].PositionID != assignments[j].PositionID {
+			return assignments[i].PositionID < assignments[j].PositionID
+		}
+		return assignments[i].UserID < assignments[j].UserID
+	})
+
+	return assignments, nil
 }
 
 func (m *publicationRepositoryStatefulMock) GetAssignmentBoardView(
