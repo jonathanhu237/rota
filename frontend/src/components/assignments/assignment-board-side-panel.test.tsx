@@ -69,6 +69,24 @@ const directory = new Map<number, Employee>([
 ])
 
 describe("AssignmentBoardSidePanel", () => {
+  it("keeps the directory sticky on desktop while the employee list scrolls internally", () => {
+    renderPanel()
+
+    const panel = screen
+      .getByText("assignments.directory.title")
+      .closest("aside")
+    expect(panel).toBeInTheDocument()
+    expect(panel).toHaveClass(
+      "xl:sticky",
+      "xl:top-4",
+      "xl:max-h-[calc(100svh-2rem)]",
+      "xl:self-start",
+    )
+
+    const employeeList = panel?.querySelector(".overflow-y-auto")
+    expect(employeeList).toBeInTheDocument()
+  })
+
   it("splits employees by submitted availability and computes stats over submitters", () => {
     renderPanel()
 

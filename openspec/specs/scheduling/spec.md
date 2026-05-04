@@ -868,38 +868,49 @@ The endpoint SHALL accept an optional `lang` query parameter. `lang=zh` and `lan
 
 ### Requirement: Publication schedule XLSX workbook content
 
-The schedule export workbook SHALL contain exactly one sheet. The sheet name, header labels, state label, exported-at label, weekday labels, and vacancy label SHALL be localized according to the resolved export language.
+The schedule export workbook SHALL contain exactly one sheet. The sheet name, header labels, weekday labels, and position label SHALL be localized according to the resolved export language. The workbook SHALL NOT include title, publication-state, or exported-at metadata rows above the schedule matrix.
 
 The workbook SHALL represent the publication's current baseline `assignments` snapshot. Direct administrator assignment edits SHALL be reflected in subsequent exports. Leave-driven or occurrence-level shift-change overrides SHALL NOT be applied.
 
-The matrix SHALL use one row per distinct time range, sorted by `(start_time, end_time)` ascending, and fixed weekday columns Monday through Sunday. Each scheduled `(time range, weekday)` cell SHALL include every position configured for that slot. Each position block SHALL include the position name, the required headcount, each assigned user's name on its own line, and one localized vacancy line per unfilled required headcount. User email addresses SHALL NOT be included in the workbook.
+The matrix SHALL use a time column, a position column, and fixed weekday columns Monday through Sunday. Distinct time ranges SHALL be sorted by `(start_time, end_time)` ascending. Each time range SHALL render as a row block: the time cell is vertically merged across the block, each configured position expands to one row per required headcount seat, and each weekday cell contains at most one assigned user's name for that seat. If a position has more assigned users than its configured `required_headcount`, the row block SHALL expand to include every assigned user. Unfilled seats SHALL render as blank cells; localized vacancy labels SHALL NOT be written. User email addresses SHALL NOT be included in the workbook.
 
-#### Scenario: Workbook contains localized metadata and one sheet
+Adjacent time-range row blocks SHALL be separated by one blank spacer row.
+
+#### Scenario: Workbook contains localized matrix headers and one sheet
 
 - **GIVEN** an export-visible publication named `Spring Rota`
 - **WHEN** a caller downloads `GET /publications/{id}/schedule.xlsx?lang=en`
 - **THEN** the workbook contains exactly one sheet named `Roster`
-- **AND** the sheet includes the publication name
-- **AND** the sheet includes localized state and exported-at metadata labels
-- **AND** the matrix header includes `Time`, `Mon`, `Tue`, `Wed`, `Thu`, `Fri`, `Sat`, and `Sun`
+- **AND** row 1 is the matrix header
+- **AND** the matrix header includes `Time`, `Position`, `Monday`, `Tuesday`, `Wednesday`, `Thursday`, `Friday`, `Saturday`, and `Sunday`
+- **AND** the sheet does not include title, publication-state, or exported-at metadata rows above the matrix
 
-#### Scenario: Matrix preserves vacancies and one name per line
+#### Scenario: Matrix expands required seats into rows
 
 - **GIVEN** a scheduled Monday slot from `09:00` to `12:00`
 - **AND** the slot has position `Front Desk` with `required_headcount = 3`
 - **AND** two users named `Alice` and `Bob` are assigned to that `(slot, weekday, position)`
 - **WHEN** a caller downloads the schedule workbook in English
-- **THEN** the `09:00-12:00` / `Mon` cell includes `Front Desk (3)`
-- **AND** the same cell includes `Alice`, `Bob`, and `Empty` on separate lines
-- **AND** the same cell includes exactly one `Empty` line for the missing headcount
+- **THEN** the `09:00-12:00` time block spans three body rows
+- **AND** each row's position cell is `Front Desk`
+- **AND** the Monday column contains `Alice`, then `Bob`, then a blank cell
+
+#### Scenario: Matrix renders multi-position slots as seat rows
+
+- **GIVEN** a scheduled Monday slot with multiple positions
+- **AND** one position has multiple assigned users
+- **WHEN** a caller downloads the schedule workbook
+- **THEN** each required seat is rendered as its own body row
+- **AND** repeated seats for the same position repeat the same position label
+- **AND** the next time-range block starts after one blank spacer row
 
 #### Scenario: Empty scheduled position is still exported
 
 - **GIVEN** a scheduled Tuesday slot has position `Cashier` with `required_headcount = 2`
 - **AND** no users are assigned to that `(slot, weekday, position)`
 - **WHEN** a caller downloads the schedule workbook
-- **THEN** the Tuesday cell for that slot includes `Cashier (2)`
-- **AND** the cell includes two localized vacancy lines
+- **THEN** the time block includes two `Cashier` rows
+- **AND** each Tuesday cell for those rows is blank
 
 #### Scenario: Occurrence-level override is not applied
 
@@ -1453,7 +1464,7 @@ The admin assignment-board UI SHALL render assignments as a 2D grid: rows are th
 
 Cells whose `(slot, weekday)` is not in the slot's weekday set SHALL render shaded with a `—` glyph and SHALL render no seats and SHALL NOT be drop targets.
 
-The page SHALL be a two-pane layout: the grid on the left, a fixed-width employee directory on the right. The directory SHALL be **always visible** and independent of any cell selection (selection state is removed). The directory SHALL list every employee who is qualified for at least one position appearing in this publication's slots, deriving the qualification list from the `GET /publications/{id}/assignment-board` response's top-level `employees[]` array. Each directory row SHALL show the employee's name, current total hours (sum across applied + draft assignments), and the employee's qualified position names as small chips. Disabled (`status != 'active'`) and bootstrap-admin users SHALL be excluded server-side before the data reaches the frontend.
+The page SHALL be a two-pane layout: the grid on the left, a fixed-width employee directory on the right. On desktop-width layouts, the employee directory SHALL remain sticky within the viewport as the admin scrolls the assignment page, while the directory's employee list keeps its own vertical scroll when it exceeds the viewport height. The directory SHALL be **always visible** and independent of any cell selection (selection state is removed). The directory SHALL list every employee who is qualified for at least one position appearing in this publication's slots, deriving the qualification list from the `GET /publications/{id}/assignment-board` response's top-level `employees[]` array. Each directory row SHALL show the employee's name, current total hours (sum across applied + draft assignments), and the employee's qualified position names as small chips. Disabled (`status != 'active'`) and bootstrap-admin users SHALL be excluded server-side before the data reaches the frontend.
 
 The directory SHALL provide a name search box (case-insensitive substring filter) and a sort toggle between **hours-ascending (default)** and **name-ascending**. A small banner above the directory SHALL show the count of cells where `X < N` (e.g., `仍缺 3 个 cell`); when all on-schedule cells are full, the banner SHALL show a "全部 cell 已满" indicator.
 

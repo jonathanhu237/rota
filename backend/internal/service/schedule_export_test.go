@@ -65,51 +65,47 @@ func TestRenderScheduleExportXLSX(t *testing.T) {
 		if len(sheets) != 1 || sheets[0] != "Roster" {
 			t.Fatalf("expected one Roster sheet, got %+v", sheets)
 		}
-		assertCellValue(t, file, "Roster", "A1", "Spring Rota")
-		assertCellValue(t, file, "Roster", "A2", "Status: Published")
-		assertCellValue(t, file, "Roster", "A3", "Exported at: 2026-05-04 15:30")
 		for cell, want := range map[string]string{
-			"A5": "Time",
-			"B5": "Mon",
-			"C5": "Tue",
-			"D5": "Wed",
-			"E5": "Thu",
-			"F5": "Fri",
-			"G5": "Sat",
-			"H5": "Sun",
+			"A1": "Time",
+			"B1": "Position",
+			"C1": "Monday",
+			"D1": "Tuesday",
+			"E1": "Wednesday",
+			"F1": "Thursday",
+			"G1": "Friday",
+			"H1": "Saturday",
+			"I1": "Sunday",
 		} {
 			assertCellValue(t, file, "Roster", cell, want)
 		}
-		assertCellValue(t, file, "Roster", "A6", "09:00-12:00")
-		assertCellValue(t, file, "Roster", "A7", "13:00-17:00")
-
-		mondayCell, err := file.GetCellValue("Roster", "B6")
-		if err != nil {
-			t.Fatalf("read B6: %v", err)
+		assertCellValue(t, file, "Roster", "A2", "09:00-12:00")
+		for cell, want := range map[string]string{
+			"B2": "Front Desk",
+			"C2": "Alice",
+			"B3": "Front Desk",
+			"C3": "Bob",
+			"B4": "Front Desk",
+			"C4": "",
+			"A6": "13:00-17:00",
+			"B6": "Cashier",
+			"D6": "",
+			"B7": "Cashier",
+			"D7": "",
+		} {
+			assertCellValue(t, file, "Roster", cell, want)
 		}
-		for _, want := range []string{"Front Desk (3)", "Alice", "Bob", "Empty"} {
-			if !strings.Contains(mondayCell, want) {
-				t.Fatalf("expected B6 to contain %q, got %q", want, mondayCell)
+		for _, cell := range []string{"C2", "C3", "C4", "D6", "D7"} {
+			value, err := file.GetCellValue("Roster", cell)
+			if err != nil {
+				t.Fatalf("read %s: %v", cell, err)
 			}
-		}
-		if strings.Contains(mondayCell, "alice@example.com") || strings.Contains(mondayCell, "bob@example.com") {
-			t.Fatalf("expected emails to be omitted, got %q", mondayCell)
-		}
-		lines := strings.Split(mondayCell, "\n")
-		if countLines(lines, "Alice") != 1 || countLines(lines, "Bob") != 1 || countLines(lines, "Empty") != 1 {
-			t.Fatalf("expected Alice, Bob, and one vacancy on separate lines, got %q", mondayCell)
-		}
-
-		tuesdayCell, err := file.GetCellValue("Roster", "C7")
-		if err != nil {
-			t.Fatalf("read C7: %v", err)
-		}
-		if !strings.Contains(tuesdayCell, "Cashier (2)") || countLines(strings.Split(tuesdayCell, "\n"), "Empty") != 2 {
-			t.Fatalf("expected empty scheduled position with two vacancies, got %q", tuesdayCell)
+			if strings.Contains(value, "alice@example.com") || strings.Contains(value, "bob@example.com") || strings.Contains(value, "Empty") {
+				t.Fatalf("expected exported seat cell %s to omit emails and vacancy labels, got %q", cell, value)
+			}
 		}
 	})
 
-	t.Run("renders zh labels and vacancy text", func(t *testing.T) {
+	t.Run("renders zh labels and leaves vacancies blank", func(t *testing.T) {
 		t.Parallel()
 
 		workbook, err := renderScheduleExportXLSX(scheduleExportModel{
@@ -122,6 +118,7 @@ func TestRenderScheduleExportXLSX(t *testing.T) {
 					EndTime:   "12:00",
 					Cells: map[int][]scheduleExportPositionBlock{
 						1: {{
+							PositionID:        7,
 							PositionName:      "前台",
 							RequiredHeadcount: 1,
 						}},
@@ -138,11 +135,77 @@ func TestRenderScheduleExportXLSX(t *testing.T) {
 		if len(sheets) != 1 || sheets[0] != "排班表" {
 			t.Fatalf("expected one 排班表 sheet, got %+v", sheets)
 		}
-		assertCellValue(t, file, "排班表", "A2", "状态: 排班中")
-		assertCellValue(t, file, "排班表", "A3", "导出时间: 2026-05-04 15:30")
-		assertCellValue(t, file, "排班表", "A5", "时间")
-		assertCellValue(t, file, "排班表", "B5", "周一")
-		assertCellValue(t, file, "排班表", "B6", "前台 (1)\n空缺")
+		assertCellValue(t, file, "排班表", "A1", "时间")
+		assertCellValue(t, file, "排班表", "B1", "岗位")
+		assertCellValue(t, file, "排班表", "C1", "星期一")
+		assertCellValue(t, file, "排班表", "B2", "前台")
+		assertCellValue(t, file, "排班表", "C2", "")
+	})
+
+	t.Run("renders one row per required seat and spacer rows", func(t *testing.T) {
+		t.Parallel()
+
+		workbook, err := renderScheduleExportXLSX(scheduleExportModel{
+			Publication: &model.Publication{Name: "春季排班", State: model.PublicationStateAssigning},
+			Language:    scheduleExportLanguageZH,
+			ExportedAt:  time.Date(2026, 5, 4, 15, 30, 0, 0, time.UTC),
+			Rows: []scheduleExportTimeRow{
+				{
+					StartTime: "09:00",
+					EndTime:   "10:00",
+					Cells: map[int][]scheduleExportPositionBlock{
+						1: {
+							{
+								PositionID:        1,
+								PositionName:      "前台负责人",
+								RequiredHeadcount: 1,
+								AssigneeNames:     []string{"Alice"},
+							},
+							{
+								PositionID:        2,
+								PositionName:      "前台助理",
+								RequiredHeadcount: 2,
+								AssigneeNames:     []string{"Bob", "Carol"},
+							},
+						},
+					},
+				},
+				{
+					StartTime: "10:00",
+					EndTime:   "12:00",
+					Cells: map[int][]scheduleExportPositionBlock{
+						1: {{
+							PositionID:        1,
+							PositionName:      "前台负责人",
+							RequiredHeadcount: 1,
+							AssigneeNames:     []string{"Dave"},
+						}},
+					},
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("renderScheduleExportXLSX returned error: %v", err)
+		}
+
+		file := openScheduleExportWorkbook(t, workbook)
+		for cell, want := range map[string]string{
+			"A2": "09:00-10:00",
+			"B2": "前台负责人",
+			"C2": "Alice",
+			"B3": "前台助理",
+			"C3": "Bob",
+			"B4": "前台助理",
+			"C4": "Carol",
+			"A5": "",
+			"B5": "",
+			"C5": "",
+			"A6": "10:00-12:00",
+			"B6": "前台负责人",
+			"C6": "Dave",
+		} {
+			assertCellValue(t, file, "排班表", cell, want)
+		}
 	})
 }
 
@@ -267,9 +330,9 @@ func TestPublicationServiceExportScheduleXLSX(t *testing.T) {
 			t.Fatalf("ExportScheduleXLSX returned error: %v", err)
 		}
 		file := openScheduleExportWorkbook(t, workbook)
-		cell, err := file.GetCellValue("Roster", "B6")
+		cell, err := file.GetCellValue("Roster", "C2")
 		if err != nil {
-			t.Fatalf("read B6: %v", err)
+			t.Fatalf("read C2: %v", err)
 		}
 		if !strings.Contains(cell, "Alice") {
 			t.Fatalf("expected baseline assignee Alice, got %q", cell)
@@ -303,14 +366,4 @@ func assertCellValue(t testing.TB, file *excelize.File, sheet, cell, want string
 	if got != want {
 		t.Fatalf("expected %s!%s = %q, got %q", sheet, cell, want, got)
 	}
-}
-
-func countLines(lines []string, want string) int {
-	count := 0
-	for _, line := range lines {
-		if line == want {
-			count++
-		}
-	}
-	return count
 }

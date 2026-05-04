@@ -80,7 +80,7 @@ export function AssignmentBoardSidePanel({
   )
 
   return (
-    <aside className="flex max-h-[760px] flex-col rounded-lg border bg-card">
+    <aside className="flex max-h-[760px] flex-col rounded-lg border bg-card xl:sticky xl:top-4 xl:max-h-[calc(100svh-2rem)] xl:self-start">
       <header className="grid gap-3 border-b p-4">
         <div className="grid gap-1">
           <h3 className="font-medium">{t("assignments.directory.title")}</h3>

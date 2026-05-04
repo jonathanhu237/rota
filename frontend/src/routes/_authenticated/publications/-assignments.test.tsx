@@ -46,6 +46,17 @@ describe("PublicationAssignmentsPage schedule export", () => {
     downloadPublicationScheduleXLSXMock.mockReset()
   })
 
+  it("allows the sticky employee directory to track page scrolling", () => {
+    const board = makeAssignmentBoard("ASSIGNING")
+
+    renderPage(board)
+
+    const assignmentCard = screen
+      .getByText("assignments.directory.title")
+      .closest('[data-slot="card"]')
+    expect(assignmentCard).toHaveClass("overflow-visible")
+  })
+
   it("shows the download control in assigning state and passes publication id with current language", async () => {
     const user = userEvent.setup()
     downloadPublicationScheduleXLSXMock.mockResolvedValue(undefined)

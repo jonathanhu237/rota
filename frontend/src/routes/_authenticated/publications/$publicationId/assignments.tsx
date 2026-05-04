@@ -190,7 +190,7 @@ export function PublicationAssignmentsPage() {
         onOpenChange={setIsAutoAssignDialogOpen}
       />
       <div className="grid gap-6">
-        <Card>
+        <Card className="overflow-visible">
           <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-1">
               <CardTitle>{t("assignments.title")}</CardTitle>

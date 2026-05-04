@@ -3,8 +3,8 @@ package service
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +22,9 @@ type scheduleExportLanguage string
 const (
 	scheduleExportLanguageEN scheduleExportLanguage = "en"
 	scheduleExportLanguageZH scheduleExportLanguage = "zh"
+
+	scheduleExportBodyRowHeight   = 28.0
+	scheduleExportSpacerRowHeight = 18.0
 )
 
 type scheduleExportModel struct {
@@ -45,19 +48,22 @@ type scheduleExportPositionBlock struct {
 	AssigneeNames     []string
 }
 
+type scheduleExportSeatRow struct {
+	PositionID     int64
+	PositionName   string
+	AssigneesByDay map[int]string
+}
+
 type scheduleExportTimeKey struct {
 	StartTime string
 	EndTime   string
 }
 
 type scheduleExportTranslations struct {
-	SheetName       string
-	TimeHeader      string
-	WeekdayHeaders  [7]string
-	StatusLabel     string
-	ExportedAtLabel string
-	VacancyLabel    string
-	StateLabels     map[model.PublicationState]string
+	SheetName      string
+	TimeHeader     string
+	PositionHeader string
+	WeekdayHeaders [7]string
 }
 
 func (s *PublicationService) ExportScheduleXLSX(
@@ -230,63 +236,59 @@ func renderScheduleExportXLSX(exportModel scheduleExportModel) ([]byte, error) {
 		return nil, err
 	}
 
-	titleStyle, err := f.NewStyle(&excelize.Style{
-		Font: &excelize.Font{Bold: true, Size: 14},
-	})
-	if err != nil {
-		return nil, err
-	}
-	metadataStyle, err := f.NewStyle(&excelize.Style{
-		Font: &excelize.Font{Color: "4B5563"},
-	})
-	if err != nil {
-		return nil, err
-	}
 	headerStyle, err := f.NewStyle(&excelize.Style{
-		Font:      &excelize.Font{Bold: true},
+		Font:      &excelize.Font{Bold: true, Color: "111827", Size: 12},
 		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center", WrapText: true},
-		Fill:      excelize.Fill{Type: "pattern", Color: []string{"E5EEF8"}, Pattern: 1},
-		Border:    scheduleExportBorder(),
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"D9EAF7"}, Pattern: 1},
+		Border:    scheduleExportTableBorder("B7C7D9"),
 	})
 	if err != nil {
 		return nil, err
 	}
-	cellStyle, err := f.NewStyle(&excelize.Style{
-		Alignment: &excelize.Alignment{Vertical: "top", WrapText: true},
-		Border:    scheduleExportBorder(),
+	timeStyle, err := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Color: "111827", Size: 12},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center", WrapText: true},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"EAF4F8"}, Pattern: 1},
+		Border:    scheduleExportTableBorder("B7C7D9"),
+	})
+	if err != nil {
+		return nil, err
+	}
+	bodyStyle, err := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Color: "111827", Size: 12},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center", WrapText: true},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"FFFFFF"}, Pattern: 1},
+		Border:    scheduleExportTableBorder("D6DEE8"),
+	})
+	if err != nil {
+		return nil, err
+	}
+	bodyAltStyle, err := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Color: "111827", Size: 12},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center", WrapText: true},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"F7FAFC"}, Pattern: 1},
+		Border:    scheduleExportTableBorder("D6DEE8"),
+	})
+	if err != nil {
+		return nil, err
+	}
+	spacerStyle, err := f.NewStyle(&excelize.Style{
+		Fill:   excelize.Fill{Type: "pattern", Color: []string{"FFFFFF"}, Pattern: 1},
+		Border: scheduleExportTableBorder("E5E7EB"),
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	publicationName := ""
-	state := model.PublicationStateDraft
-	if exportModel.Publication != nil {
-		publicationName = exportModel.Publication.Name
-		state = exportModel.Publication.State
-	}
-	if err := setCell(f, sheet, "A1", publicationName); err != nil {
+	headerRow := 1
+	if err := setCell(f, sheet, "A1", labels.TimeHeader); err != nil {
 		return nil, err
 	}
-	if err := f.SetCellStyle(sheet, "A1", "A1", titleStyle); err != nil {
-		return nil, err
-	}
-	if err := setCell(f, sheet, "A2", labels.StatusLabel+": "+labels.StateLabels[state]); err != nil {
-		return nil, err
-	}
-	if err := setCell(f, sheet, "A3", labels.ExportedAtLabel+": "+formatScheduleExportTime(exportModel.ExportedAt, exportModel.Language)); err != nil {
-		return nil, err
-	}
-	if err := f.SetCellStyle(sheet, "A2", "A3", metadataStyle); err != nil {
-		return nil, err
-	}
-
-	headerRow := 5
-	if err := setCell(f, sheet, "A5", labels.TimeHeader); err != nil {
+	if err := setCell(f, sheet, "B1", labels.PositionHeader); err != nil {
 		return nil, err
 	}
 	for weekday := 1; weekday <= 7; weekday++ {
-		cell, err := excelize.CoordinatesToCellName(weekday+1, headerRow)
+		cell, err := excelize.CoordinatesToCellName(weekday+2, headerRow)
 		if err != nil {
 			return nil, err
 		}
@@ -294,51 +296,111 @@ func renderScheduleExportXLSX(exportModel scheduleExportModel) ([]byte, error) {
 			return nil, err
 		}
 	}
-	if err := f.SetCellStyle(sheet, "A5", "H5", headerStyle); err != nil {
+	if err := f.SetCellStyle(sheet, "A1", "I1", headerStyle); err != nil {
+		return nil, err
+	}
+	if err := f.SetRowHeight(sheet, headerRow, 34); err != nil {
 		return nil, err
 	}
 
-	for i, row := range exportModel.Rows {
-		xlsxRow := headerRow + 1 + i
-		timeCell, err := excelize.CoordinatesToCellName(1, xlsxRow)
-		if err != nil {
-			return nil, err
-		}
-		if err := setCell(f, sheet, timeCell, row.StartTime+"-"+row.EndTime); err != nil {
-			return nil, err
+	xlsxRow := headerRow + 1
+	for timeIndex, row := range exportModel.Rows {
+		seatRows := buildScheduleExportSeatRows(row)
+		if len(seatRows) == 0 {
+			seatRows = []scheduleExportSeatRow{{
+				AssigneesByDay: make(map[int]string),
+			}}
 		}
 
-		for weekday := 1; weekday <= 7; weekday++ {
-			cell, err := excelize.CoordinatesToCellName(weekday+1, xlsxRow)
+		blockStartRow := xlsxRow
+		for seatIndex, seatRow := range seatRows {
+			timeCell, err := excelize.CoordinatesToCellName(1, xlsxRow)
 			if err != nil {
 				return nil, err
 			}
-			if err := setCell(f, sheet, cell, scheduleExportCellValue(row.Cells[weekday], labels.VacancyLabel)); err != nil {
+			if seatIndex == 0 {
+				if err := setCell(f, sheet, timeCell, row.StartTime+"-"+row.EndTime); err != nil {
+					return nil, err
+				}
+			}
+
+			positionCell, err := excelize.CoordinatesToCellName(2, xlsxRow)
+			if err != nil {
+				return nil, err
+			}
+			if err := setCell(f, sheet, positionCell, seatRow.PositionName); err != nil {
+				return nil, err
+			}
+
+			for weekday := 1; weekday <= 7; weekday++ {
+				cell, err := excelize.CoordinatesToCellName(weekday+2, xlsxRow)
+				if err != nil {
+					return nil, err
+				}
+				if err := setCell(f, sheet, cell, seatRow.AssigneesByDay[weekday]); err != nil {
+					return nil, err
+				}
+			}
+
+			rowStyle := bodyStyle
+			if seatIndex%2 == 1 {
+				rowStyle = bodyAltStyle
+			}
+			lastCell, err := excelize.CoordinatesToCellName(9, xlsxRow)
+			if err != nil {
+				return nil, err
+			}
+			if err := f.SetCellStyle(sheet, positionCell, lastCell, rowStyle); err != nil {
+				return nil, err
+			}
+			if err := f.SetCellStyle(sheet, timeCell, timeCell, timeStyle); err != nil {
+				return nil, err
+			}
+			if err := f.SetRowHeight(sheet, xlsxRow, scheduleExportBodyRowHeight); err != nil {
+				return nil, err
+			}
+			xlsxRow++
+		}
+
+		if len(seatRows) > 1 {
+			startCell, err := excelize.CoordinatesToCellName(1, blockStartRow)
+			if err != nil {
+				return nil, err
+			}
+			endCell, err := excelize.CoordinatesToCellName(1, xlsxRow-1)
+			if err != nil {
+				return nil, err
+			}
+			if err := f.MergeCell(sheet, startCell, endCell); err != nil {
+				return nil, err
+			}
+			if err := f.SetCellStyle(sheet, startCell, endCell, timeStyle); err != nil {
 				return nil, err
 			}
 		}
-		if err := f.SetRowHeight(sheet, xlsxRow, 48); err != nil {
-			return nil, err
+
+		if timeIndex < len(exportModel.Rows)-1 {
+			lastSpacerCell, err := excelize.CoordinatesToCellName(9, xlsxRow)
+			if err != nil {
+				return nil, err
+			}
+			if err := f.SetCellStyle(sheet, "A"+strconv.Itoa(xlsxRow), lastSpacerCell, spacerStyle); err != nil {
+				return nil, err
+			}
+			if err := f.SetRowHeight(sheet, xlsxRow, scheduleExportSpacerRowHeight); err != nil {
+				return nil, err
+			}
+			xlsxRow++
 		}
 	}
 
-	lastRow := headerRow
-	if len(exportModel.Rows) > 0 {
-		lastRow = headerRow + len(exportModel.Rows)
-	}
-	lastCell, err := excelize.CoordinatesToCellName(8, lastRow)
-	if err != nil {
+	if err := f.SetColWidth(sheet, "A", "A", 18); err != nil {
 		return nil, err
 	}
-	if len(exportModel.Rows) > 0 {
-		if err := f.SetCellStyle(sheet, "A6", lastCell, cellStyle); err != nil {
-			return nil, err
-		}
-	}
-	if err := f.SetColWidth(sheet, "A", "A", 14); err != nil {
+	if err := f.SetColWidth(sheet, "B", "B", 16); err != nil {
 		return nil, err
 	}
-	if err := f.SetColWidth(sheet, "B", "H", 24); err != nil {
+	if err := f.SetColWidth(sheet, "C", "I", 18); err != nil {
 		return nil, err
 	}
 
@@ -353,75 +415,80 @@ func setCell(f *excelize.File, sheet, cell string, value any) error {
 	return f.SetCellValue(sheet, cell, value)
 }
 
-func scheduleExportCellValue(blocks []scheduleExportPositionBlock, vacancyLabel string) string {
-	if len(blocks) == 0 {
-		return ""
-	}
+func buildScheduleExportSeatRows(row scheduleExportTimeRow) []scheduleExportSeatRow {
+	blocksByPosition := make(map[int64]map[int]scheduleExportPositionBlock)
+	positionNames := make(map[int64]string)
+	maxSeatsByPosition := make(map[int64]int)
 
-	values := make([]string, 0, len(blocks))
-	for _, block := range blocks {
-		lines := []string{fmt.Sprintf("%s (%d)", block.PositionName, block.RequiredHeadcount)}
-		lines = append(lines, block.AssigneeNames...)
-		vacancies := block.RequiredHeadcount - len(block.AssigneeNames)
-		for i := 0; i < vacancies; i++ {
-			lines = append(lines, vacancyLabel)
+	for weekday, blocks := range row.Cells {
+		for _, block := range blocks {
+			if block.PositionID == 0 {
+				continue
+			}
+			if blocksByPosition[block.PositionID] == nil {
+				blocksByPosition[block.PositionID] = make(map[int]scheduleExportPositionBlock)
+			}
+			blocksByPosition[block.PositionID][weekday] = block
+			positionNames[block.PositionID] = block.PositionName
+			maxSeatsByPosition[block.PositionID] = max(maxSeatsByPosition[block.PositionID], max(block.RequiredHeadcount, len(block.AssigneeNames)))
 		}
-		values = append(values, strings.Join(lines, "\n"))
 	}
 
-	return strings.Join(values, "\n\n")
+	positionIDs := make([]int64, 0, len(blocksByPosition))
+	for positionID := range blocksByPosition {
+		positionIDs = append(positionIDs, positionID)
+	}
+	sort.Slice(positionIDs, func(i, j int) bool { return positionIDs[i] < positionIDs[j] })
+
+	rows := make([]scheduleExportSeatRow, 0)
+	for _, positionID := range positionIDs {
+		seatCount := maxSeatsByPosition[positionID]
+		if seatCount < 1 {
+			seatCount = 1
+		}
+		for seatIndex := 0; seatIndex < seatCount; seatIndex++ {
+			seatRow := scheduleExportSeatRow{
+				PositionID:     positionID,
+				PositionName:   positionNames[positionID],
+				AssigneesByDay: make(map[int]string),
+			}
+			for weekday := 1; weekday <= 7; weekday++ {
+				block, ok := blocksByPosition[positionID][weekday]
+				if !ok || seatIndex >= len(block.AssigneeNames) {
+					continue
+				}
+				seatRow.AssigneesByDay[weekday] = block.AssigneeNames[seatIndex]
+			}
+			rows = append(rows, seatRow)
+		}
+	}
+
+	return rows
 }
 
 func scheduleExportLabels(language scheduleExportLanguage) scheduleExportTranslations {
 	if language == scheduleExportLanguageZH {
 		return scheduleExportTranslations{
-			SheetName:       "排班表",
-			TimeHeader:      "时间",
-			WeekdayHeaders:  [7]string{"周一", "周二", "周三", "周四", "周五", "周六", "周日"},
-			StatusLabel:     "状态",
-			ExportedAtLabel: "导出时间",
-			VacancyLabel:    "空缺",
-			StateLabels: map[model.PublicationState]string{
-				model.PublicationStateDraft:      "草稿",
-				model.PublicationStateCollecting: "收集中",
-				model.PublicationStateAssigning:  "排班中",
-				model.PublicationStatePublished:  "已发布",
-				model.PublicationStateActive:     "生效中",
-				model.PublicationStateEnded:      "已结束",
-			},
+			SheetName:      "排班表",
+			TimeHeader:     "时间",
+			PositionHeader: "岗位",
+			WeekdayHeaders: [7]string{"星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"},
 		}
 	}
 
 	return scheduleExportTranslations{
-		SheetName:       "Roster",
-		TimeHeader:      "Time",
-		WeekdayHeaders:  [7]string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"},
-		StatusLabel:     "Status",
-		ExportedAtLabel: "Exported at",
-		VacancyLabel:    "Empty",
-		StateLabels: map[model.PublicationState]string{
-			model.PublicationStateDraft:      "Draft",
-			model.PublicationStateCollecting: "Collecting",
-			model.PublicationStateAssigning:  "Assigning",
-			model.PublicationStatePublished:  "Published",
-			model.PublicationStateActive:     "Active",
-			model.PublicationStateEnded:      "Ended",
-		},
+		SheetName:      "Roster",
+		TimeHeader:     "Time",
+		PositionHeader: "Position",
+		WeekdayHeaders: [7]string{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"},
 	}
 }
 
-func formatScheduleExportTime(t time.Time, language scheduleExportLanguage) string {
-	if t.IsZero() {
-		return ""
-	}
-	return t.Format("2006-01-02 15:04")
-}
-
-func scheduleExportBorder() []excelize.Border {
+func scheduleExportTableBorder(color string) []excelize.Border {
 	return []excelize.Border{
-		{Type: "left", Color: "CBD5E1", Style: 1},
-		{Type: "top", Color: "CBD5E1", Style: 1},
-		{Type: "right", Color: "CBD5E1", Style: 1},
-		{Type: "bottom", Color: "CBD5E1", Style: 1},
+		{Type: "left", Color: color, Style: 1},
+		{Type: "top", Color: color, Style: 1},
+		{Type: "right", Color: color, Style: 1},
+		{Type: "bottom", Color: color, Style: 1},
 	}
 }
