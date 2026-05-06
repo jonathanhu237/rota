@@ -141,6 +141,8 @@
     "publications": "排班计划",
     "publicationFallback": "排班计划",
     "assignments": "排班分配",
+    "availabilityManagement": "空闲时间管理",
+    "availabilityEditor": "编辑空闲时间",
     "shiftChanges": "调班申请",
     "current": "当前页面"
   },
@@ -688,6 +690,7 @@
       "activate": "生效",
       "end": "结束",
       "openAssignmentBoard": "打开分配面板",
+      "manageAvailability": "管理空闲时间",
       "viewShiftChanges": "查看换班请求",
       "viewExisting": "查看当前排班计划"
     },
@@ -785,6 +788,8 @@
       "PUBLICATION_NOT_PUBLISHED": "当前排班计划还没有进入公示状态。",
       "PUBLICATION_NOT_FOUND": "排班计划不存在",
       "TEMPLATE_NOT_FOUND": "排班模板不存在",
+      "TEMPLATE_SLOT_NOT_FOUND": "模板时段不存在",
+      "TEMPLATE_SLOT_POSITION_NOT_FOUND": "模板时段岗位不存在",
       "TEMPLATE_SHIFT_NOT_FOUND": "模板班次不存在",
       "ASSIGNMENT_USER_ALREADY_IN_SLOT": "该用户已在此时段被分配到其他岗位。",
       "ASSIGNMENT_TIME_CONFLICT": "该分配与用户已有的班次时间冲突。",
@@ -929,6 +934,53 @@
       "PUBLICATION_NOT_FOUND": "排班计划不存在",
       "TEMPLATE_SHIFT_NOT_FOUND": "模板班次不存在",
       "UNAUTHORIZED": "未授权"
+    }
+  },
+  "adminAvailability": {
+    "title": "空闲时间管理",
+    "description": "查看并修正 {{name}} 的员工空闲时间提交。",
+    "loadError": "当前无法加载空闲时间数据。",
+    "backToAssignments": "返回分配面板",
+    "pageSummary": "显示第 {{start}}-{{end}} 位，共 {{total}} 位员工",
+    "search": {
+      "label": "搜索员工",
+      "placeholder": "姓名或邮箱"
+    },
+    "pagination": {
+      "previous": "上一页",
+      "next": "下一页",
+      "page": "第 {{page}} / {{totalPages}} 页"
+    },
+    "table": {
+      "name": "员工",
+      "positions": "资格",
+      "submittedCount": "已提交 cell",
+      "submittedCountValue": "{{count}} 个 cell",
+      "actions": "操作",
+      "edit": "编辑",
+      "empty": "没有匹配的员工。"
+    },
+    "editor": {
+      "title": "编辑空闲时间",
+      "titleForUser": "{{name}} 的空闲时间",
+      "description": "{{email}}",
+      "back": "返回空闲时间管理",
+      "gridTitle": "模板空闲时间表格",
+      "gridDescription": "编辑该员工在本排班计划中的完整目标空闲时间。",
+      "autoAssignNote": "空闲时间修改只影响之后自动分配的候选池，不会自动修改当前已有分配。",
+      "readOnly": "该排班计划当前不能再修改空闲时间。",
+      "ineligibleSelected": "当前仍有 {{count}} 个已勾选 cell 不再符合资格，请先取消勾选再保存。",
+      "noSlots": "该排班计划没有可用 cell。",
+      "eligible": "可选",
+      "ineligible": "不可选",
+      "exception": "已提交例外",
+      "cellLabel": "{{weekday}} {{time}} {{summary}}",
+      "unsavedCount": "未保存更改：{{count}} 项",
+      "discard": "放弃",
+      "save": "保存",
+      "saving": "保存中...",
+      "saveSuccess": "空闲时间已更新。",
+      "confirmLeave": "放弃尚未保存的空闲时间更改？"
     }
   },
   "requests": {

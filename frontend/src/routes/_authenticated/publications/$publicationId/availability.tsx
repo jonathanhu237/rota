@@ -2,16 +2,18 @@ import { Outlet, createFileRoute, redirect } from "@tanstack/react-router"
 
 import { currentUserQueryOptions } from "@/lib/queries"
 
-export const Route = createFileRoute("/_authenticated/publications/$publicationId")({
+export const Route = createFileRoute(
+  "/_authenticated/publications/$publicationId/availability",
+)({
   beforeLoad: async ({ context }) => {
     const user = await context.queryClient.ensureQueryData(currentUserQueryOptions)
     if (!user.is_admin) {
       throw redirect({ to: "/" })
     }
   },
-  component: PublicationLayout,
+  component: PublicationAvailabilityLayout,
 })
 
-export function PublicationLayout() {
+export function PublicationAvailabilityLayout() {
   return <Outlet />
 }

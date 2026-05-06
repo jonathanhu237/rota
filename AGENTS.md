@@ -1,11 +1,8 @@
 ## Development Workflow
 
-This project uses **OpenSpec** for spec-driven development. Every behavior change goes through a change folder under `openspec/changes/` before any code is touched. Specs in `openspec/specs/` are the source of truth.
+This project uses **OpenSpec** for spec-driven development. Every behavior change goes through a change folder under `openspec/changes/` before implementation, and specs in `openspec/specs/` are the source of truth.
 
-### Roles
-
-- **Claude**: explores, writes spec artifacts (`proposal.md`, `design.md`, `tasks.md`, delta specs), reviews implementation against spec, commits.
-- **Codex**: applies tasks (implements code, runs tests, reports outcomes).
+OpenSpec workflow rules live in [`openspec/config.yaml`](openspec/config.yaml). That file is the source of truth for proposal, apply, verify, and archive behavior, including dedicated branch handling, verification review requirements, and archive/merge expectations. Do not duplicate or override those workflow rules here.
 
 ### Loop
 
@@ -14,39 +11,20 @@ This project uses **OpenSpec** for spec-driven development. Every behavior chang
     → /opsx:propose <change-name>
     → /opsx:apply
     → /opsx:verify (recommended for multi-session changes)
-    → review
     → /opsx:archive
     → git commit
 ```
 
 1. **Explore (optional):** `/opsx:explore` — read the codebase, compare options, sketch designs. No code written.
 2. **Propose:** `/opsx:propose <change-name>` — scaffold `openspec/changes/<name>/` with `proposal.md`, `design.md`, `tasks.md`, and any delta under `specs/`.
-3. **Apply:** `/opsx:apply` — work through `tasks.md`, ticking each `- [ ]` to `- [x]`. Codex drives.
-4. **Verify (optional):** `/opsx:verify` — completeness / correctness / coherence pass. Useful when the change spans multiple sessions or multiple agents; redundant if a human review immediately follows `/opsx:apply`.
-5. **Review:** Claude verifies implementation against the change artifacts. Behavior drift is fixed in artifacts first, then re-applied — do not patch code to match a stale design.
-6. **Archive:** `/opsx:archive` — move the change to `openspec/changes/archive/YYYY-MM-DD-<name>/` and merge delta specs into `openspec/specs/`. Commit the result.
-
-Skill details live under `.claude/skills/openspec-*/SKILL.md` (mirrored to `.codex/skills/`).
+3. **Apply:** `/opsx:apply` — work through `tasks.md`, ticking each `- [ ]` to `- [x]`.
+4. **Verify:** `/opsx:verify` — validate completeness, correctness, coherence, and review findings against the OpenSpec artifacts.
+5. **Archive:** `/opsx:archive` — move the change to `openspec/changes/archive/YYYY-MM-DD-<name>/` and merge delta specs into `openspec/specs/`.
 
 ### Rules of engagement
 
-- **One live writer per change.** Do not have Claude and Codex editing the same files concurrently. Handoff happens through the OpenSpec artifacts, not through the working tree.
-- **Apply runs on a feature branch named `change/<change-name>`, not on `main`.** As the first step of `/opsx:apply`, Codex SHALL run `git checkout -b change/<change-name>` from `main` and stay on that branch for the rest of the run. All apply / verify / fix-up commits land on the feature branch; the branch merges back to `main` only after `/opsx:archive` completes — see the next bullet for the merge-back sequence.
-- **The workflow is single-threaded.** While Codex is on a `change/*` branch in the working tree, do not commit on `main` from the same directory; just discuss / read / sketch artifact files (which can be created without committing). Wait for Codex to finish, then verify / archive / merge-back proceed serially. We do not run parallel Codex sessions; each cycle is discuss → propose → apply → review → archive → merge.
-- **`/opsx:archive` is followed by a merge-back sequence Claude SHALL perform** when the change is on a `change/*` branch (skip if on `main` directly). The sequence rebases the feature branch onto the latest `main` and then fast-forwards `main` onto it, keeping `main` history linear (no merge bubbles). Right after archive succeeds and the post-archive commit is in place, Claude runs (substituting `<branch>` for the current `change/<change-name>`):
-
-  1. (already on the feature branch) `git fetch origin main && git rebase origin/main` — replay the feature commits on top of the latest `main`. Resolve conflicts manually if any.
-  2. `git push --force-with-lease origin <branch>` — push the rebased branch so CI runs on it (force needed because rebase rewrote SHAs).
-  3. `git switch main && git pull --ff-only origin main` — return to `main`, sync local with origin.
-  4. `git merge --ff-only <branch>` — fast-forward `main` onto the rebased feature branch (no merge commit). If this fails because `origin/main` moved between rebase and ff-merge, redo from step 1.
-  5. `git push origin main` — push the now-linear `main`.
-  6. Wait for CI on `main`; report success or surface failures.
-  7. `git branch -d <branch>` — local cleanup.
-  8. `git push origin --delete <branch>` — drop the remote branch (best-effort; suppress non-zero exit).
-
-  This sequence is Claude's responsibility because Claude is the only role with the Bash tool wired up for git plumbing. Codex finishes at apply; the user's only inputs in the lifecycle are starting Codex and saying "done".
 - **Behavior drift → fix the artifact first.** If review finds the implementation diverges from `design.md` / `tasks.md` / specs in a way that changes user-visible behavior or interfaces, update the artifact first and re-apply. Typos, renames, refactors that preserve behavior, comment tweaks, and logging changes can be patched directly without an artifact update.
-- **Small-change fast path.** When a behavior change is contained — one capability, one or two functions touched, no schema migration, no new endpoint, no cross-capability interaction — Claude MAY apply it directly without going through propose / apply / archive. The fast path still requires (a) updating the relevant `openspec/specs/<capability>/spec.md` in the same commit (spec stays source of truth), (b) tests covering the new behavior per the Done definition (one success + one rejection), and (c) a `change/<name>` branch + the standard merge-back sequence — only the change folder and Codex hand-off are skipped. Examples that fit: invalidating sessions on password reset; adding one rejection branch to an existing handler; tightening a CHECK constraint without a schema change. Examples that do NOT fit: any new table or column, any new endpoint family, any UI feature, any cross-capability refactor.
+- **Single active workflow per working tree.** Keep one OpenSpec change active in this checkout unless the user explicitly asks for a different branch/worktree strategy.
 
 ### Commit convention
 

@@ -23,6 +23,9 @@ type stubPublicationService struct {
 	createAvailabilitySubmissionFunc   func(ctx context.Context, input service.CreateAvailabilitySubmissionInput) (*model.AvailabilitySubmission, error)
 	deleteAvailabilitySubmissionFunc   func(ctx context.Context, input service.DeleteAvailabilitySubmissionInput) error
 	listQualifiedPublicationShiftsFunc func(ctx context.Context, publicationID, userID int64) ([]*model.QualifiedShift, error)
+	listAdminAvailabilityFunc          func(ctx context.Context, input service.ListAdminAvailabilityInput) (*service.AdminAvailabilityBoardResult, error)
+	getAdminAvailabilityDetailFunc     func(ctx context.Context, input service.GetAdminAvailabilityDetailInput) (*service.AdminAvailabilityDetailResult, error)
+	replaceAdminAvailabilityFunc       func(ctx context.Context, input service.ReplaceAdminAvailabilityInput) (*service.AdminAvailabilityDetailResult, error)
 	getAssignmentBoardFunc             func(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error)
 	autoAssignPublicationFunc          func(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error)
 	createAssignmentFunc               func(ctx context.Context, input service.CreateAssignmentInput) (*model.Assignment, error)
@@ -74,6 +77,27 @@ func (s *stubPublicationService) DeleteAvailabilitySubmission(ctx context.Contex
 
 func (s *stubPublicationService) ListQualifiedPublicationSlotPositions(ctx context.Context, publicationID, userID int64) ([]*model.QualifiedShift, error) {
 	return s.listQualifiedPublicationShiftsFunc(ctx, publicationID, userID)
+}
+
+func (s *stubPublicationService) ListAdminAvailability(
+	ctx context.Context,
+	input service.ListAdminAvailabilityInput,
+) (*service.AdminAvailabilityBoardResult, error) {
+	return s.listAdminAvailabilityFunc(ctx, input)
+}
+
+func (s *stubPublicationService) GetAdminAvailabilityDetail(
+	ctx context.Context,
+	input service.GetAdminAvailabilityDetailInput,
+) (*service.AdminAvailabilityDetailResult, error) {
+	return s.getAdminAvailabilityDetailFunc(ctx, input)
+}
+
+func (s *stubPublicationService) ReplaceAdminAvailability(
+	ctx context.Context,
+	input service.ReplaceAdminAvailabilityInput,
+) (*service.AdminAvailabilityDetailResult, error) {
+	return s.replaceAdminAvailabilityFunc(ctx, input)
 }
 
 func (s *stubPublicationService) GetAssignmentBoard(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error) {

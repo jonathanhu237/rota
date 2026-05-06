@@ -6,6 +6,7 @@ import (
 	"errors"
 	"sort"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -490,6 +491,158 @@ func (m *publicationRepositoryStatefulMock) ListQualifiedPublicationSlotPosition
 	})
 
 	return shifts, nil
+}
+
+func (m *publicationRepositoryStatefulMock) ListAdminAvailabilityEmployees(
+	ctx context.Context,
+	params repository.ListAdminAvailabilityEmployeesParams,
+) ([]*repository.AdminAvailabilityEmployee, int, error) {
+	if _, ok := m.publications[params.PublicationID]; !ok {
+		return nil, 0, repository.ErrPublicationNotFound
+	}
+
+	templatePositions := m.publicationTemplatePositionSet(params.PublicationID)
+	search := strings.ToLower(strings.TrimSpace(params.Search))
+	employees := make([]*repository.AdminAvailabilityEmployee, 0)
+	for _, user := range m.users {
+		if user.Status != model.UserStatusActive || user.IsAdmin {
+			continue
+		}
+		if search != "" && !strings.Contains(strings.ToLower(user.Name), search) && !strings.Contains(strings.ToLower(user.Email), search) {
+			continue
+		}
+		positions := m.relevantMockPositions(user.ID, templatePositions)
+		if len(positions) == 0 {
+			continue
+		}
+		employees = append(employees, &repository.AdminAvailabilityEmployee{
+			UserID:         user.ID,
+			Name:           user.Name,
+			Email:          user.Email,
+			Positions:      positions,
+			SubmittedCount: m.submissionCount(params.PublicationID, user.ID),
+		})
+	}
+	sort.Slice(employees, func(i, j int) bool {
+		return employees[i].UserID < employees[j].UserID
+	})
+
+	total := len(employees)
+	start := params.Offset
+	if start > len(employees) {
+		start = len(employees)
+	}
+	end := start + params.Limit
+	if end > len(employees) {
+		end = len(employees)
+	}
+	return employees[start:end], total, nil
+}
+
+func (m *publicationRepositoryStatefulMock) GetAdminAvailabilityUser(
+	ctx context.Context,
+	publicationID, userID int64,
+) (*model.User, []*model.Position, error) {
+	if _, ok := m.publications[publicationID]; !ok {
+		return nil, nil, repository.ErrPublicationNotFound
+	}
+	user, ok := m.users[userID]
+	if !ok {
+		return nil, nil, repository.ErrUserNotFound
+	}
+	if user.IsAdmin {
+		return nil, nil, repository.ErrUserNotFound
+	}
+	if user.Status == model.UserStatusDisabled {
+		return nil, nil, repository.ErrUserDisabled
+	}
+	if user.Status != model.UserStatusActive {
+		return nil, nil, repository.ErrUserNotFound
+	}
+
+	positions := m.relevantMockPositions(userID, m.publicationTemplatePositionSet(publicationID))
+	if len(positions) == 0 {
+		return nil, nil, repository.ErrUserNotFound
+	}
+
+	cloned := *user
+	return &cloned, positions, nil
+}
+
+func (m *publicationRepositoryStatefulMock) ReplaceAdminAvailabilitySubmissions(
+	ctx context.Context,
+	params repository.ReplaceAdminAvailabilitySubmissionsParams,
+) (*repository.ReplaceAdminAvailabilitySubmissionsResult, error) {
+	publication, ok := m.publications[params.PublicationID]
+	if !ok {
+		return nil, repository.ErrPublicationNotFound
+	}
+	effectiveState := model.ResolvePublicationState(publication, params.Now)
+	if effectiveState != model.PublicationStateCollecting && effectiveState != model.PublicationStateAssigning {
+		return nil, model.ErrPublicationNotMutable
+	}
+
+	user, ok := m.users[params.UserID]
+	if !ok {
+		return nil, repository.ErrUserNotFound
+	}
+	if user.IsAdmin {
+		return nil, repository.ErrUserNotFound
+	}
+	if user.Status != model.UserStatusActive {
+		return nil, repository.ErrUserDisabled
+	}
+	if len(m.relevantMockPositions(params.UserID, m.publicationTemplatePositionSet(params.PublicationID))) == 0 {
+		return nil, repository.ErrUserNotFound
+	}
+	for _, slot := range params.Submissions {
+		if err := m.validateAdminAvailabilityTargetRef(params.PublicationID, params.UserID, slot); err != nil {
+			return nil, err
+		}
+	}
+
+	current := make(map[model.SlotRef]struct{})
+	for _, submission := range m.submissions {
+		if submission.PublicationID == params.PublicationID && submission.UserID == params.UserID {
+			current[model.SlotRef{SlotID: submission.SlotID, Weekday: submission.Weekday}] = struct{}{}
+		}
+	}
+	target := make(map[model.SlotRef]struct{}, len(params.Submissions))
+	for _, submission := range params.Submissions {
+		target[submission] = struct{}{}
+	}
+
+	removed := make([]model.SlotRef, 0)
+	for slot := range current {
+		if _, ok := target[slot]; !ok {
+			removed = append(removed, slot)
+			delete(m.submissions, submissionKey(params.PublicationID, params.UserID, slot.SlotID, slot.Weekday))
+		}
+	}
+
+	added := make([]model.SlotRef, 0)
+	for slot := range target {
+		if _, ok := current[slot]; ok {
+			continue
+		}
+		added = append(added, slot)
+		m.submissions[submissionKey(params.PublicationID, params.UserID, slot.SlotID, slot.Weekday)] = &model.AvailabilitySubmission{
+			ID:            m.nextSubmissionID,
+			PublicationID: params.PublicationID,
+			UserID:        params.UserID,
+			SlotID:        slot.SlotID,
+			Weekday:       slot.Weekday,
+			CreatedAt:     params.CreatedAt,
+		}
+		m.nextSubmissionID++
+	}
+
+	sortSlotRefsForService(removed)
+	sortSlotRefsForService(added)
+	return &repository.ReplaceAdminAvailabilitySubmissionsResult{
+		Added:   added,
+		Removed: removed,
+	}, nil
 }
 
 func (m *publicationRepositoryStatefulMock) CreateAssignment(
@@ -2100,6 +2253,29 @@ func TestResolvePublicationState(t *testing.T) {
 	}
 }
 
+func (m *publicationRepositoryStatefulMock) validateAdminAvailabilityTargetRef(
+	publicationID, userID int64,
+	slotRef model.SlotRef,
+) error {
+	publication := m.publications[publicationID]
+	slot := m.templateSlots[slotRef.SlotID]
+	if publication == nil ||
+		slot == nil ||
+		slot.TemplateID != publication.TemplateID ||
+		!mockSlotHasWeekday(slot, slotRef.Weekday) {
+		return repository.ErrInvalidAvailabilityCell
+	}
+
+	userPositions := m.qualifiedByUser[userID]
+	for _, slotPosition := range m.slotPositions[slotRef.SlotID] {
+		if _, ok := userPositions[slotPosition.PositionID]; ok {
+			return nil
+		}
+	}
+
+	return model.ErrNotQualified
+}
+
 func collectingPublication(now time.Time) *model.Publication {
 	return &model.Publication{
 		ID:                1,
@@ -2136,6 +2312,51 @@ func (m *publicationRepositoryStatefulMock) resolveStoredAssignmentRef(
 	}
 
 	return assignment.SlotID, assignment.PositionID, 0
+}
+
+func (m *publicationRepositoryStatefulMock) publicationTemplatePositionSet(publicationID int64) map[int64]struct{} {
+	result := make(map[int64]struct{})
+	publication := m.publications[publicationID]
+	if publication == nil {
+		return result
+	}
+	for slotID, slot := range m.templateSlots {
+		if slot.TemplateID != publication.TemplateID {
+			continue
+		}
+		for _, slotPosition := range m.slotPositions[slotID] {
+			result[slotPosition.PositionID] = struct{}{}
+		}
+	}
+	return result
+}
+
+func (m *publicationRepositoryStatefulMock) relevantMockPositions(userID int64, templatePositions map[int64]struct{}) []*model.Position {
+	userPositions := m.qualifiedByUser[userID]
+	positions := make([]*model.Position, 0)
+	for positionID := range userPositions {
+		if _, ok := templatePositions[positionID]; !ok {
+			continue
+		}
+		positions = append(positions, &model.Position{
+			ID:   positionID,
+			Name: mockPositionName(positionID),
+		})
+	}
+	sort.Slice(positions, func(i, j int) bool {
+		return positions[i].ID < positions[j].ID
+	})
+	return positions
+}
+
+func (m *publicationRepositoryStatefulMock) submissionCount(publicationID, userID int64) int {
+	count := 0
+	for _, submission := range m.submissions {
+		if submission.PublicationID == publicationID && submission.UserID == userID {
+			count++
+		}
+	}
+	return count
 }
 
 func mockSlotHasWeekday(slot *model.TemplateSlot, weekday int) bool {

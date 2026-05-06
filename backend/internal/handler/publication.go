@@ -21,6 +21,9 @@ type publicationService interface {
 	CreateAvailabilitySubmission(ctx context.Context, input service.CreateAvailabilitySubmissionInput) (*model.AvailabilitySubmission, error)
 	DeleteAvailabilitySubmission(ctx context.Context, input service.DeleteAvailabilitySubmissionInput) error
 	ListQualifiedPublicationSlotPositions(ctx context.Context, publicationID, userID int64) ([]*model.QualifiedShift, error)
+	ListAdminAvailability(ctx context.Context, input service.ListAdminAvailabilityInput) (*service.AdminAvailabilityBoardResult, error)
+	GetAdminAvailabilityDetail(ctx context.Context, input service.GetAdminAvailabilityDetailInput) (*service.AdminAvailabilityDetailResult, error)
+	ReplaceAdminAvailability(ctx context.Context, input service.ReplaceAdminAvailabilityInput) (*service.AdminAvailabilityDetailResult, error)
 	GetAssignmentBoard(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error)
 	AutoAssignPublication(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error)
 	CreateAssignment(ctx context.Context, input service.CreateAssignmentInput) (*model.Assignment, error)
@@ -91,6 +94,10 @@ type createAssignmentRequest struct {
 	SlotID     int64 `json:"slot_id"`
 	Weekday    int   `json:"weekday"`
 	PositionID int64 `json:"position_id"`
+}
+
+type replaceAdminAvailabilityRequest struct {
+	Submissions *[]slotRefResponse `json:"submissions"`
 }
 
 func NewPublicationHandler(publicationService publicationService) *PublicationHandler {
@@ -376,6 +383,114 @@ func (h *PublicationHandler) ListMyQualifiedShifts(w http.ResponseWriter, r *htt
 	writeData(w, http.StatusOK, shiftsMeResponse{
 		Shifts: responseShifts,
 	})
+}
+
+func (h *PublicationHandler) ListAdminAvailability(w http.ResponseWriter, r *http.Request) {
+	publicationID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	page, err := parseOptionalInt(r.URL.Query().Get("page"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid page parameter")
+		return
+	}
+
+	pageSize, err := parseOptionalInt(r.URL.Query().Get("page_size"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid page size parameter")
+		return
+	}
+
+	result, err := h.publicationService.ListAdminAvailability(r.Context(), service.ListAdminAvailabilityInput{
+		PublicationID: publicationID,
+		Page:          page,
+		PageSize:      pageSize,
+		Search:        r.URL.Query().Get("search"),
+	})
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, newAdminAvailabilityBoardResponse(result))
+}
+
+func (h *PublicationHandler) GetAdminAvailabilityDetail(w http.ResponseWriter, r *http.Request) {
+	publicationID, userID, ok := h.parseAdminAvailabilityPath(w, r)
+	if !ok {
+		return
+	}
+
+	result, err := h.publicationService.GetAdminAvailabilityDetail(r.Context(), service.GetAdminAvailabilityDetailInput{
+		PublicationID: publicationID,
+		UserID:        userID,
+	})
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, newAdminAvailabilityDetailResponse(result))
+}
+
+func (h *PublicationHandler) ReplaceAdminAvailability(w http.ResponseWriter, r *http.Request) {
+	publicationID, userID, ok := h.parseAdminAvailabilityPath(w, r)
+	if !ok {
+		return
+	}
+
+	var req replaceAdminAvailabilityRequest
+	if err := readJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+	if req.Submissions == nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+
+	submissions := make([]model.SlotRef, 0, len(*req.Submissions))
+	for _, submission := range *req.Submissions {
+		if submission.SlotID <= 0 || submission.Weekday < 1 || submission.Weekday > 7 {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+			return
+		}
+		submissions = append(submissions, model.SlotRef{
+			SlotID:  submission.SlotID,
+			Weekday: submission.Weekday,
+		})
+	}
+
+	result, err := h.publicationService.ReplaceAdminAvailability(r.Context(), service.ReplaceAdminAvailabilityInput{
+		PublicationID: publicationID,
+		UserID:        userID,
+		Submissions:   submissions,
+	})
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, newAdminAvailabilityDetailResponse(result))
+}
+
+func (h *PublicationHandler) parseAdminAvailabilityPath(w http.ResponseWriter, r *http.Request) (int64, int64, bool) {
+	publicationID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return 0, 0, false
+	}
+
+	userID, err := parsePathID(r, "user_id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid user id")
+		return 0, 0, false
+	}
+
+	return publicationID, userID, true
 }
 
 func (h *PublicationHandler) GetAssignmentBoard(w http.ResponseWriter, r *http.Request) {

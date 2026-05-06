@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/jonathanhu237/rota/backend/internal/model"
+	"github.com/jonathanhu237/rota/backend/internal/service"
 )
 
 type errorResponse struct {
@@ -160,6 +161,46 @@ type assignmentBoardResponse struct {
 	Publication *publicationResponse              `json:"publication"`
 	Slots       []assignmentBoardSlotResponse     `json:"slots"`
 	Employees   []assignmentBoardEmployeeResponse `json:"employees"`
+}
+
+type adminAvailabilityBoardResponse struct {
+	Publication *publicationResponse                `json:"publication"`
+	Employees   []adminAvailabilityEmployeeResponse `json:"employees"`
+	Pagination  paginationResponse                  `json:"pagination"`
+}
+
+type adminAvailabilityEmployeeResponse struct {
+	UserID         int64                         `json:"user_id"`
+	Name           string                        `json:"name"`
+	Email          string                        `json:"email"`
+	Positions      []publicationPositionResponse `json:"positions"`
+	SubmittedCount int                           `json:"submitted_count"`
+}
+
+type adminAvailabilityDetailResponse struct {
+	Publication *publicationResponse            `json:"publication"`
+	User        userResponse                    `json:"user"`
+	Positions   []publicationPositionResponse   `json:"positions"`
+	Slots       []adminAvailabilitySlotResponse `json:"slots"`
+	Submissions []slotRefResponse               `json:"submissions"`
+	Cells       []adminAvailabilityCellResponse `json:"cells"`
+}
+
+type adminAvailabilitySlotResponse struct {
+	Slot      publicationSlotResponse             `json:"slot"`
+	Positions []adminAvailabilityPositionResponse `json:"positions"`
+}
+
+type adminAvailabilityPositionResponse struct {
+	Position          publicationPositionResponse `json:"position"`
+	RequiredHeadcount int                         `json:"required_headcount"`
+}
+
+type adminAvailabilityCellResponse struct {
+	SlotID    int64 `json:"slot_id"`
+	Weekday   int   `json:"weekday"`
+	Eligible  bool  `json:"eligible"`
+	Submitted bool  `json:"submitted"`
 }
 
 type rosterAssignmentResponse struct {
@@ -345,6 +386,100 @@ func newPublicationPositionResponse(position *model.Position) publicationPositio
 	return publicationPositionResponse{
 		ID:   position.ID,
 		Name: position.Name,
+	}
+}
+
+func newAdminAvailabilityBoardResponse(result *service.AdminAvailabilityBoardResult) adminAvailabilityBoardResponse {
+	if result == nil {
+		return adminAvailabilityBoardResponse{
+			Publication: nil,
+			Employees:   []adminAvailabilityEmployeeResponse{},
+			Pagination:  paginationResponse{},
+		}
+	}
+
+	employees := make([]adminAvailabilityEmployeeResponse, 0, len(result.Employees))
+	for _, employee := range result.Employees {
+		positions := make([]publicationPositionResponse, 0, len(employee.Positions))
+		for _, position := range employee.Positions {
+			positions = append(positions, newPublicationPositionResponse(position))
+		}
+		employees = append(employees, adminAvailabilityEmployeeResponse{
+			UserID:         employee.UserID,
+			Name:           employee.Name,
+			Email:          employee.Email,
+			Positions:      positions,
+			SubmittedCount: employee.SubmittedCount,
+		})
+	}
+
+	return adminAvailabilityBoardResponse{
+		Publication: newPublicationResponse(result.Publication),
+		Employees:   employees,
+		Pagination: paginationResponse{
+			Page:       result.Page,
+			PageSize:   result.PageSize,
+			Total:      result.Total,
+			TotalPages: result.TotalPages,
+		},
+	}
+}
+
+func newAdminAvailabilityDetailResponse(result *service.AdminAvailabilityDetailResult) adminAvailabilityDetailResponse {
+	if result == nil {
+		return adminAvailabilityDetailResponse{
+			Positions:   []publicationPositionResponse{},
+			Slots:       []adminAvailabilitySlotResponse{},
+			Submissions: []slotRefResponse{},
+			Cells:       []adminAvailabilityCellResponse{},
+		}
+	}
+
+	positions := make([]publicationPositionResponse, 0, len(result.Positions))
+	for _, position := range result.Positions {
+		positions = append(positions, newPublicationPositionResponse(position))
+	}
+
+	slots := make([]adminAvailabilitySlotResponse, 0, len(result.Slots))
+	for _, slot := range result.Slots {
+		positionResponses := make([]adminAvailabilityPositionResponse, 0, len(slot.Positions))
+		for _, position := range slot.Positions {
+			positionResponses = append(positionResponses, adminAvailabilityPositionResponse{
+				Position:          newPublicationPositionResponse(position.Position),
+				RequiredHeadcount: position.RequiredHeadcount,
+			})
+		}
+		slots = append(slots, adminAvailabilitySlotResponse{
+			Slot:      newPublicationSlotResponse(slot.Slot),
+			Positions: positionResponses,
+		})
+	}
+
+	submissions := make([]slotRefResponse, 0, len(result.Submissions))
+	for _, submission := range result.Submissions {
+		submissions = append(submissions, slotRefResponse{
+			SlotID:  submission.SlotID,
+			Weekday: submission.Weekday,
+		})
+	}
+
+	cells := make([]adminAvailabilityCellResponse, 0, len(result.Cells))
+	for _, cell := range result.Cells {
+		cells = append(cells, adminAvailabilityCellResponse{
+			SlotID:    cell.SlotID,
+			Weekday:   cell.Weekday,
+			Eligible:  cell.Eligible,
+			Submitted: cell.Submitted,
+		})
+	}
+
+	return adminAvailabilityDetailResponse{
+		Publication: newPublicationResponse(result.Publication),
+		User:        newUserResponse(result.User),
+		Positions:   positions,
+		Slots:       slots,
+		Submissions: submissions,
+		Cells:       cells,
 	}
 }
 

@@ -580,6 +580,89 @@ func TestPublicationRepositoryIntegration(t *testing.T) {
 			t.Fatalf("unexpected second-position users: %+v", qualified[secondPosition.ID])
 		}
 	})
+
+	t.Run("ReplaceAdminAvailabilitySubmissions validates target and replaces atomically", func(t *testing.T) {
+		db := openIntegrationDB(t)
+		repo := NewPublicationRepository(db)
+		now := testTime()
+		template := seedTemplate(t, db, templateSeed{Name: "Admin Availability Template"})
+		frontDesk := seedPosition(t, db, positionSeed{Name: "Front Desk"})
+		field := seedPosition(t, db, positionSeed{Name: "Field"})
+		frontSlotID := seedTemplateSlot(t, db, template.ID, 1, "09:00", "10:00")
+		fieldSlotID := seedTemplateSlot(t, db, template.ID, 2, "19:00", "20:00")
+		seedTemplateSlotPosition(t, db, frontSlotID, frontDesk.ID, 1)
+		seedTemplateSlotPosition(t, db, fieldSlotID, field.ID, 1)
+		publication := seedPublication(t, db, publicationSeed{
+			TemplateID:        template.ID,
+			State:             model.PublicationStateAssigning,
+			SubmissionStartAt: now.Add(-2 * time.Hour),
+			SubmissionEndAt:   now.Add(-1 * time.Hour),
+			PlannedActiveFrom: now.Add(24 * time.Hour),
+			CreatedAt:         now.Add(-3 * time.Hour),
+		})
+		user := seedUser(t, db, userSeed{Name: "Alice", Email: "alice-admin-availability@example.com"})
+		seedUserPosition(t, db, user.ID, frontDesk.ID)
+		seedSubmission(t, db, publication.ID, user.ID, frontSlotID, now.Add(-30*time.Minute))
+
+		_, err := repo.ReplaceAdminAvailabilitySubmissions(ctx, ReplaceAdminAvailabilitySubmissionsParams{
+			PublicationID: publication.ID,
+			UserID:        user.ID,
+			Submissions:   []model.SlotRef{{SlotID: fieldSlotID, Weekday: 2}},
+			CreatedAt:     now,
+			Now:           now,
+		})
+		if !errors.Is(err, model.ErrNotQualified) {
+			t.Fatalf("expected ErrNotQualified, got %v", err)
+		}
+		assertAvailabilityCellCount(t, db, publication.ID, user.ID, frontSlotID, 1, 1)
+		assertAvailabilityCellCount(t, db, publication.ID, user.ID, fieldSlotID, 2, 0)
+
+		seedUserPosition(t, db, user.ID, field.ID)
+		result, err := repo.ReplaceAdminAvailabilitySubmissions(ctx, ReplaceAdminAvailabilitySubmissionsParams{
+			PublicationID: publication.ID,
+			UserID:        user.ID,
+			Submissions: []model.SlotRef{
+				{SlotID: fieldSlotID, Weekday: 2},
+				{SlotID: fieldSlotID, Weekday: 2},
+			},
+			CreatedAt: now,
+			Now:       now,
+		})
+		if err != nil {
+			t.Fatalf("replace admin availability: %v", err)
+		}
+		if len(result.Removed) != 1 || result.Removed[0].SlotID != frontSlotID ||
+			len(result.Added) != 1 || result.Added[0].SlotID != fieldSlotID {
+			t.Fatalf("unexpected diff result: %+v", result)
+		}
+		assertAvailabilityCellCount(t, db, publication.ID, user.ID, frontSlotID, 1, 0)
+		assertAvailabilityCellCount(t, db, publication.ID, user.ID, fieldSlotID, 2, 1)
+	})
+}
+
+func assertAvailabilityCellCount(
+	t testing.TB,
+	db *sql.DB,
+	publicationID, userID, slotID int64,
+	weekday int,
+	want int,
+) {
+	t.Helper()
+
+	var got int
+	if err := db.QueryRowContext(
+		context.Background(),
+		`SELECT COUNT(*) FROM availability_submissions WHERE publication_id = $1 AND user_id = $2 AND slot_id = $3 AND weekday = $4;`,
+		publicationID,
+		userID,
+		slotID,
+		weekday,
+	).Scan(&got); err != nil {
+		t.Fatalf("query availability cell count: %v", err)
+	}
+	if got != want {
+		t.Fatalf("expected availability cell count %d, got %d", want, got)
+	}
 }
 
 func slotIDForEntry(t testing.TB, db *sql.DB, entryID int64) int64 {

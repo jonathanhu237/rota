@@ -3,6 +3,8 @@ import { isAxiosError } from "axios"
 
 import api from "./axios"
 import type {
+  AdminAvailabilityBoard,
+  AdminAvailabilityDetail,
   AssignmentBoard,
   Branding,
   Leave,
@@ -93,6 +95,10 @@ export type MyPublicationSubmissionsResponse = {
 }
 
 export type AssignmentBoardResponse = AssignmentBoard
+
+export type AdminAvailabilityBoardResponse = AdminAvailabilityBoard
+
+export type AdminAvailabilityDetailResponse = AdminAvailabilityDetail
 
 export type RosterResponse = Roster
 
@@ -205,6 +211,10 @@ export type CreateAssignmentInput = {
   slot_id: number
   weekday: number
   position_id: number
+}
+
+export type ReplaceAdminAvailabilityInput = {
+  submissions: SlotRef[]
 }
 
 export const brandingFallback: Branding = {
@@ -412,6 +422,62 @@ export const publicationAssignmentBoardQueryOptions = (publicationID: number) =>
       return res.data
     },
     enabled: publicationID > 0,
+  })
+
+export const adminAvailabilityBoardQueryOptions = (
+  publicationID: number,
+  page: number,
+  pageSize: number,
+  search: string,
+) =>
+  queryOptions({
+    queryKey: [
+      "publications",
+      "detail",
+      publicationID,
+      "availability",
+      "board",
+      page,
+      pageSize,
+      search,
+    ],
+    queryFn: async () => {
+      const res = await api.get<AdminAvailabilityBoardResponse>(
+        `/publications/${publicationID}/availability-board`,
+        {
+          params: {
+            page,
+            page_size: pageSize,
+            ...(search.trim() ? { search: search.trim() } : {}),
+          },
+        },
+      )
+      return res.data
+    },
+    enabled: publicationID > 0,
+    placeholderData: keepPreviousData,
+  })
+
+export const adminAvailabilityDetailQueryOptions = (
+  publicationID: number,
+  userID: number,
+) =>
+  queryOptions({
+    queryKey: [
+      "publications",
+      "detail",
+      publicationID,
+      "availability",
+      "detail",
+      userID,
+    ],
+    queryFn: async () => {
+      const res = await api.get<AdminAvailabilityDetailResponse>(
+        `/publications/${publicationID}/availability-submissions/${userID}`,
+      )
+      return res.data
+    },
+    enabled: publicationID > 0 && userID > 0,
   })
 
 export const rosterCurrentQueryOptions = queryOptions({
@@ -686,6 +752,20 @@ export async function deleteAssignment(
   assignmentID: number,
 ) {
   await api.delete(`/publications/${publicationID}/assignments/${assignmentID}`)
+}
+
+export async function replaceAdminAvailability(
+  publicationID: number,
+  userID: number,
+  submissions: SlotRef[],
+) {
+  const res = await api.put<AdminAvailabilityDetailResponse>(
+    `/publications/${publicationID}/availability-submissions/${userID}`,
+    {
+    submissions,
+    },
+  )
+  return res.data
 }
 
 export async function createAvailabilitySubmission(

@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { createFileRoute, redirect } from "@tanstack/react-router"
-import { DownloadIcon } from "lucide-react"
+import { Link, createFileRoute, redirect } from "@tanstack/react-router"
+import { CalendarCheck, DownloadIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { AssignmentBoard } from "@/components/assignments/assignment-board"
@@ -13,7 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/components/ui/toast"
 import { getTranslatedApiError } from "@/lib/api-error"
@@ -206,6 +206,14 @@ export function PublicationAssignmentsPage() {
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <Link
+                className={buttonVariants({ variant: "outline" })}
+                params={{ publicationId }}
+                to="/publications/$publicationId/availability"
+              >
+                <CalendarCheck data-icon="inline-start" />
+                {t("publications.actions.manageAvailability")}
+              </Link>
               {canDownloadSchedule && (
                 <Button
                   type="button"

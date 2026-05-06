@@ -32,6 +32,8 @@ vi.mock("./axios", () => ({
 }))
 
 import {
+  adminAvailabilityBoardQueryOptions,
+  adminAvailabilityDetailQueryOptions,
   autoAssignPublication,
   activatePublication,
   confirmEmailChange,
@@ -47,6 +49,7 @@ import {
   previewSetupToken,
   requestEmailChange,
   requestPasswordReset,
+  replaceAdminAvailability,
   replaceUserPositions,
   resendInvitation,
   setupPassword,
@@ -277,6 +280,135 @@ describe("availability submissions", () => {
     await deleteAvailabilitySubmission(7, 21, 2)
 
     expect(deleteMock).toHaveBeenCalledWith("/publications/7/submissions/21/2")
+  })
+})
+
+describe("admin availability queries", () => {
+  beforeEach(() => {
+    deleteMock.mockReset()
+    getMock.mockReset()
+    postMock.mockReset()
+    patchMock.mockReset()
+    putMock.mockReset()
+  })
+
+  it("requests the paginated board with normalized query params", async () => {
+    getMock.mockResolvedValue({
+      data: {
+        publication: null,
+        employees: [],
+        pagination: {
+          page: 2,
+          page_size: 10,
+          total: 0,
+          total_pages: 0,
+        },
+      },
+    })
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+    })
+
+    await client.fetchQuery(
+      adminAvailabilityBoardQueryOptions(7, 2, 10, " alice "),
+    )
+
+    expect(getMock).toHaveBeenCalledWith(
+      "/publications/7/availability-board",
+      {
+        params: {
+          page: 2,
+          page_size: 10,
+          search: "alice",
+        },
+      },
+    )
+  })
+
+  it("omits empty admin availability search terms", async () => {
+    getMock.mockResolvedValue({
+      data: {
+        publication: null,
+        employees: [],
+        pagination: {
+          page: 1,
+          page_size: 10,
+          total: 0,
+          total_pages: 0,
+        },
+      },
+    })
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+    })
+
+    await client.fetchQuery(adminAvailabilityBoardQueryOptions(7, 1, 10, " "))
+
+    expect(getMock).toHaveBeenCalledWith(
+      "/publications/7/availability-board",
+      {
+        params: {
+          page: 1,
+          page_size: 10,
+        },
+      },
+    )
+  })
+
+  it("requests a single user's admin availability detail", async () => {
+    getMock.mockResolvedValue({
+      data: {
+        publication: null,
+        user: null,
+        positions: [],
+        slots: [],
+        submissions: [],
+        cells: [],
+      },
+    })
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+    })
+
+    await client.fetchQuery(adminAvailabilityDetailQueryOptions(7, 12))
+
+    expect(getMock).toHaveBeenCalledWith(
+      "/publications/7/availability-submissions/12",
+    )
+  })
+
+  it("replaces admin availability with a complete submissions set", async () => {
+    putMock.mockResolvedValue({
+      data: {
+        publication: null,
+        user: null,
+        positions: [],
+        slots: [],
+        submissions: [{ slot_id: 21, weekday: 3 }],
+        cells: [],
+      },
+    })
+
+    await replaceAdminAvailability(7, 12, [{ slot_id: 21, weekday: 3 }])
+
+    expect(putMock).toHaveBeenCalledWith(
+      "/publications/7/availability-submissions/12",
+      {
+        submissions: [{ slot_id: 21, weekday: 3 }],
+      },
+    )
   })
 })
 

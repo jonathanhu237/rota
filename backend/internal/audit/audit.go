@@ -55,6 +55,9 @@ const (
 	ActionSubmissionCreate = "submission.create"
 	ActionSubmissionDelete = "submission.delete"
 
+	ActionAvailabilityAdminCreate = "availability.admin.create"
+	ActionAvailabilityAdminDelete = "availability.admin.delete"
+
 	ActionAssignmentCreate = "assignment.create"
 	ActionAssignmentDelete = "assignment.delete"
 

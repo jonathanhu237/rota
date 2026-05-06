@@ -1,7 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import type { ReactNode } from "react"
+import type {
+  AnchorHTMLAttributes,
+  ForwardedRef,
+  ReactNode,
+} from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ToastProvider } from "@/components/ui/toast"
@@ -23,14 +27,32 @@ vi.mock("@/lib/publications", async () => {
   }
 })
 
+type LinkMockProps = {
+  to: string
+  params?: Record<string, string>
+  children?: ReactNode
+} & AnchorHTMLAttributes<HTMLAnchorElement>
+
 vi.mock("@tanstack/react-router", async () => {
   const actual =
     await vi.importActual<typeof import("@tanstack/react-router")>(
       "@tanstack/react-router",
     )
+  const React = await vi.importActual<typeof import("react")>("react")
+  const Link = React.forwardRef(function LinkMock(
+    { to, params, children, ...props }: LinkMockProps,
+    ref: ForwardedRef<HTMLAnchorElement>,
+  ) {
+    return React.createElement(
+      "a",
+      { href: hrefFor(to, params), ref, ...props },
+      children,
+    )
+  })
 
   return {
     ...actual,
+    Link,
     createFileRoute: () => (options: object) => ({
       ...options,
       useParams: () => ({ publicationId: "7" }),
@@ -77,6 +99,18 @@ describe("PublicationAssignmentsPage schedule export", () => {
         "en",
       )
     })
+  })
+
+  it("links to publication availability management", () => {
+    const board = makeAssignmentBoard("ASSIGNING")
+
+    renderPage(board)
+
+    expect(
+      screen.getByRole("link", {
+        name: "publications.actions.manageAvailability",
+      }),
+    ).toHaveAttribute("href", "/publications/7/availability")
   })
 })
 
@@ -134,4 +168,12 @@ function makeAssignmentBoard(state: Publication["state"]): AssignmentBoard {
     slots: [],
     employees: [],
   }
+}
+
+function hrefFor(to: string, params?: Record<string, string>) {
+  let href = to
+  for (const [key, value] of Object.entries(params ?? {})) {
+    href = href.replace(`$${key}`, value)
+  }
+  return href
 }

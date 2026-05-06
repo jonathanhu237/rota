@@ -58,6 +58,9 @@ type publicationRepository interface {
 	ListSlotPositions(ctx context.Context, slotID int64) ([]*model.TemplateSlotPosition, error)
 	IsUserQualifiedForPosition(ctx context.Context, userID, positionID int64) (bool, error)
 	ListQualifiedPublicationSlotPositions(ctx context.Context, publicationID, userID int64) ([]*model.QualifiedShift, error)
+	ListAdminAvailabilityEmployees(ctx context.Context, params repository.ListAdminAvailabilityEmployeesParams) ([]*repository.AdminAvailabilityEmployee, int, error)
+	GetAdminAvailabilityUser(ctx context.Context, publicationID, userID int64) (*model.User, []*model.Position, error)
+	ReplaceAdminAvailabilitySubmissions(ctx context.Context, params repository.ReplaceAdminAvailabilitySubmissionsParams) (*repository.ReplaceAdminAvailabilitySubmissionsResult, error)
 	CreateAssignment(ctx context.Context, params repository.CreateAssignmentParams) (*model.Assignment, error)
 	DeleteAssignment(ctx context.Context, params repository.DeleteAssignmentParams) error
 	CountAssignmentOverridesByAssignment(ctx context.Context, assignmentID int64) (int64, error)
@@ -717,6 +720,8 @@ func mapPublicationRepositoryError(err error) error {
 		return ErrTemplateSlotNotFound
 	case errors.Is(err, repository.ErrTemplateSlotPositionNotFound):
 		return ErrTemplateSlotPositionNotFound
+	case errors.Is(err, repository.ErrInvalidAvailabilityCell):
+		return ErrInvalidInput
 	case errors.Is(err, repository.ErrUserNotFound):
 		return ErrUserNotFound
 	case errors.Is(err, repository.ErrAssignmentUserAlreadyInSlot):

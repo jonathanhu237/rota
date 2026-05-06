@@ -141,6 +141,8 @@
     "publications": "Publications",
     "publicationFallback": "Publication",
     "assignments": "Assignments",
+    "availabilityManagement": "Availability management",
+    "availabilityEditor": "Edit availability",
     "shiftChanges": "Shift changes",
     "current": "Current page"
   },
@@ -689,6 +691,7 @@
       "activate": "Activate",
       "end": "End",
       "openAssignmentBoard": "Open Assignment Board",
+      "manageAvailability": "Manage Availability",
       "viewShiftChanges": "View Shift Changes",
       "viewExisting": "View it"
     },
@@ -786,6 +789,8 @@
       "PUBLICATION_NOT_PUBLISHED": "This publication is not published right now.",
       "PUBLICATION_NOT_FOUND": "Publication not found",
       "TEMPLATE_NOT_FOUND": "Template not found",
+      "TEMPLATE_SLOT_NOT_FOUND": "Template slot not found",
+      "TEMPLATE_SLOT_POSITION_NOT_FOUND": "Template slot position not found",
       "TEMPLATE_SHIFT_NOT_FOUND": "Template shift not found",
       "ASSIGNMENT_USER_ALREADY_IN_SLOT": "This user is already assigned to another position in this slot.",
       "ASSIGNMENT_TIME_CONFLICT": "This assignment overlaps with another slot the user is already assigned to.",
@@ -930,6 +935,53 @@
       "PUBLICATION_NOT_FOUND": "Publication not found",
       "TEMPLATE_SHIFT_NOT_FOUND": "Template shift not found",
       "UNAUTHORIZED": "Unauthorized"
+    }
+  },
+  "adminAvailability": {
+    "title": "Availability Management",
+    "description": "Review and correct submitted availability for {{name}}.",
+    "loadError": "Availability data cannot be loaded right now.",
+    "backToAssignments": "Back to Assignment Board",
+    "pageSummary": "Showing {{start}}-{{end}} of {{total}} employees",
+    "search": {
+      "label": "Search employees",
+      "placeholder": "Name or email"
+    },
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {{page}} of {{totalPages}}"
+    },
+    "table": {
+      "name": "Employee",
+      "positions": "Qualifications",
+      "submittedCount": "Submitted Cells",
+      "submittedCountValue": "{{count}} cells",
+      "actions": "Actions",
+      "edit": "Edit",
+      "empty": "No matching employees."
+    },
+    "editor": {
+      "title": "Edit Availability",
+      "titleForUser": "{{name}} Availability",
+      "description": "{{email}}",
+      "back": "Back to Availability Management",
+      "gridTitle": "Template Availability Grid",
+      "gridDescription": "Edit this employee's complete target availability set.",
+      "autoAssignNote": "Availability edits affect future auto-assign candidate pools only and do not automatically change existing assignments.",
+      "readOnly": "This publication is read-only for availability edits.",
+      "ineligibleSelected": "{{count}} selected cells are no longer eligible. Clear them before saving.",
+      "noSlots": "This publication has no scheduled cells.",
+      "eligible": "Eligible",
+      "ineligible": "Ineligible",
+      "exception": "Submitted exception",
+      "cellLabel": "{{weekday}} {{time}} {{summary}}",
+      "unsavedCount": "{{count}} unsaved changes",
+      "discard": "Discard",
+      "save": "Save",
+      "saving": "Saving...",
+      "saveSuccess": "Availability updated.",
+      "confirmLeave": "Discard unsaved availability changes?"
     }
   },
   "requests": {

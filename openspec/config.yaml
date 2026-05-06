@@ -3,7 +3,9 @@ schema: spec-driven
 context: |
   Rota — a web-based shift scheduling app for a ~100-person department.
   Go backend + PostgreSQL; React + Vite frontend; Docker Compose
-  behind Caddy. Full execution rules are in `AGENTS.md`.
+  behind Caddy. OpenSpec workflow rules are defined in this file;
+  `AGENTS.md` contains repository commands, Done criteria, and general
+  engineering conventions.
 
   Load-bearing invariants — any change must respect these:
   - Publication state machine: DRAFT → COLLECTING → ASSIGNING → PUBLISHED → ACTIVE → ENDED.
@@ -15,9 +17,17 @@ context: |
 
 rules:
   proposal:
+    - After selecting or deriving the change name, create or switch to a dedicated git branch before writing proposal, design, spec, or task artifacts.
+    - Use the repository branch convention unless the user gives a branch name; for this project, prefer `codex/<change-name>`.
+    - Record the selected branch in the working notes or response so later apply work can use the same branch.
     - Lead with the user-visible problem, not a technical itch.
     - Include a "Non-goals" section with at least three explicit exclusions.
     - "Do not propose any of these (already ruled out): multi-timezone, multi-tenancy, 2FA, OAuth / SSO, CSRF tokens, CSP headers, WebSocket / push / SMS, date-specific roster navigation, multi-language email bodies."
+
+  apply:
+    - Before implementing a change, confirm the current git branch is the dedicated branch recorded during proposal.
+    - If the current branch differs, switch to the recorded branch before editing files.
+    - Do not continue apply work on a different branch unless the user explicitly approves the branch change.
 
   design:
     - Schema changes include goose Up AND Down SQL.
@@ -32,3 +42,20 @@ rules:
   specs:
     - Extend existing specs; create a new file only for a genuinely new subsystem.
     - Mark deprecated behavior with "Superseded by …" rather than deleting.
+
+  verify:
+    - Always spawn a subagent to independently review code changes before producing the final verification report.
+    - The subagent review must check implementation against proposal, design, specs, and tasks when those artifacts exist.
+    - The first verification for a completed implementation should use a broad review scope across backend, worker, frontend, tests, and OpenSpec artifacts.
+    - Subsequent verification after review-fix apply work should default to targeted review, limited to the previous findings, files changed by the latest fixes, directly related tests, and direct regressions introduced by those fixes.
+    - Do not keep broadening the review scope on every verification cycle unless the user explicitly asks for another broad review or the latest fixes touch a new architectural area.
+    - The final verification report must incorporate the subagent's findings, including any disagreements or residual risks.
+    - Do not archive or declare a change ready to archive until the subagent review has completed.
+
+  archive:
+    - Only archive after verification has completed and any critical issues are resolved.
+    - Run the archive workflow on the dedicated change branch for that OpenSpec change.
+    - After archive artifacts are generated and checks pass, merge the dedicated change branch into the repository main branch.
+    - Commit the final merged archive and implementation state on the main branch.
+    - Push the main branch to the remote after the commit succeeds.
+    - If the repository main branch has a different name than `main`, use the repository's configured default branch.

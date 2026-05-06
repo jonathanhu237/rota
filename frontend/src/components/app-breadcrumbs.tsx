@@ -186,6 +186,31 @@ function publicationBreadcrumbs(input: BreadcrumbBuildInput): Crumb[] {
     ]
   }
 
+  if (pathname.endsWith("/availability")) {
+    return [
+      ...base,
+      detailCrumb,
+      { label: t("breadcrumbs.availabilityManagement") },
+    ]
+  }
+
+  if (pathname.includes("/availability/")) {
+    return [
+      ...base,
+      detailCrumb,
+      {
+        label: t("breadcrumbs.availabilityManagement"),
+        link: (
+          <Link
+            to="/publications/$publicationId/availability"
+            params={{ publicationId: String(publicationID) }}
+          />
+        ),
+      },
+      { label: t("breadcrumbs.availabilityEditor") },
+    ]
+  }
+
   if (pathname.endsWith("/shift-changes")) {
     return [
       ...base,

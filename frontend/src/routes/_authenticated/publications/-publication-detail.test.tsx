@@ -34,7 +34,7 @@ vi.mock("@/lib/axios", () => ({
 type LinkMockProps = {
   to: string
   children?: ReactNode
-  params?: unknown
+  params?: Record<string, string>
 } & AnchorHTMLAttributes<HTMLAnchorElement>
 
 vi.mock("@tanstack/react-router", async () => {
@@ -47,14 +47,16 @@ vi.mock("@tanstack/react-router", async () => {
     { to, children, params, ...props }: LinkMockProps,
     ref: ForwardedRef<HTMLAnchorElement>,
   ) {
-    void params
-    return React.createElement("a", { href: to, ref, ...props }, children)
+    return React.createElement(
+      "a",
+      { href: hrefFor(to, params), ref, ...props },
+      children,
+    )
   })
 
   return {
     ...actual,
     Link,
-    Outlet: () => null,
     createFileRoute: () => (options: object) => ({
       ...options,
       useParams: () => ({ publicationId: "7" }),
@@ -63,7 +65,7 @@ vi.mock("@tanstack/react-router", async () => {
   }
 })
 
-import { PublicationDetailPage } from "./$publicationId"
+import { PublicationDetailPage } from "./$publicationId/index"
 
 describe("PublicationDetailPage", () => {
   beforeEach(() => {
@@ -140,7 +142,25 @@ describe("PublicationDetailPage", () => {
       })
     })
   })
+
+  it("links to availability management from the detail page", () => {
+    renderPage(makePublication())
+
+    expect(
+      screen.getByRole("link", {
+        name: "publications.actions.manageAvailability",
+      }),
+    ).toHaveAttribute("href", "/publications/7/availability")
+  })
 })
+
+function hrefFor(to: string, params?: Record<string, string>) {
+  let href = to
+  for (const [key, value] of Object.entries(params ?? {})) {
+    href = href.replace(`$${key}`, value)
+  }
+  return href
+}
 
 function renderPage(publication: Publication) {
   const client = new QueryClient({

@@ -28,8 +28,12 @@ import { Route as AuthenticatedTemplatesTemplateIdRouteImport } from './routes/_
 import { Route as AuthenticatedPublicationsPublicationIdRouteImport } from './routes/_authenticated/publications/$publicationId'
 import { Route as AuthenticatedLeavesNewRouteImport } from './routes/_authenticated/leaves/new'
 import { Route as AuthenticatedLeavesLeaveIdRouteImport } from './routes/_authenticated/leaves/$leaveId'
+import { Route as AuthenticatedPublicationsPublicationIdIndexRouteImport } from './routes/_authenticated/publications/$publicationId/index'
 import { Route as AuthenticatedPublicationsPublicationIdShiftChangesRouteImport } from './routes/_authenticated/publications/$publicationId/shift-changes'
+import { Route as AuthenticatedPublicationsPublicationIdAvailabilityRouteImport } from './routes/_authenticated/publications/$publicationId/availability'
 import { Route as AuthenticatedPublicationsPublicationIdAssignmentsRouteImport } from './routes/_authenticated/publications/$publicationId/assignments'
+import { Route as AuthenticatedPublicationsPublicationIdAvailabilityIndexRouteImport } from './routes/_authenticated/publications/$publicationId/availability/index'
+import { Route as AuthenticatedPublicationsPublicationIdAvailabilityUserIdRouteImport } from './routes/_authenticated/publications/$publicationId/availability/$userId'
 
 const SetupPasswordRoute = SetupPasswordRouteImport.update({
   id: '/setup-password',
@@ -133,10 +137,22 @@ const AuthenticatedLeavesLeaveIdRoute =
     path: '/leaves/$leaveId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedPublicationsPublicationIdIndexRoute =
+  AuthenticatedPublicationsPublicationIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedPublicationsPublicationIdRoute,
+  } as any)
 const AuthenticatedPublicationsPublicationIdShiftChangesRoute =
   AuthenticatedPublicationsPublicationIdShiftChangesRouteImport.update({
     id: '/shift-changes',
     path: '/shift-changes',
+    getParentRoute: () => AuthenticatedPublicationsPublicationIdRoute,
+  } as any)
+const AuthenticatedPublicationsPublicationIdAvailabilityRoute =
+  AuthenticatedPublicationsPublicationIdAvailabilityRouteImport.update({
+    id: '/availability',
+    path: '/availability',
     getParentRoute: () => AuthenticatedPublicationsPublicationIdRoute,
   } as any)
 const AuthenticatedPublicationsPublicationIdAssignmentsRoute =
@@ -144,6 +160,20 @@ const AuthenticatedPublicationsPublicationIdAssignmentsRoute =
     id: '/assignments',
     path: '/assignments',
     getParentRoute: () => AuthenticatedPublicationsPublicationIdRoute,
+  } as any)
+const AuthenticatedPublicationsPublicationIdAvailabilityIndexRoute =
+  AuthenticatedPublicationsPublicationIdAvailabilityIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () =>
+      AuthenticatedPublicationsPublicationIdAvailabilityRoute,
+  } as any)
+const AuthenticatedPublicationsPublicationIdAvailabilityUserIdRoute =
+  AuthenticatedPublicationsPublicationIdAvailabilityUserIdRouteImport.update({
+    id: '/$userId',
+    path: '/$userId',
+    getParentRoute: () =>
+      AuthenticatedPublicationsPublicationIdAvailabilityRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -166,7 +196,11 @@ export interface FileRoutesByFullPath {
   '/templates/': typeof AuthenticatedTemplatesIndexRoute
   '/users/': typeof AuthenticatedUsersIndexRoute
   '/publications/$publicationId/assignments': typeof AuthenticatedPublicationsPublicationIdAssignmentsRoute
+  '/publications/$publicationId/availability': typeof AuthenticatedPublicationsPublicationIdAvailabilityRouteWithChildren
   '/publications/$publicationId/shift-changes': typeof AuthenticatedPublicationsPublicationIdShiftChangesRoute
+  '/publications/$publicationId/': typeof AuthenticatedPublicationsPublicationIdIndexRoute
+  '/publications/$publicationId/availability/$userId': typeof AuthenticatedPublicationsPublicationIdAvailabilityUserIdRoute
+  '/publications/$publicationId/availability/': typeof AuthenticatedPublicationsPublicationIdAvailabilityIndexRoute
 }
 export interface FileRoutesByTo {
   '/forgot-password': typeof ForgotPasswordRoute
@@ -180,7 +214,6 @@ export interface FileRoutesByTo {
   '/': typeof AuthenticatedIndexRoute
   '/leaves/$leaveId': typeof AuthenticatedLeavesLeaveIdRoute
   '/leaves/new': typeof AuthenticatedLeavesNewRoute
-  '/publications/$publicationId': typeof AuthenticatedPublicationsPublicationIdRouteWithChildren
   '/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRoute
   '/leaves': typeof AuthenticatedLeavesIndexRoute
   '/positions': typeof AuthenticatedPositionsIndexRoute
@@ -189,6 +222,9 @@ export interface FileRoutesByTo {
   '/users': typeof AuthenticatedUsersIndexRoute
   '/publications/$publicationId/assignments': typeof AuthenticatedPublicationsPublicationIdAssignmentsRoute
   '/publications/$publicationId/shift-changes': typeof AuthenticatedPublicationsPublicationIdShiftChangesRoute
+  '/publications/$publicationId': typeof AuthenticatedPublicationsPublicationIdIndexRoute
+  '/publications/$publicationId/availability/$userId': typeof AuthenticatedPublicationsPublicationIdAvailabilityUserIdRoute
+  '/publications/$publicationId/availability': typeof AuthenticatedPublicationsPublicationIdAvailabilityIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -212,7 +248,11 @@ export interface FileRoutesById {
   '/_authenticated/templates/': typeof AuthenticatedTemplatesIndexRoute
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
   '/_authenticated/publications/$publicationId/assignments': typeof AuthenticatedPublicationsPublicationIdAssignmentsRoute
+  '/_authenticated/publications/$publicationId/availability': typeof AuthenticatedPublicationsPublicationIdAvailabilityRouteWithChildren
   '/_authenticated/publications/$publicationId/shift-changes': typeof AuthenticatedPublicationsPublicationIdShiftChangesRoute
+  '/_authenticated/publications/$publicationId/': typeof AuthenticatedPublicationsPublicationIdIndexRoute
+  '/_authenticated/publications/$publicationId/availability/$userId': typeof AuthenticatedPublicationsPublicationIdAvailabilityUserIdRoute
+  '/_authenticated/publications/$publicationId/availability/': typeof AuthenticatedPublicationsPublicationIdAvailabilityIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -236,7 +276,11 @@ export interface FileRouteTypes {
     | '/templates/'
     | '/users/'
     | '/publications/$publicationId/assignments'
+    | '/publications/$publicationId/availability'
     | '/publications/$publicationId/shift-changes'
+    | '/publications/$publicationId/'
+    | '/publications/$publicationId/availability/$userId'
+    | '/publications/$publicationId/availability/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/forgot-password'
@@ -250,7 +294,6 @@ export interface FileRouteTypes {
     | '/'
     | '/leaves/$leaveId'
     | '/leaves/new'
-    | '/publications/$publicationId'
     | '/templates/$templateId'
     | '/leaves'
     | '/positions'
@@ -259,6 +302,9 @@ export interface FileRouteTypes {
     | '/users'
     | '/publications/$publicationId/assignments'
     | '/publications/$publicationId/shift-changes'
+    | '/publications/$publicationId'
+    | '/publications/$publicationId/availability/$userId'
+    | '/publications/$publicationId/availability'
   id:
     | '__root__'
     | '/_authenticated'
@@ -281,7 +327,11 @@ export interface FileRouteTypes {
     | '/_authenticated/templates/'
     | '/_authenticated/users/'
     | '/_authenticated/publications/$publicationId/assignments'
+    | '/_authenticated/publications/$publicationId/availability'
     | '/_authenticated/publications/$publicationId/shift-changes'
+    | '/_authenticated/publications/$publicationId/'
+    | '/_authenticated/publications/$publicationId/availability/$userId'
+    | '/_authenticated/publications/$publicationId/availability/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -427,11 +477,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLeavesLeaveIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/publications/$publicationId/': {
+      id: '/_authenticated/publications/$publicationId/'
+      path: '/'
+      fullPath: '/publications/$publicationId/'
+      preLoaderRoute: typeof AuthenticatedPublicationsPublicationIdIndexRouteImport
+      parentRoute: typeof AuthenticatedPublicationsPublicationIdRoute
+    }
     '/_authenticated/publications/$publicationId/shift-changes': {
       id: '/_authenticated/publications/$publicationId/shift-changes'
       path: '/shift-changes'
       fullPath: '/publications/$publicationId/shift-changes'
       preLoaderRoute: typeof AuthenticatedPublicationsPublicationIdShiftChangesRouteImport
+      parentRoute: typeof AuthenticatedPublicationsPublicationIdRoute
+    }
+    '/_authenticated/publications/$publicationId/availability': {
+      id: '/_authenticated/publications/$publicationId/availability'
+      path: '/availability'
+      fullPath: '/publications/$publicationId/availability'
+      preLoaderRoute: typeof AuthenticatedPublicationsPublicationIdAvailabilityRouteImport
       parentRoute: typeof AuthenticatedPublicationsPublicationIdRoute
     }
     '/_authenticated/publications/$publicationId/assignments': {
@@ -441,20 +505,58 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPublicationsPublicationIdAssignmentsRouteImport
       parentRoute: typeof AuthenticatedPublicationsPublicationIdRoute
     }
+    '/_authenticated/publications/$publicationId/availability/': {
+      id: '/_authenticated/publications/$publicationId/availability/'
+      path: '/'
+      fullPath: '/publications/$publicationId/availability/'
+      preLoaderRoute: typeof AuthenticatedPublicationsPublicationIdAvailabilityIndexRouteImport
+      parentRoute: typeof AuthenticatedPublicationsPublicationIdAvailabilityRoute
+    }
+    '/_authenticated/publications/$publicationId/availability/$userId': {
+      id: '/_authenticated/publications/$publicationId/availability/$userId'
+      path: '/$userId'
+      fullPath: '/publications/$publicationId/availability/$userId'
+      preLoaderRoute: typeof AuthenticatedPublicationsPublicationIdAvailabilityUserIdRouteImport
+      parentRoute: typeof AuthenticatedPublicationsPublicationIdAvailabilityRoute
+    }
   }
 }
 
+interface AuthenticatedPublicationsPublicationIdAvailabilityRouteChildren {
+  AuthenticatedPublicationsPublicationIdAvailabilityUserIdRoute: typeof AuthenticatedPublicationsPublicationIdAvailabilityUserIdRoute
+  AuthenticatedPublicationsPublicationIdAvailabilityIndexRoute: typeof AuthenticatedPublicationsPublicationIdAvailabilityIndexRoute
+}
+
+const AuthenticatedPublicationsPublicationIdAvailabilityRouteChildren: AuthenticatedPublicationsPublicationIdAvailabilityRouteChildren =
+  {
+    AuthenticatedPublicationsPublicationIdAvailabilityUserIdRoute:
+      AuthenticatedPublicationsPublicationIdAvailabilityUserIdRoute,
+    AuthenticatedPublicationsPublicationIdAvailabilityIndexRoute:
+      AuthenticatedPublicationsPublicationIdAvailabilityIndexRoute,
+  }
+
+const AuthenticatedPublicationsPublicationIdAvailabilityRouteWithChildren =
+  AuthenticatedPublicationsPublicationIdAvailabilityRoute._addFileChildren(
+    AuthenticatedPublicationsPublicationIdAvailabilityRouteChildren,
+  )
+
 interface AuthenticatedPublicationsPublicationIdRouteChildren {
   AuthenticatedPublicationsPublicationIdAssignmentsRoute: typeof AuthenticatedPublicationsPublicationIdAssignmentsRoute
+  AuthenticatedPublicationsPublicationIdAvailabilityRoute: typeof AuthenticatedPublicationsPublicationIdAvailabilityRouteWithChildren
   AuthenticatedPublicationsPublicationIdShiftChangesRoute: typeof AuthenticatedPublicationsPublicationIdShiftChangesRoute
+  AuthenticatedPublicationsPublicationIdIndexRoute: typeof AuthenticatedPublicationsPublicationIdIndexRoute
 }
 
 const AuthenticatedPublicationsPublicationIdRouteChildren: AuthenticatedPublicationsPublicationIdRouteChildren =
   {
     AuthenticatedPublicationsPublicationIdAssignmentsRoute:
       AuthenticatedPublicationsPublicationIdAssignmentsRoute,
+    AuthenticatedPublicationsPublicationIdAvailabilityRoute:
+      AuthenticatedPublicationsPublicationIdAvailabilityRouteWithChildren,
     AuthenticatedPublicationsPublicationIdShiftChangesRoute:
       AuthenticatedPublicationsPublicationIdShiftChangesRoute,
+    AuthenticatedPublicationsPublicationIdIndexRoute:
+      AuthenticatedPublicationsPublicationIdIndexRoute,
   }
 
 const AuthenticatedPublicationsPublicationIdRouteWithChildren =

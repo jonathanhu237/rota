@@ -400,6 +400,10 @@ func (r *PublicationRepository) UpsertSubmission(
 	}
 	defer tx.Rollback()
 
+	if err := LockAndCheckUserStatus(ctx, tx, params.PublicationID, params.UserID); err != nil {
+		return nil, err
+	}
+
 	if err := updatePublicationStateIfNeeded(ctx, tx, params.PublicationID, params.PublicationState, params.Now); err != nil {
 		return nil, err
 	}
@@ -469,6 +473,10 @@ func (r *PublicationRepository) DeleteSubmission(
 		return err
 	}
 	defer tx.Rollback()
+
+	if err := LockAndCheckUserStatus(ctx, tx, params.PublicationID, params.UserID); err != nil {
+		return err
+	}
 
 	if err := updatePublicationStateIfNeeded(ctx, tx, params.PublicationID, params.PublicationState, params.Now); err != nil {
 		return err

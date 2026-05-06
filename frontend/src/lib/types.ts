@@ -165,6 +165,46 @@ export type AssignmentBoard = {
   employees: AssignmentBoardEmployee[]
 }
 
+export type AdminAvailabilityEmployee = {
+  user_id: number
+  name: string
+  email: string
+  positions: PublicationPosition[]
+  submitted_count: number
+}
+
+export type AdminAvailabilityBoard = {
+  publication: Publication
+  employees: AdminAvailabilityEmployee[]
+  pagination: Pagination
+}
+
+export type AdminAvailabilitySlotPosition = {
+  position: PublicationPosition
+  required_headcount: number
+}
+
+export type AdminAvailabilitySlot = {
+  slot: PublicationSlot
+  positions: AdminAvailabilitySlotPosition[]
+}
+
+export type AdminAvailabilityCell = {
+  slot_id: number
+  weekday: number
+  eligible: boolean
+  submitted: boolean
+}
+
+export type AdminAvailabilityDetail = {
+  publication: Publication
+  user: User
+  positions: PublicationPosition[]
+  slots: AdminAvailabilitySlot[]
+  submissions: SlotRef[]
+  cells: AdminAvailabilityCell[]
+}
+
 export type RosterAssignment = {
   assignment_id: number
   user_id: number
