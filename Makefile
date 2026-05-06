@@ -34,7 +34,7 @@ test-backend:
 	@cd backend && go test ./...
 
 test-integration:
-	@cd backend && go test -tags=integration ./...
+	@scripts/test-integration.sh $(TEST_ARGS)
 
 prod-up:
 	@docker compose -f docker-compose.prod.yml --env-file .env up -d

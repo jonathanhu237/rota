@@ -59,7 +59,13 @@ Employees create leave requests from `/leaves/new` by selecting a date range, ch
 - Frontend tests: `cd frontend && pnpm test`
 - Frontend build: `cd frontend && pnpm build`
 
-Integration tests expect Postgres to be reachable with the configured `POSTGRES_*` environment variables and with the migrations already applied.
+`make test-integration` starts an isolated Docker Postgres instance, publishes it on a random local port so it does not conflict with an existing `5432`, applies migrations, runs the Go integration tests, and removes the test database afterward. Pass package or test filters through `TEST_ARGS`, for example:
+
+```bash
+make test-integration TEST_ARGS="./internal/repository -run TestPublicationRepositoryIntegration/ReplaceAdminAvailabilitySubmissions -v"
+```
+
+Use `KEEP_TEST_DB=1 make test-integration` to leave the temporary database running for debugging.
 
 ## Production Deployment
 

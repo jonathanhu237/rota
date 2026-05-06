@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -178,6 +179,23 @@ func TestLoadEmailConfigurationValidation(t *testing.T) {
 func setTestConfigEnv(t *testing.T) {
 	t.Helper()
 
+	unsetTestConfigEnv(t,
+		"EMAIL_MODE",
+		"SMTP_HOST",
+		"SMTP_PORT",
+		"SMTP_USER",
+		"SMTP_PASSWORD",
+		"SMTP_FROM",
+		"SMTP_TLS_MODE",
+		"EMAIL_SEND_TIMEOUT",
+		"INVITATION_TOKEN_TTL",
+		"PASSWORD_RESET_TOKEN_TTL",
+		"BOOTSTRAP_ADMIN_EMAIL",
+		"BOOTSTRAP_ADMIN_PASSWORD",
+		"BOOTSTRAP_ADMIN_NAME",
+	)
+
+	t.Setenv("APP_ENV", "development")
 	t.Setenv("SERVER_PORT", "8080")
 	t.Setenv("POSTGRES_HOST", "localhost")
 	t.Setenv("POSTGRES_PORT", "5432")
@@ -186,4 +204,27 @@ func setTestConfigEnv(t *testing.T) {
 	t.Setenv("POSTGRES_DB", "rota")
 	t.Setenv("SESSION_EXPIRES_HOURS", "336")
 	t.Setenv("APP_BASE_URL", "http://localhost:5173")
+}
+
+func unsetTestConfigEnv(t *testing.T, keys ...string) {
+	t.Helper()
+
+	for _, key := range keys {
+		key := key
+		original, ok := os.LookupEnv(key)
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatalf("unset %s: %v", key, err)
+		}
+		t.Cleanup(func() {
+			if ok {
+				if err := os.Setenv(key, original); err != nil {
+					t.Fatalf("restore %s: %v", key, err)
+				}
+				return
+			}
+			if err := os.Unsetenv(key); err != nil {
+				t.Fatalf("clear %s: %v", key, err)
+			}
+		})
+	}
 }

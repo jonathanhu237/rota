@@ -30,6 +30,6 @@
 ## 5. Final Verification
 
 - [x] 5.1 Run backend unit/build checks with `cd backend && go build ./... && go vet ./... && go test ./...`.
-- [x] 5.2 Because this change touches SQL queries, run backend integration checks with `cd backend && go test -tags=integration ./...`.
+- [x] 5.2 Because this change touches SQL queries, run backend integration checks with `make test-integration`.
 - [x] 5.3 Run frontend checks with `cd frontend && pnpm lint && pnpm test && pnpm build`.
 - [x] 5.4 Validate the OpenSpec change with `openspec validate admin-availability-management --strict`.

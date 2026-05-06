@@ -25,6 +25,32 @@ The production stack SHALL mount the repository-local `./certs` directory into t
 - **AND** Caddy loads the certificate chain and private key from the configured in-container paths
 - **AND** the certificate directory is mounted read-only
 
+### Requirement: Integration tests run against an isolated random-port Postgres
+
+The project SHALL provide `make test-integration` as the supported backend integration test entrypoint. The command SHALL start an isolated Docker Compose Postgres instance for tests, publish it only on `127.0.0.1` using a random host port, apply all migrations to that temporary database, run `go test -tags=integration`, and remove the temporary database unless debugging is explicitly requested.
+
+The integration test command SHALL NOT require or bind host port `5432`. It SHALL print the selected local port before running migrations so failures can be diagnosed. It SHALL accept package and test filters through `TEST_ARGS`, and `KEEP_TEST_DB=1` SHALL leave the temporary database running for debugging.
+
+#### Scenario: Existing local 5432 does not block integration tests
+
+- **GIVEN** another local service already listens on `127.0.0.1:5432`
+- **WHEN** the developer runs `make test-integration`
+- **THEN** the test Postgres starts on a different random host port
+- **AND** migrations are applied to the test database
+- **AND** the integration tests use that test database through `DATABASE_URL`
+
+#### Scenario: Filtered integration test arguments are forwarded
+
+- **WHEN** the developer runs `make test-integration TEST_ARGS="./internal/repository -run TestPublicationRepositoryIntegration/ReplaceAdminAvailabilitySubmissions -v"`
+- **THEN** the integration test command forwards those arguments to `go test -tags=integration`
+- **AND** only the requested package or tests are run
+
+#### Scenario: Debug mode keeps the test database
+
+- **WHEN** the developer runs `KEEP_TEST_DB=1 make test-integration`
+- **THEN** the command leaves the temporary Compose project running after the test command exits
+- **AND** the selected local port remains visible in the command output
+
 ### Requirement: Local-development data seeding command
 
 The project SHALL provide a `make seed` command (and equivalent `go run ./backend/cmd/seed`) that resets the configured Postgres database to one of four named scenarios in seconds. The command SHALL refuse to run when the configured `AppEnv` resolves to `production` and SHALL print a clear "WIPING database" banner before truncating tables.
