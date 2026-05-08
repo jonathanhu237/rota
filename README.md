@@ -56,7 +56,11 @@ Scenarios:
 
 ### Leave Workflow
 
-Employees create leave requests from `/leaves/new` by selecting a date range, choosing an upcoming assigned occurrence, and submitting either a direct give-away or a pool give-away with a leave category and optional reason. Successful submissions return `/leaves/:id`, which is the share URL for the leave detail page. Employees can review their own requests at `/leaves`, and admins can list leave requests for a publication through `GET /api/publications/{id}/leaves`.
+Employees use `/leaves` as the leave workbench. The page opens on the pending leave pool, shows public requests that anyone can help cover, shows direct requests only to the requester, the specified colleague, and admins, and keeps completed/cancelled/failed rows available through status filters. Each row links to `/leaves/:id`, displays the requester, shift time, position, category, counterpart or substitute when available, urgency, and the backend-provided actions the viewer may take.
+
+Employees create leave requests from `/leaves/new` by selecting a date range, choosing an upcoming assigned occurrence, and submitting either public coverage or direct coverage with a leave category and optional reason. Direct coverage candidates are limited to active qualified colleagues for that occurrence; public coverage is added to the pool without broadcasting email to every possible helper. A pending leave does not transfer responsibility: the requester remains assigned until a qualified colleague claims the public request or the specified colleague approves the direct request. Successful coverage transfers only that occurrence; uncovered requests fail after the occurrence start.
+
+Admins can view leave rows but do not approve, reject, claim, or cancel on behalf of employees in this workflow. Admin publication-level compatibility remains available through `GET /api/publications/{id}/leaves`.
 
 ## Testing
 

@@ -45,6 +45,7 @@ import {
   endPublication,
   brandingFallback,
   getBranding,
+  leavePoolQueryOptions,
   leavePreviewQueryOptions,
   previewSetupToken,
   requestEmailChange,
@@ -441,6 +442,32 @@ describe("leave previews", () => {
         to: "2026-05-15",
       },
     })
+  })
+
+  it("requests leave pool rows with pagination metadata", async () => {
+    getMock.mockResolvedValue({
+      data: { leaves: [], page: 2, page_size: 20, total_count: 30 },
+    })
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+    })
+
+    const result = await client.fetchQuery(
+      leavePoolQueryOptions("completed", 2, 20),
+    )
+
+    expect(getMock).toHaveBeenCalledWith("/leaves/pool", {
+      params: {
+        state: "completed",
+        page: 2,
+        page_size: 20,
+      },
+    })
+    expect(result.total_count).toBe(30)
   })
 })
 

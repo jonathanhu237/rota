@@ -264,6 +264,7 @@ func main() {
 	mux.HandleFunc("GET /publications/{id}/members", authHandler.RequireAuth(shiftChangeHandler.ListMembers))
 	mux.HandleFunc("GET /publications/{id}/leaves", authHandler.RequireAdmin(leaveHandler.ListForPublication))
 	mux.HandleFunc("POST /leaves", authHandler.RequireAuth(leaveHandler.Create))
+	mux.HandleFunc("GET /leaves/pool", authHandler.RequireAuth(leaveHandler.ListPool))
 	mux.HandleFunc("GET /leaves/{id}", authHandler.RequireAuth(leaveHandler.GetByID))
 	mux.HandleFunc("POST /leaves/{id}/cancel", authHandler.RequireAuth(leaveHandler.Cancel))
 	mux.HandleFunc("GET /users/me/leaves", authHandler.RequireAuth(leaveHandler.ListMine))

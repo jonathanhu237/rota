@@ -154,6 +154,215 @@ func TestLeaveRepositoryIntegration(t *testing.T) {
 	})
 }
 
+func TestLeavePoolRepositoryIntegration(t *testing.T) {
+	ctx := context.Background()
+	db := openIntegrationDB(t)
+	leaveRepo := NewLeaveRepository(db)
+	publication, alice, assignment := seedLeavePrerequisites(t, db)
+	bob := seedUser(t, db, userSeed{Name: "Bob"})
+	carol := seedUser(t, db, userSeed{Name: "Carol"})
+	admin := seedUser(t, db, userSeed{Name: "Admin", IsAdmin: true})
+	seedUserPosition(t, db, bob.ID, assignment.PositionID)
+	now := testTime()
+
+	publicReq := seedShiftChangeRequest(
+		t,
+		db,
+		publication.ID,
+		model.ShiftChangeTypeGivePool,
+		alice.ID,
+		assignment.ID,
+		nil,
+		nil,
+		model.ShiftChangeStatePending,
+		now.Add(-2*time.Hour),
+		now.Add(48*time.Hour),
+	)
+	publicLeave := seedLeaveForRequest(t, db, publicReq, model.LeaveCategorySick)
+
+	directReq := seedShiftChangeRequest(
+		t,
+		db,
+		publication.ID,
+		model.ShiftChangeTypeGiveDirect,
+		alice.ID,
+		assignment.ID,
+		&bob.ID,
+		nil,
+		model.ShiftChangeStatePending,
+		now.Add(-time.Hour),
+		now.Add(24*time.Hour),
+	)
+	directLeave := seedLeaveForRequest(t, db, directReq, model.LeaveCategoryPersonal)
+
+	rows, total, err := leaveRepo.ListPool(ctx, ListLeavePoolParams{
+		ViewerUserID: bob.ID,
+		State:        model.LeavePoolStatePending,
+		Offset:       0,
+		Limit:        20,
+	})
+	if err != nil {
+		t.Fatalf("list pool for counterpart: %v", err)
+	}
+	if total != 2 || len(rows) != 2 {
+		t.Fatalf("expected Bob to see public and direct leaves, total=%d rows=%+v", total, rows)
+	}
+	if rows[0].Leave.ID != directLeave.ID || rows[1].Leave.ID != publicLeave.ID {
+		t.Fatalf("expected pending rows sorted by occurrence start, got %+v", rows)
+	}
+	if rows[0].RequesterName != alice.Name || rows[0].CounterpartName == nil || *rows[0].CounterpartName != bob.Name {
+		t.Fatalf("expected display names on direct row, got %+v", rows[0])
+	}
+	if rows[0].Shift == nil || rows[0].Shift.PositionID != assignment.PositionID {
+		t.Fatalf("expected shift context, got %+v", rows[0].Shift)
+	}
+
+	rows, total, err = leaveRepo.ListPool(ctx, ListLeavePoolParams{
+		ViewerUserID: carol.ID,
+		State:        model.LeavePoolStatePending,
+		Offset:       0,
+		Limit:        20,
+	})
+	if err != nil {
+		t.Fatalf("list pool for unrelated employee: %v", err)
+	}
+	if total != 1 || len(rows) != 1 || rows[0].Leave.ID != publicLeave.ID {
+		t.Fatalf("expected Carol to see public leave only, total=%d rows=%+v", total, rows)
+	}
+
+	_, total, err = leaveRepo.ListPool(ctx, ListLeavePoolParams{
+		ViewerUserID:  admin.ID,
+		ViewerIsAdmin: true,
+		State:         model.LeavePoolStatePending,
+		Offset:        0,
+		Limit:         20,
+	})
+	if err != nil {
+		t.Fatalf("list pool for admin: %v", err)
+	}
+	if total != 2 {
+		t.Fatalf("expected admin to see all pending leaves, got %d", total)
+	}
+
+	approvedReq := seedShiftChangeRequest(
+		t,
+		db,
+		publication.ID,
+		model.ShiftChangeTypeGivePool,
+		alice.ID,
+		assignment.ID,
+		nil,
+		nil,
+		model.ShiftChangeStateApproved,
+		now.Add(-3*time.Hour),
+		now.Add(72*time.Hour),
+	)
+	approvedLeave := seedLeaveForRequest(t, db, approvedReq, model.LeaveCategoryBereavement)
+	if _, err := db.ExecContext(
+		ctx,
+		`UPDATE shift_change_requests SET decided_by_user_id = $1, decided_at = $2 WHERE id = $3;`,
+		bob.ID,
+		now,
+		approvedReq.ID,
+	); err != nil {
+		t.Fatalf("mark approved decided_by: %v", err)
+	}
+	cancelledReq := seedShiftChangeRequest(
+		t,
+		db,
+		publication.ID,
+		model.ShiftChangeTypeGivePool,
+		alice.ID,
+		assignment.ID,
+		nil,
+		nil,
+		model.ShiftChangeStateCancelled,
+		now.Add(-4*time.Hour),
+		now.Add(96*time.Hour),
+	)
+	cancelledLeave := seedLeaveForRequest(t, db, cancelledReq, model.LeaveCategorySick)
+	rejectedReq := seedShiftChangeRequest(
+		t,
+		db,
+		publication.ID,
+		model.ShiftChangeTypeGivePool,
+		alice.ID,
+		assignment.ID,
+		nil,
+		nil,
+		model.ShiftChangeStateRejected,
+		now.Add(-5*time.Hour),
+		now.Add(120*time.Hour),
+	)
+	rejectedLeave := seedLeaveForRequest(t, db, rejectedReq, model.LeaveCategoryPersonal)
+	expiredPendingReq := seedShiftChangeRequest(
+		t,
+		db,
+		publication.ID,
+		model.ShiftChangeTypeGivePool,
+		alice.ID,
+		assignment.ID,
+		nil,
+		nil,
+		model.ShiftChangeStatePending,
+		now.Add(-6*time.Hour),
+		now.Add(-time.Hour),
+	)
+	expiredPendingLeave := seedLeaveForRequest(t, db, expiredPendingReq, model.LeaveCategoryPersonal)
+
+	stateCases := []struct {
+		name  string
+		state model.LeavePoolStateFilter
+		want  map[int64]struct{}
+	}{
+		{name: "completed", state: model.LeavePoolStateCompleted, want: map[int64]struct{}{approvedLeave.ID: {}}},
+		{name: "cancelled", state: model.LeavePoolStateCancelled, want: map[int64]struct{}{cancelledLeave.ID: {}}},
+		{name: "failed", state: model.LeavePoolStateFailed, want: map[int64]struct{}{
+			rejectedLeave.ID:       {},
+			expiredPendingLeave.ID: {},
+		}},
+	}
+	for _, tc := range stateCases {
+		t.Run(tc.name, func(t *testing.T) {
+			rows, total, err := leaveRepo.ListPool(ctx, ListLeavePoolParams{
+				ViewerUserID: bob.ID,
+				State:        tc.state,
+				Now:          now,
+				Offset:       0,
+				Limit:        20,
+			})
+			if err != nil {
+				t.Fatalf("list state %s: %v", tc.state, err)
+			}
+			if total != len(tc.want) || len(rows) != len(tc.want) {
+				t.Fatalf("state %s total=%d rows=%+v", tc.state, total, rows)
+			}
+			for _, row := range rows {
+				if _, ok := tc.want[row.Leave.ID]; !ok {
+					t.Fatalf("unexpected leave %d for state %s", row.Leave.ID, tc.state)
+				}
+			}
+		})
+	}
+
+	allRows, total, err := leaveRepo.ListPool(ctx, ListLeavePoolParams{
+		ViewerUserID: bob.ID,
+		State:        model.LeavePoolStateAll,
+		Now:          now,
+		Offset:       0,
+		Limit:        20,
+	})
+	if err != nil {
+		t.Fatalf("list all: %v", err)
+	}
+	if total != 6 || len(allRows) != 6 {
+		t.Fatalf("expected all visible leaves, total=%d rows=%+v", total, allRows)
+	}
+	if allRows[0].Leave.ID != directLeave.ID || allRows[1].Leave.ID != publicLeave.ID {
+		t.Fatalf("expected all sort to place pending rows first by urgency, got %+v", allRows[:2])
+	}
+}
+
 func seedLeavePrerequisites(
 	t testing.TB,
 	db *sql.DB,

@@ -17,7 +17,6 @@ import { getTranslatedApiError } from "@/lib/api-error"
 import {
   approveShiftChangeRequest,
   cancelLeave,
-  currentUserQueryOptions,
   leaveQueryOptions,
   myLeavesQueryOptions,
   rejectShiftChangeRequest,
@@ -45,7 +44,6 @@ function LeaveDetailPage() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const leaveQuery = useQuery(leaveQueryOptions(leaveID))
-  const currentUserQuery = useQuery(currentUserQueryOptions)
   const formatter = new Intl.DateTimeFormat(i18n.resolvedLanguage, {
     dateStyle: "medium",
     timeStyle: "short",
@@ -54,6 +52,7 @@ function LeaveDetailPage() {
   const invalidateLeave = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: leaveQueryOptions(leaveID).queryKey }),
+      queryClient.invalidateQueries({ queryKey: ["leaves"] }),
       queryClient.invalidateQueries({ queryKey: myLeavesQueryOptions(1, 10).queryKey }),
       queryClient.invalidateQueries({ queryKey: ["me", "leaves"] }),
     ])
@@ -128,18 +127,13 @@ function LeaveDetailPage() {
   }
 
   const leave = leaveQuery.data
-  const userID = currentUserQuery.data?.id
   const request = leave.request
-  const isPending = request.state === "pending"
-  const isRequester = userID === leave.user_id
-  const isCounterpart = request.counterpart_user_id === userID
-  const canClaim =
-    isPending && request.type === "give_pool" && userID !== request.requester_user_id
-  const canApprove =
-    isPending &&
-    (canClaim ||
-      ((request.type === "swap" || request.type === "give_direct") &&
-        isCounterpart))
+  const actions = leave.actions
+  const hasActions =
+    actions?.can_claim ||
+    actions?.can_approve ||
+    actions?.can_reject ||
+    actions?.can_cancel
   const isBusy =
     approveMutation.isPending ||
     rejectMutation.isPending ||
@@ -161,34 +155,61 @@ function LeaveDetailPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 text-sm">
-          <DetailRow label={t("leaveDetail.reason")} value={leave.reason || t("common.notAvailable")} />
-          <DetailRow label={t("leaveDetail.createdAt")} value={formatter.format(new Date(leave.created_at))} />
-          <DetailRow label={t("leaveDetail.expiresAt")} value={formatter.format(new Date(request.expires_at))} />
-          <DetailRow label={t("leaveDetail.requester")} value={`#${leave.user_id}`} />
-          {request.counterpart_user_id != null && (
-            <DetailRow label={t("leaveDetail.counterpart")} value={`#${request.counterpart_user_id}`} />
+          <DetailRow
+            label={t("leaveDetail.reason")}
+            value={leave.reason || t("common.notAvailable")}
+          />
+          <DetailRow
+            label={t("leaveDetail.createdAt")}
+            value={formatter.format(new Date(leave.created_at))}
+          />
+          <DetailRow
+            label={t("leaveDetail.expiresAt")}
+            value={formatter.format(new Date(request.expires_at))}
+          />
+          <DetailRow
+            label={t("leaveDetail.requester")}
+            value={leave.requester_name || `#${leave.user_id}`}
+          />
+          {leave.shift && (
+            <DetailRow
+              label={t("leaveDetail.shift")}
+              value={`${formatter.format(new Date(leave.shift.occurrence_start))} - ${formatter.format(new Date(leave.shift.occurrence_end))} · ${leave.shift.position_name}`}
+            />
+          )}
+          {leave.counterpart_name && (
+            <DetailRow
+              label={t("leaveDetail.counterpart")}
+              value={leave.counterpart_name}
+            />
+          )}
+          {leave.substitute_name && (
+            <DetailRow
+              label={t("leaveDetail.substitute")}
+              value={leave.substitute_name}
+            />
           )}
         </CardContent>
       </Card>
 
-      {isPending && (
+      {hasActions && (
         <Card>
           <CardHeader>
             <CardTitle>{t("leaveDetail.actionsTitle")}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            {canApprove && (
+            {(actions?.can_claim || actions?.can_approve) && (
               <Button
                 type="button"
                 disabled={isBusy}
                 onClick={() => approveMutation.mutate(leave)}
               >
-                {canClaim
+                {actions?.can_claim
                   ? t("leaveDetail.actions.claim")
                   : t("leaveDetail.actions.approve")}
               </Button>
             )}
-            {isCounterpart && request.type !== "give_pool" && (
+            {actions?.can_reject && (
               <Button
                 type="button"
                 variant="outline"
@@ -198,7 +219,7 @@ function LeaveDetailPage() {
                 {t("leaveDetail.actions.reject")}
               </Button>
             )}
-            {isRequester && (
+            {actions?.can_cancel && (
               <Button
                 type="button"
                 variant="destructive"

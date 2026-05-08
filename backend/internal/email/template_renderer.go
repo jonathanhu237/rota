@@ -67,6 +67,12 @@ func renderShiftChangeRequestReceivedMessage(data ShiftChangeRequestReceivedData
 	view.CTALabel = localizedString(language, "View request", "查看申请")
 	view.RequesterName = data.RequesterName
 	view.RequestTypeLabel = shiftChangeTypeLabel(data.Type, language)
+	if data.LeaveID != nil {
+		view.ActionURL = leaveLink(data.BaseURL, *data.LeaveID)
+		view.RequestsURL = view.ActionURL
+		view.CTALabel = localizedString(language, "View leave", "查看请假")
+		view.RequestTypeLabel = leaveCoverageTypeLabel(language)
+	}
 	view.RequesterShiftLabel = FormatShiftRef(data.RequesterShift, language)
 	if data.CounterpartShift != nil {
 		view.CounterpartShiftLabel = FormatShiftRef(*data.CounterpartShift, language)
@@ -86,6 +92,13 @@ func renderShiftChangeResolvedMessage(data ShiftChangeResolvedData) Message {
 	view.Subject = shiftChangeResolvedSubject(data.Outcome, language, data.Branding)
 	view.ResponderName = data.ResponderName
 	view.RequestTypeLabel = shiftChangeTypeLabel(data.Type, language)
+	if data.LeaveID != nil {
+		view.ActionURL = leaveLink(data.BaseURL, *data.LeaveID)
+		view.RequestsURL = view.ActionURL
+		view.CTALabel = localizedString(language, "View leave", "查看请假")
+		view.RequestTypeLabel = leaveCoverageTypeLabel(language)
+		view.Subject = leaveCoverageResolvedSubject(data.Outcome, language, data.Branding)
+	}
 	if !isZeroShiftRef(data.RequesterShift) {
 		view.RequesterShiftLabel = FormatShiftRef(data.RequesterShift, language)
 	}
@@ -183,6 +196,14 @@ func shiftChangeResolvedSubject(outcome ShiftChangeOutcome, language string, bra
 		return fmt.Sprintf("[%s] 换班申请%s", productName, shiftChangeOutcomeLabel(outcome, language))
 	}
 	return fmt.Sprintf("[%s] Shift change request %s", productName, shiftChangeOutcomeLabel(outcome, language))
+}
+
+func leaveCoverageResolvedSubject(outcome ShiftChangeOutcome, language string, branding Branding) string {
+	productName := NormalizeBranding(branding).ProductName
+	if normalizeLanguage(language) == "zh" {
+		return fmt.Sprintf("[%s] 请假代班%s", productName, shiftChangeOutcomeLabel(outcome, language))
+	}
+	return fmt.Sprintf("[%s] Leave coverage request %s", productName, shiftChangeOutcomeLabel(outcome, language))
 }
 
 func displayName(name string, language string) string {

@@ -1095,6 +1095,54 @@
   "leaves": {
     "requestCta": "申请请假",
     "backToHistory": "返回请假记录",
+    "workbench": {
+      "title": "请假工作台",
+      "description": "查看仍需要代班覆盖的请假申请。",
+      "empty": "当前筛选下没有请假申请。",
+      "urgent": "24 小时内开始",
+      "total": "共 {{total}} 条",
+      "previous": "上一页",
+      "next": "下一页",
+      "page": "第 {{page}} 页",
+      "filters": {
+        "pending": "待处理",
+        "all": "全部",
+        "completed": "已完成",
+        "cancelled": "已取消",
+        "failed": "未成功"
+      },
+      "columns": {
+        "requester": "发起人",
+        "shift": "班次",
+        "type": "方式",
+        "status": "状态",
+        "coverage": "代班",
+        "actions": "操作"
+      },
+      "coverage": {
+        "open": "公共池"
+      },
+      "urgency": {
+        "remaining": "{{hours}} 小时后开始"
+      },
+      "actions": {
+        "claim": "帮他上",
+        "approve": "同意",
+        "reject": "拒绝",
+        "cancel": "取消请假",
+        "detail": "详情"
+      },
+      "disabled": {
+        "not_qualified": "没有岗位资格",
+        "admin_view_only": "管理员仅可查看"
+      },
+      "toast": {
+        "claim": "已接受请假代班。",
+        "approve": "已同意请假代班。",
+        "reject": "已拒绝请假代班。",
+        "cancel": "请假已取消。"
+      }
+    },
     "history": {
       "title": "我的请假",
       "description": "查看您已提交的请假记录。",
@@ -1166,6 +1214,8 @@
     "expiresAt": "截止时间",
     "requester": "发起人",
     "counterpart": "代班人",
+    "substitute": "实际代班人",
+    "shift": "班次",
     "actionsTitle": "操作",
     "actions": {
       "approve": "同意",

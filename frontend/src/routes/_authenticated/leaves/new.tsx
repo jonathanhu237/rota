@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { Copy, Send } from "lucide-react"
@@ -20,15 +20,13 @@ import { useToast } from "@/components/ui/toast"
 import { getTranslatedApiError } from "@/lib/api-error"
 import {
   createLeave,
-  currentPublicationQueryOptions,
   leavePreviewQueryOptions,
   myLeavesQueryOptions,
-  publicationMembersQueryOptions,
 } from "@/lib/queries"
 import type {
   LeaveCategory,
+  LeaveDirectCandidate,
   LeavePreviewOccurrence,
-  PublicationMember,
   ShiftChangeType,
 } from "@/lib/types"
 
@@ -61,22 +59,11 @@ export function LeavePage() {
   const [drafts, setDrafts] = useState<Record<string, RowDraft>>({})
   const [shareURLs, setShareURLs] = useState<string[]>([])
 
-  const currentPublicationQuery = useQuery(currentPublicationQueryOptions)
-  const publicationID = currentPublicationQuery.data?.id ?? 0
-  const membersQuery = useQuery({
-    ...publicationMembersQueryOptions(publicationID),
-    enabled: publicationID > 0,
-  })
   const previewQuery = useQuery(leavePreviewQueryOptions(from, to))
   const formatter = new Intl.DateTimeFormat(i18n.resolvedLanguage, {
     dateStyle: "medium",
     timeStyle: "short",
   })
-
-  const memberOptions = useMemo(
-    () => membersQuery.data ?? [],
-    [membersQuery.data],
-  )
 
   const createMutation = useMutation({
     mutationFn: async ({
@@ -104,6 +91,7 @@ export function LeavePage() {
           : [...current, leave.share_url],
       )
       await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["leaves"] }),
         queryClient.invalidateQueries({ queryKey: ["me", "leaves"] }),
         queryClient.invalidateQueries({
           queryKey: myLeavesQueryOptions(1, 10).queryKey,
@@ -198,18 +186,18 @@ export function LeavePage() {
         </CardContent>
       </Card>
 
-      {previewQuery.isLoading || membersQuery.isLoading ? (
+      {previewQuery.isLoading ? (
         <div className="grid gap-3">
           <Skeleton className="h-36 w-full" />
           <Skeleton className="h-36 w-full" />
         </div>
-      ) : previewQuery.isError || membersQuery.isError ? (
+      ) : previewQuery.isError ? (
         <Card>
           <CardContent className="pt-4">
             <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
               {getTranslatedApiError(
                 t,
-                previewQuery.error ?? membersQuery.error,
+                previewQuery.error,
                 "leave.errors",
                 "leave.errors.INTERNAL_ERROR",
               )}
@@ -226,7 +214,7 @@ export function LeavePage() {
                 key={key}
                 occurrence={occurrence}
                 draft={draft}
-                members={memberOptions}
+                candidates={occurrence.direct_candidates}
                 formatter={formatter}
                 isPending={createMutation.isPending}
                 onChange={(patch) => updateDraft(key, patch)}
@@ -251,7 +239,7 @@ export function LeavePage() {
 function LeaveOccurrenceCard({
   occurrence,
   draft,
-  members,
+  candidates,
   formatter,
   isPending,
   onChange,
@@ -259,7 +247,7 @@ function LeaveOccurrenceCard({
 }: {
   occurrence: LeavePreviewOccurrence
   draft: RowDraft
-  members: PublicationMember[]
+  candidates: LeaveDirectCandidate[]
   formatter: Intl.DateTimeFormat
   isPending: boolean
   onChange: (patch: Partial<RowDraft>) => void
@@ -325,9 +313,9 @@ function LeaveOccurrenceCard({
               }
             >
               <option value="">{t("leave.counterpartPlaceholder")}</option>
-              {members.map((member) => (
-                <option key={member.user_id} value={member.user_id}>
-                  {member.name}
+              {candidates.map((candidate) => (
+                <option key={candidate.user_id} value={candidate.user_id}>
+                  {candidate.name}
                 </option>
               ))}
             </select>

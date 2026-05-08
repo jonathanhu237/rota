@@ -46,6 +46,7 @@ type ShiftChangeRequestReceivedData struct {
 	RecipientName    string
 	RequesterName    string
 	Type             ShiftChangeType
+	LeaveID          *int64
 	RequesterShift   ShiftRef
 	CounterpartShift *ShiftRef // non-nil only for swap
 	BaseURL          string
@@ -60,6 +61,7 @@ type ShiftChangeResolvedData struct {
 	RecipientName    string
 	Outcome          ShiftChangeOutcome
 	Type             ShiftChangeType
+	LeaveID          *int64
 	ResponderName    string // the counterpart / claimer; may be empty for cancelled
 	RequesterShift   ShiftRef
 	CounterpartShift *ShiftRef
@@ -99,6 +101,10 @@ func requestsLink(baseURL string) string {
 	return strings.TrimRight(baseURL, "/") + "/requests"
 }
 
+func leaveLink(baseURL string, leaveID int64) string {
+	return fmt.Sprintf("%s/leaves/%d", strings.TrimRight(baseURL, "/"), leaveID)
+}
+
 func FormatShiftRef(s ShiftRef, language string) string {
 	if s.OccurrenceDate != nil && !s.OccurrenceDate.IsZero() {
 		if normalizeLanguage(language) == "zh" {
@@ -136,6 +142,10 @@ func shiftChangeTypeLabel(changeType ShiftChangeType, language string) string {
 	default:
 		return localizedString(language, "shift change", "换班")
 	}
+}
+
+func leaveCoverageTypeLabel(language string) string {
+	return localizedString(language, "leave coverage", "请假代班")
 }
 
 func shiftChangeOutcomeLabel(outcome ShiftChangeOutcome, language string) string {

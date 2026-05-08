@@ -27,6 +27,24 @@ const (
 	LeaveStateCancelled LeaveState = "cancelled"
 )
 
+type LeavePoolStateFilter string
+
+const (
+	LeavePoolStatePending   LeavePoolStateFilter = "pending"
+	LeavePoolStateCompleted LeavePoolStateFilter = "completed"
+	LeavePoolStateFailed    LeavePoolStateFilter = "failed"
+	LeavePoolStateCancelled LeavePoolStateFilter = "cancelled"
+	LeavePoolStateAll       LeavePoolStateFilter = "all"
+)
+
+type LeaveActionDisabledReason string
+
+const (
+	LeaveActionDisabledNone          LeaveActionDisabledReason = ""
+	LeaveActionDisabledNotQualified  LeaveActionDisabledReason = "not_qualified"
+	LeaveActionDisabledAdminViewOnly LeaveActionDisabledReason = "admin_view_only"
+)
+
 type Leave struct {
 	ID                   int64
 	UserID               int64

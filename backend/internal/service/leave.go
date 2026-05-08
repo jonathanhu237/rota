@@ -21,8 +21,10 @@ type leaveRepository interface {
 	WithTx(ctx context.Context, fn func(tx *sql.Tx) error) error
 	Insert(ctx context.Context, tx *sql.Tx, params repository.InsertLeaveParams) (*model.Leave, error)
 	GetByID(ctx context.Context, id int64) (*model.Leave, *model.ShiftChangeRequest, error)
+	GetWithRequestByID(ctx context.Context, id int64) (*repository.LeaveWithRequest, error)
 	ListForUser(ctx context.Context, userID int64, page int, pageSize int) ([]*repository.LeaveWithRequest, error)
 	ListForPublication(ctx context.Context, publicationID int64, page int, pageSize int) ([]*repository.LeaveWithRequest, error)
+	ListPool(ctx context.Context, params repository.ListLeavePoolParams) ([]*repository.LeaveWithRequest, int, error)
 }
 
 type leaveShiftChangeRepository interface {
@@ -34,6 +36,8 @@ type leavePublicationRepository interface {
 	GetCurrent(ctx context.Context) (*model.Publication, error)
 	ListPublicationAssignments(ctx context.Context, publicationID int64) ([]*model.AssignmentParticipant, error)
 	ListPublicationShifts(ctx context.Context, publicationID int64) ([]*model.PublicationShift, error)
+	ListAssignmentBoardEmployees(ctx context.Context, publicationID int64) ([]*model.AssignmentBoardEmployee, error)
+	IsUserQualifiedForPosition(ctx context.Context, userID, positionID int64) (bool, error)
 }
 
 type LeaveService struct {
@@ -55,9 +59,54 @@ type CreateLeaveInput struct {
 }
 
 type LeaveDetail struct {
-	Leave   *model.Leave
-	Request *model.ShiftChangeRequest
-	State   model.LeaveState
+	Leave           *model.Leave
+	Request         *model.ShiftChangeRequest
+	State           model.LeaveState
+	RequesterName   string
+	CounterpartName *string
+	SubstituteName  *string
+	Shift           *LeaveShiftContext
+	Urgency         *LeaveUrgency
+	Actions         LeaveActions
+}
+
+type LeaveShiftContext struct {
+	AssignmentID    int64
+	SlotID          int64
+	Weekday         int
+	StartTime       string
+	EndTime         string
+	PositionID      int64
+	PositionName    string
+	OccurrenceStart time.Time
+	OccurrenceEnd   time.Time
+}
+
+type LeaveUrgency struct {
+	OccurrenceStart     time.Time
+	SecondsUntilStart   int64
+	StartsWithin24Hours bool
+}
+
+type LeaveActions struct {
+	CanClaim       bool
+	CanApprove     bool
+	CanReject      bool
+	CanCancel      bool
+	DisabledReason model.LeaveActionDisabledReason
+}
+
+type ListLeavePoolInput struct {
+	State    string
+	Page     int
+	PageSize int
+}
+
+type LeavePoolResult struct {
+	Leaves     []*LeaveDetail
+	Page       int
+	PageSize   int
+	TotalCount int
 }
 
 type ListLeavesInput struct {
@@ -66,12 +115,18 @@ type ListLeavesInput struct {
 }
 
 type OccurrencePreview struct {
-	AssignmentID    int64
-	OccurrenceDate  time.Time
-	Slot            *model.TemplateSlot
-	Position        *model.Position
-	OccurrenceStart time.Time
-	OccurrenceEnd   time.Time
+	AssignmentID     int64
+	OccurrenceDate   time.Time
+	Slot             *model.TemplateSlot
+	Position         *model.Position
+	OccurrenceStart  time.Time
+	OccurrenceEnd    time.Time
+	DirectCandidates []LeaveDirectCandidate
+}
+
+type LeaveDirectCandidate struct {
+	UserID int64
+	Name   string
 }
 
 func NewLeaveService(
@@ -147,6 +202,12 @@ func (s *LeaveService) Create(ctx context.Context, input CreateLeaveInput) (*Lea
 		}
 
 		request, err = s.shiftChangeRepo.SetLeaveIDTx(ctx, tx, request.ID, leave.ID)
+		if err != nil {
+			return err
+		}
+		if shouldNotifyShiftChangeCreate(request.Type) {
+			return s.shiftChangeService.enqueueRequestCreatedTx(ctx, tx, request, prepared.requesterShift, prepared.counterpartShift)
+		}
 		return err
 	}); err != nil {
 		return nil, err
@@ -209,16 +270,60 @@ func (s *LeaveService) Cancel(ctx context.Context, leaveID, userID int64) error 
 	return nil
 }
 
-func (s *LeaveService) GetByID(ctx context.Context, leaveID int64) (*LeaveDetail, error) {
+func (s *LeaveService) GetByID(
+	ctx context.Context,
+	leaveID int64,
+	viewerUserID int64,
+	viewerIsAdmin bool,
+) (*LeaveDetail, error) {
 	if leaveID <= 0 {
 		return nil, ErrInvalidInput
 	}
-	leave, req, err := s.leaveRepo.GetByID(ctx, leaveID)
+	row, err := s.leaveRepo.GetWithRequestByID(ctx, leaveID)
 	if err != nil {
 		return nil, mapLeaveRepositoryError(err)
 	}
-	req = s.shiftChangeService.expireOnReadIfStale(ctx, req)
-	return newLeaveDetail(leave, req), nil
+	return s.newLeaveDetailFromRow(ctx, row, viewerUserID, viewerIsAdmin), nil
+}
+
+func (s *LeaveService) ListPool(
+	ctx context.Context,
+	viewerUserID int64,
+	viewerIsAdmin bool,
+	input ListLeavePoolInput,
+) (*LeavePoolResult, error) {
+	if viewerUserID <= 0 {
+		return nil, ErrInvalidInput
+	}
+	state, err := normalizeLeavePoolState(input.State)
+	if err != nil {
+		return nil, err
+	}
+	page, pageSize, err := normalizeLeavePoolPagination(input.Page, input.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	rows, total, err := s.leaveRepo.ListPool(ctx, repository.ListLeavePoolParams{
+		ViewerUserID:  viewerUserID,
+		ViewerIsAdmin: viewerIsAdmin,
+		State:         state,
+		Now:           s.clock.Now(),
+		Offset:        (page - 1) * pageSize,
+		Limit:         pageSize,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*LeaveDetail, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, s.newLeaveDetailFromRow(ctx, row, viewerUserID, viewerIsAdmin))
+	}
+	return &LeavePoolResult{
+		Leaves:     out,
+		Page:       page,
+		PageSize:   pageSize,
+		TotalCount: total,
+	}, nil
 }
 
 func (s *LeaveService) ListForUser(
@@ -291,6 +396,10 @@ func (s *LeaveService) PreviewOccurrences(
 	if err != nil {
 		return nil, err
 	}
+	employees, err := s.publicationRepo.ListAssignmentBoardEmployees(ctx, publication.ID)
+	if err != nil {
+		return nil, err
+	}
 	shiftIndex := buildPublicationShiftIndex(shifts)
 
 	out := make([]*OccurrencePreview, 0)
@@ -321,12 +430,13 @@ func (s *LeaveService) PreviewOccurrences(
 				return nil, err
 			}
 			out = append(out, &OccurrencePreview{
-				AssignmentID:    assignment.AssignmentID,
-				OccurrenceDate:  model.NormalizeOccurrenceDate(date),
-				Slot:            slot,
-				Position:        position,
-				OccurrenceStart: start,
-				OccurrenceEnd:   end,
+				AssignmentID:     assignment.AssignmentID,
+				OccurrenceDate:   model.NormalizeOccurrenceDate(date),
+				Slot:             slot,
+				Position:         position,
+				OccurrenceStart:  start,
+				OccurrenceEnd:    end,
+				DirectCandidates: directCandidatesForPosition(employees, userID, position.ID),
 			})
 		}
 	}
@@ -346,18 +456,156 @@ func (s *LeaveService) newLeaveDetails(
 ) []*LeaveDetail {
 	out := make([]*LeaveDetail, 0, len(rows))
 	for _, row := range rows {
-		req := s.shiftChangeService.expireOnReadIfStale(ctx, row.Request)
-		out = append(out, newLeaveDetail(row.Leave, req))
+		out = append(out, s.newLeaveDetailFromRow(ctx, row, 0, false))
 	}
 	return out
 }
 
 func newLeaveDetail(leave *model.Leave, req *model.ShiftChangeRequest) *LeaveDetail {
 	return &LeaveDetail{
-		Leave:   leave,
-		Request: req,
-		State:   model.LeaveStateFromSCRT(req.State),
+		Leave:         leave,
+		Request:       req,
+		State:         model.LeaveStateFromSCRT(req.State),
+		RequesterName: "",
 	}
+}
+
+func (s *LeaveService) newLeaveDetailFromRow(
+	ctx context.Context,
+	row *repository.LeaveWithRequest,
+	viewerUserID int64,
+	viewerIsAdmin bool,
+) *LeaveDetail {
+	req := s.shiftChangeService.expireOnReadIfStale(ctx, row.Request)
+	detail := newLeaveDetail(row.Leave, req)
+	detail.RequesterName = row.RequesterName
+	detail.CounterpartName = row.CounterpartName
+	if model.LeaveStateFromSCRT(req.State) == model.LeaveStateCompleted {
+		detail.SubstituteName = row.SubstituteName
+	}
+	if row.Shift != nil {
+		detail.Shift = &LeaveShiftContext{
+			AssignmentID:    row.Shift.AssignmentID,
+			SlotID:          row.Shift.SlotID,
+			Weekday:         row.Shift.Weekday,
+			StartTime:       row.Shift.StartTime,
+			EndTime:         row.Shift.EndTime,
+			PositionID:      row.Shift.PositionID,
+			PositionName:    row.Shift.PositionName,
+			OccurrenceStart: row.Shift.OccurrenceStart,
+			OccurrenceEnd:   row.Shift.OccurrenceEnd,
+		}
+		detail.Urgency = s.leaveUrgency(detail)
+	}
+	detail.Actions = s.leaveActions(ctx, detail, viewerUserID, viewerIsAdmin)
+	return detail
+}
+
+func (s *LeaveService) leaveUrgency(detail *LeaveDetail) *LeaveUrgency {
+	if detail == nil || detail.Shift == nil || detail.State != model.LeaveStatePending {
+		return nil
+	}
+	seconds := int64(detail.Shift.OccurrenceStart.Sub(s.clock.Now()).Seconds())
+	if seconds < 0 {
+		seconds = 0
+	}
+	return &LeaveUrgency{
+		OccurrenceStart:     detail.Shift.OccurrenceStart,
+		SecondsUntilStart:   seconds,
+		StartsWithin24Hours: seconds <= int64((24 * time.Hour).Seconds()),
+	}
+}
+
+func (s *LeaveService) leaveActions(
+	ctx context.Context,
+	detail *LeaveDetail,
+	viewerUserID int64,
+	viewerIsAdmin bool,
+) LeaveActions {
+	if detail == nil || detail.Request == nil || viewerUserID <= 0 {
+		return LeaveActions{}
+	}
+	if viewerIsAdmin {
+		return LeaveActions{DisabledReason: model.LeaveActionDisabledAdminViewOnly}
+	}
+	if detail.State != model.LeaveStatePending {
+		return LeaveActions{}
+	}
+	if detail.Leave.UserID == viewerUserID {
+		return LeaveActions{CanCancel: true}
+	}
+	req := detail.Request
+	switch req.Type {
+	case model.ShiftChangeTypeGiveDirect:
+		if req.CounterpartUserID != nil && *req.CounterpartUserID == viewerUserID {
+			return LeaveActions{CanApprove: true, CanReject: true}
+		}
+	case model.ShiftChangeTypeGivePool:
+		if detail.Shift == nil || detail.Shift.PositionID <= 0 {
+			return LeaveActions{DisabledReason: model.LeaveActionDisabledNotQualified}
+		}
+		qualified, err := s.publicationRepo.IsUserQualifiedForPosition(ctx, viewerUserID, detail.Shift.PositionID)
+		if err != nil || !qualified {
+			return LeaveActions{DisabledReason: model.LeaveActionDisabledNotQualified}
+		}
+		return LeaveActions{CanClaim: true}
+	}
+	return LeaveActions{}
+}
+
+func normalizeLeavePoolState(value string) (model.LeavePoolStateFilter, error) {
+	if value == "" {
+		return model.LeavePoolStatePending, nil
+	}
+	switch model.LeavePoolStateFilter(value) {
+	case model.LeavePoolStatePending,
+		model.LeavePoolStateCompleted,
+		model.LeavePoolStateFailed,
+		model.LeavePoolStateCancelled,
+		model.LeavePoolStateAll:
+		return model.LeavePoolStateFilter(value), nil
+	default:
+		return "", ErrInvalidInput
+	}
+}
+
+func normalizeLeavePoolPagination(page, pageSize int) (int, int, error) {
+	if page == 0 {
+		page = 1
+	}
+	if pageSize == 0 {
+		pageSize = 20
+	}
+	if page < 1 || pageSize < 1 || pageSize > 100 {
+		return 0, 0, ErrInvalidInput
+	}
+	return page, pageSize, nil
+}
+
+func directCandidatesForPosition(
+	employees []*model.AssignmentBoardEmployee,
+	requesterID int64,
+	positionID int64,
+) []LeaveDirectCandidate {
+	out := make([]LeaveDirectCandidate, 0)
+	for _, employee := range employees {
+		if employee.UserID == requesterID {
+			continue
+		}
+		for _, candidatePositionID := range employee.PositionIDs {
+			if candidatePositionID == positionID {
+				out = append(out, LeaveDirectCandidate{UserID: employee.UserID, Name: employee.Name})
+				break
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].UserID < out[j].UserID
+	})
+	return out
 }
 
 func isValidLeaveCategory(category model.LeaveCategory) bool {

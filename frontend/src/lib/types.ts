@@ -271,6 +271,39 @@ export type LeaveCategory = "sick" | "personal" | "bereavement"
 
 export type LeaveState = "pending" | "completed" | "failed" | "cancelled"
 
+export type LeavePoolState = LeaveState | "all"
+
+export type LeaveActionDisabledReason =
+  | ""
+  | "not_qualified"
+  | "admin_view_only"
+
+export type LeaveActions = {
+  can_claim: boolean
+  can_approve: boolean
+  can_reject: boolean
+  can_cancel: boolean
+  disabled_reason?: LeaveActionDisabledReason
+}
+
+export type LeaveShiftContext = {
+  assignment_id: number
+  slot_id: number
+  weekday: number
+  start_time: string
+  end_time: string
+  position_id: number
+  position_name: string
+  occurrence_start: string
+  occurrence_end: string
+}
+
+export type LeaveUrgency = {
+  occurrence_start: string
+  seconds_until_start: number
+  starts_within_24_hours: boolean
+}
+
 export type Leave = {
   id: number
   user_id: number
@@ -283,6 +316,24 @@ export type Leave = {
   created_at: string
   updated_at: string
   request: ShiftChangeRequest
+  requester_name?: string
+  counterpart_name?: string | null
+  substitute_name?: string | null
+  shift?: LeaveShiftContext | null
+  urgency?: LeaveUrgency | null
+  actions?: LeaveActions
+}
+
+export type LeavePoolResponse = {
+  leaves: Leave[]
+  page: number
+  page_size: number
+  total_count: number
+}
+
+export type LeaveDirectCandidate = {
+  user_id: number
+  name: string
 }
 
 export type LeavePreviewOccurrence = {
@@ -292,4 +343,5 @@ export type LeavePreviewOccurrence = {
   position: PublicationPosition
   occurrence_start: string
   occurrence_end: string
+  direct_candidates: LeaveDirectCandidate[]
 }

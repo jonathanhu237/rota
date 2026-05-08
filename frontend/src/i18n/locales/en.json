@@ -1096,6 +1096,54 @@
   "leaves": {
     "requestCta": "Request leave",
     "backToHistory": "Back to leaves",
+    "workbench": {
+      "title": "Leave Workbench",
+      "description": "Track leave requests that still need coverage.",
+      "empty": "No leave requests match this filter.",
+      "urgent": "Starts within 24h",
+      "total": "{{total}} total",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {{page}}",
+      "filters": {
+        "pending": "Pending",
+        "all": "All",
+        "completed": "Completed",
+        "cancelled": "Cancelled",
+        "failed": "Failed"
+      },
+      "columns": {
+        "requester": "Requester",
+        "shift": "Shift",
+        "type": "Type",
+        "status": "Status",
+        "coverage": "Coverage",
+        "actions": "Actions"
+      },
+      "coverage": {
+        "open": "Open pool"
+      },
+      "urgency": {
+        "remaining": "Starts in {{hours}}h"
+      },
+      "actions": {
+        "claim": "Help cover",
+        "approve": "Approve",
+        "reject": "Reject",
+        "cancel": "Cancel leave",
+        "detail": "Detail"
+      },
+      "disabled": {
+        "not_qualified": "Not qualified",
+        "admin_view_only": "Admin view only"
+      },
+      "toast": {
+        "claim": "Leave coverage accepted.",
+        "approve": "Leave coverage approved.",
+        "reject": "Leave coverage rejected.",
+        "cancel": "Leave cancelled."
+      }
+    },
     "history": {
       "title": "My Leaves",
       "description": "Review leave requests you have submitted.",
@@ -1167,6 +1215,8 @@
     "expiresAt": "Expires",
     "requester": "Requester",
     "counterpart": "Counterpart",
+    "substitute": "Substitute",
+    "shift": "Shift",
     "actionsTitle": "Actions",
     "actions": {
       "approve": "Approve",

@@ -310,6 +310,49 @@ func TestShiftChangeEmailBranding(t *testing.T) {
 	assertContainsNone(t, resolved.Body, "Rota")
 }
 
+func TestLeaveShiftChangeEmailsLinkToLeaveDetail(t *testing.T) {
+	t.Parallel()
+
+	leaveID := int64(42)
+	date := time.Date(2026, 5, 4, 0, 0, 0, 0, time.UTC)
+	shift := ShiftRef{
+		Weekday:        "Mon",
+		StartTime:      "09:00",
+		EndTime:        "12:00",
+		PositionName:   "Front Desk",
+		OccurrenceDate: &date,
+	}
+
+	request := BuildShiftChangeRequestReceivedMessage(ShiftChangeRequestReceivedData{
+		To:             "bob@example.com",
+		RecipientName:  "Bob",
+		RequesterName:  "Alice",
+		Type:           ShiftChangeTypeGiveDirect,
+		LeaveID:        &leaveID,
+		RequesterShift: shift,
+		BaseURL:        "https://app.example.com",
+		Language:       "en",
+	})
+	assertContainsAll(t, request.Body, "leave coverage request", "https://app.example.com/leaves/42")
+	assertContainsAll(t, request.HTMLBody, "leave coverage request", "https://app.example.com/leaves/42")
+	assertContainsNone(t, request.Body, "https://app.example.com/requests")
+
+	resolved := BuildShiftChangeResolvedMessage(ShiftChangeResolvedData{
+		To:             "alice@example.com",
+		RecipientName:  "Alice",
+		Outcome:        ShiftChangeOutcomeClaimed,
+		Type:           ShiftChangeTypeGivePool,
+		LeaveID:        &leaveID,
+		ResponderName:  "Bob",
+		RequesterShift: shift,
+		BaseURL:        "https://app.example.com",
+		Language:       "en",
+	})
+	assertContainsAll(t, resolved.Subject, "Leave coverage request claimed")
+	assertContainsAll(t, resolved.Body, "leave coverage request", "https://app.example.com/leaves/42")
+	assertContainsNone(t, resolved.Body, "https://app.example.com/requests")
+}
+
 func TestParseAcceptLanguage(t *testing.T) {
 	t.Parallel()
 

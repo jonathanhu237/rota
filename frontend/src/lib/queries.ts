@@ -9,6 +9,8 @@ import type {
   Branding,
   Leave,
   LeaveCategory,
+  LeavePoolResponse,
+  LeavePoolState,
   LeavePreviewOccurrence,
   LanguagePreference,
   Pagination,
@@ -813,6 +815,8 @@ export type LeaveListResponse = {
   leaves: Leave[]
 }
 
+export type LeavePoolListResponse = LeavePoolResponse
+
 export type LeavePreviewResponse = {
   occurrences: LeavePreviewOccurrence[]
 }
@@ -880,6 +884,26 @@ export const myLeavesQueryOptions = (page: number, pageSize: number) =>
         },
       })
       return res.data.leaves
+    },
+    placeholderData: keepPreviousData,
+  })
+
+export const leavePoolQueryOptions = (
+  state: LeavePoolState,
+  page: number,
+  pageSize: number,
+) =>
+  queryOptions({
+    queryKey: ["leaves", "pool", state, page, pageSize] as const,
+    queryFn: async () => {
+      const res = await api.get<LeavePoolResponse>("/leaves/pool", {
+        params: {
+          state,
+          page,
+          page_size: pageSize,
+        },
+      })
+      return res.data
     },
     placeholderData: keepPreviousData,
   })
