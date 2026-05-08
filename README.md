@@ -32,6 +32,12 @@ A shift scheduling system for departments.
 
 The Vite dev server uses `/api/*` and proxies those requests to `http://localhost:8080`, which matches the production Caddy routing shape.
 
+## Architecture Decisions
+
+- [ADR 0001: Prefer Postgres-backed jobs before introducing a message queue](docs/adr/0001-postgres-backed-jobs-before-message-queue.md)
+- [ADR 0002: Cache reads per read model, not through a generic repository layer](docs/adr/0002-cache-reads-per-read-model.md)
+- [ADR 0003: Defer Redis until there is a measured runtime need](docs/adr/0003-defer-redis-runtime-dependency.md)
+
 ### Seeding Dev Data
 
 `make seed` wipes the configured local Postgres data tables with `TRUNCATE ... RESTART IDENTITY CASCADE`, then inserts a known-good development dataset. It prints the target database before wiping, refuses to run when `APP_ENV=production`, and uses `pa55word` for all seeded user passwords unless the bootstrap admin password is set in `.env`.
