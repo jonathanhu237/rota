@@ -116,6 +116,8 @@ function buildBreadcrumbs(input: BreadcrumbBuildInput): Crumb[] {
       return [{ label: t("breadcrumbs.dashboard") }]
     case pathname === "/roster":
       return [{ label: t("breadcrumbs.roster") }]
+    case pathname === "/attendance":
+      return [{ label: t("breadcrumbs.attendance") }]
     case pathname === "/availability":
       return [{ label: t("breadcrumbs.availability") }]
     case pathname === "/requests":
@@ -191,6 +193,14 @@ function publicationBreadcrumbs(input: BreadcrumbBuildInput): Crumb[] {
       ...base,
       detailCrumb,
       { label: t("breadcrumbs.availabilityManagement") },
+    ]
+  }
+
+  if (pathname.endsWith("/attendance")) {
+    return [
+      ...base,
+      detailCrumb,
+      { label: t("breadcrumbs.attendance") },
     ]
   }
 

@@ -62,8 +62,9 @@ type templateSlotRequest struct {
 }
 
 type templateSlotPositionRequest struct {
-	PositionID        int64 `json:"position_id"`
-	RequiredHeadcount int   `json:"required_headcount"`
+	PositionID            int64 `json:"position_id"`
+	RequiredHeadcount     int   `json:"required_headcount"`
+	AttendanceResponsible bool  `json:"attendance_responsible"`
 }
 
 func NewTemplateHandler(templateService templateService) *TemplateHandler {
@@ -314,10 +315,11 @@ func (h *TemplateHandler) CreateSlotPosition(w http.ResponseWriter, r *http.Requ
 	}
 
 	slotPosition, err := h.templateService.CreateTemplateSlotPosition(r.Context(), service.CreateTemplateSlotPositionInput{
-		TemplateID:        templateID,
-		SlotID:            slotID,
-		PositionID:        req.PositionID,
-		RequiredHeadcount: req.RequiredHeadcount,
+		TemplateID:            templateID,
+		SlotID:                slotID,
+		PositionID:            req.PositionID,
+		RequiredHeadcount:     req.RequiredHeadcount,
+		AttendanceResponsible: req.AttendanceResponsible,
 	})
 	if err != nil {
 		h.writeTemplateServiceError(w, err)
@@ -355,11 +357,12 @@ func (h *TemplateHandler) UpdateSlotPosition(w http.ResponseWriter, r *http.Requ
 	}
 
 	slotPosition, err := h.templateService.UpdateTemplateSlotPosition(r.Context(), service.UpdateTemplateSlotPositionInput{
-		TemplateID:        templateID,
-		SlotID:            slotID,
-		SlotPositionID:    slotPositionID,
-		PositionID:        req.PositionID,
-		RequiredHeadcount: req.RequiredHeadcount,
+		TemplateID:            templateID,
+		SlotID:                slotID,
+		SlotPositionID:        slotPositionID,
+		PositionID:            req.PositionID,
+		RequiredHeadcount:     req.RequiredHeadcount,
+		AttendanceResponsible: req.AttendanceResponsible,
 	})
 	if err != nil {
 		h.writeTemplateServiceError(w, err)
@@ -412,6 +415,8 @@ func (h *TemplateHandler) writeTemplateServiceError(w http.ResponseWriter, err e
 		writeError(w, http.StatusNotFound, "TEMPLATE_SLOT_NOT_FOUND", "Template slot not found")
 	case errors.Is(err, service.ErrTemplateSlotPositionNotFound):
 		writeError(w, http.StatusNotFound, "TEMPLATE_SLOT_POSITION_NOT_FOUND", "Template slot position not found")
+	case errors.Is(err, service.ErrAttendanceResponsibleRequired):
+		writeError(w, http.StatusConflict, "ATTENDANCE_RESPONSIBLE_REQUIRED", "Attendance responsible position required")
 	case errors.Is(err, service.ErrInvalidShiftTime):
 		writeError(w, http.StatusBadRequest, "INVALID_SHIFT_TIME", "Shift end time must be after start time")
 	case errors.Is(err, service.ErrInvalidWeekday):

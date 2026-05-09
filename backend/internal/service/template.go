@@ -21,14 +21,15 @@ const (
 )
 
 var (
-	ErrInvalidHeadcount             = model.ErrInvalidHeadcount
-	ErrInvalidShiftTime             = model.ErrInvalidShiftTime
-	ErrInvalidWeekday               = model.ErrInvalidWeekday
-	ErrTemplateLocked               = model.ErrTemplateLocked
-	ErrTemplateNotFound             = model.ErrTemplateNotFound
-	ErrTemplateSlotOverlap          = model.ErrTemplateSlotOverlap
-	ErrTemplateSlotNotFound         = model.ErrTemplateSlotNotFound
-	ErrTemplateSlotPositionNotFound = model.ErrTemplateSlotPositionNotFound
+	ErrInvalidHeadcount              = model.ErrInvalidHeadcount
+	ErrInvalidShiftTime              = model.ErrInvalidShiftTime
+	ErrInvalidWeekday                = model.ErrInvalidWeekday
+	ErrTemplateLocked                = model.ErrTemplateLocked
+	ErrTemplateNotFound              = model.ErrTemplateNotFound
+	ErrTemplateSlotOverlap           = model.ErrTemplateSlotOverlap
+	ErrTemplateSlotNotFound          = model.ErrTemplateSlotNotFound
+	ErrTemplateSlotPositionNotFound  = model.ErrTemplateSlotPositionNotFound
+	ErrAttendanceResponsibleRequired = model.ErrAttendanceResponsibleRequired
 )
 
 type templateRepository interface {
@@ -95,18 +96,20 @@ type UpdateTemplateSlotInput struct {
 }
 
 type CreateTemplateSlotPositionInput struct {
-	TemplateID        int64
-	SlotID            int64
-	PositionID        int64
-	RequiredHeadcount int
+	TemplateID            int64
+	SlotID                int64
+	PositionID            int64
+	RequiredHeadcount     int
+	AttendanceResponsible bool
 }
 
 type UpdateTemplateSlotPositionInput struct {
-	TemplateID        int64
-	SlotID            int64
-	SlotPositionID    int64
-	PositionID        int64
-	RequiredHeadcount int
+	TemplateID            int64
+	SlotID                int64
+	SlotPositionID        int64
+	PositionID            int64
+	RequiredHeadcount     int
+	AttendanceResponsible bool
 }
 
 func NewTemplateService(templateRepo templateRepository, positionRepo positionLookupRepository) *TemplateService {
@@ -369,16 +372,20 @@ func (s *TemplateService) CreateTemplateSlotPosition(
 	if err != nil {
 		return nil, err
 	}
+	if input.AttendanceResponsible && requiredHeadcount != 1 {
+		return nil, ErrAttendanceResponsibleRequired
+	}
 
 	if err := s.ensurePositionExists(ctx, input.PositionID); err != nil {
 		return nil, err
 	}
 
 	slotPosition, err := s.templateRepo.CreateSlotPosition(ctx, repository.CreateTemplateSlotPositionParams{
-		TemplateID:        input.TemplateID,
-		SlotID:            input.SlotID,
-		PositionID:        input.PositionID,
-		RequiredHeadcount: requiredHeadcount,
+		TemplateID:            input.TemplateID,
+		SlotID:                input.SlotID,
+		PositionID:            input.PositionID,
+		RequiredHeadcount:     requiredHeadcount,
+		AttendanceResponsible: input.AttendanceResponsible,
 	})
 	if err != nil {
 		return nil, mapTemplateRepositoryError(err)
@@ -390,10 +397,11 @@ func (s *TemplateService) CreateTemplateSlotPosition(
 		TargetType: audit.TargetTypeSlotPosition,
 		TargetID:   &targetID,
 		Metadata: map[string]any{
-			"template_id":        input.TemplateID,
-			"slot_id":            slotPosition.SlotID,
-			"position_id":        slotPosition.PositionID,
-			"required_headcount": slotPosition.RequiredHeadcount,
+			"template_id":            input.TemplateID,
+			"slot_id":                slotPosition.SlotID,
+			"position_id":            slotPosition.PositionID,
+			"required_headcount":     slotPosition.RequiredHeadcount,
+			"attendance_responsible": slotPosition.AttendanceResponsible,
 		},
 	})
 
@@ -411,6 +419,9 @@ func (s *TemplateService) UpdateTemplateSlotPosition(
 	requiredHeadcount, err := normalizeRequiredHeadcount(input.RequiredHeadcount)
 	if err != nil {
 		return nil, err
+	}
+	if input.AttendanceResponsible && requiredHeadcount != 1 {
+		return nil, ErrAttendanceResponsibleRequired
 	}
 
 	if err := s.ensurePositionExists(ctx, input.PositionID); err != nil {
@@ -433,11 +444,12 @@ func (s *TemplateService) UpdateTemplateSlotPosition(
 	}
 
 	slotPosition, err := s.templateRepo.UpdateSlotPosition(ctx, repository.UpdateTemplateSlotPositionParams{
-		TemplateID:        input.TemplateID,
-		SlotID:            input.SlotID,
-		SlotPositionID:    input.SlotPositionID,
-		PositionID:        input.PositionID,
-		RequiredHeadcount: requiredHeadcount,
+		TemplateID:            input.TemplateID,
+		SlotID:                input.SlotID,
+		SlotPositionID:        input.SlotPositionID,
+		PositionID:            input.PositionID,
+		RequiredHeadcount:     requiredHeadcount,
+		AttendanceResponsible: input.AttendanceResponsible,
 	})
 	if err != nil {
 		return nil, mapTemplateRepositoryError(err)
@@ -455,6 +467,12 @@ func (s *TemplateService) UpdateTemplateSlotPosition(
 			changes["required_headcount"] = map[string]any{
 				"from": previous.RequiredHeadcount,
 				"to":   slotPosition.RequiredHeadcount,
+			}
+		}
+		if previous.AttendanceResponsible != slotPosition.AttendanceResponsible {
+			changes["attendance_responsible"] = map[string]any{
+				"from": previous.AttendanceResponsible,
+				"to":   slotPosition.AttendanceResponsible,
 			}
 		}
 	}
@@ -621,6 +639,8 @@ func mapTemplateRepositoryError(err error) error {
 		return ErrTemplateSlotNotFound
 	case errors.Is(err, repository.ErrTemplateSlotPositionNotFound):
 		return ErrTemplateSlotPositionNotFound
+	case errors.Is(err, repository.ErrAttendanceResponsibleRequired):
+		return ErrAttendanceResponsibleRequired
 	default:
 		return err
 	}

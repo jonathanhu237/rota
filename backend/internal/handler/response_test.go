@@ -41,6 +41,50 @@ func TestTemplateDetailResponseIncludesEmptySlotsArray(t *testing.T) {
 	}
 }
 
+func TestTemplateResponseIncludesAttendanceResponsibleMarker(t *testing.T) {
+	t.Parallel()
+
+	payload, err := json.Marshal(templateDetailResponse{
+		Template: newTemplateResponse(&model.Template{
+			ID:   1,
+			Name: "Attendance Template",
+			Slots: []*model.TemplateSlot{
+				{
+					ID:        2,
+					Weekdays:  []int{1},
+					StartTime: "09:00",
+					EndTime:   "12:00",
+					Positions: []*model.TemplateSlotPosition{
+						{
+							ID:                    3,
+							SlotID:                2,
+							PositionID:            7,
+							RequiredHeadcount:     1,
+							AttendanceResponsible: true,
+						},
+					},
+				},
+			},
+		}),
+	})
+	if err != nil {
+		t.Fatalf("marshal template detail response: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("unmarshal template detail response: %v", err)
+	}
+	templateMap := decoded["template"].(map[string]any)
+	slots := templateMap["slots"].([]any)
+	slot := slots[0].(map[string]any)
+	positions := slot["positions"].([]any)
+	position := positions[0].(map[string]any)
+	if position["attendance_responsible"] != true {
+		t.Fatalf("expected attendance_responsible=true, got %s", payload)
+	}
+}
+
 func getTemplateField(payload []byte, field string) (any, bool) {
 	var decoded map[string]any
 	if err := json.Unmarshal(payload, &decoded); err != nil {
@@ -121,6 +165,7 @@ func TestPublicationResponseIncludesFrontendFields(t *testing.T) {
 		"planned_active_from",
 		"planned_active_until",
 		"activated_at",
+		"overtime_entry_window_hours",
 		"created_at",
 		"updated_at",
 	}

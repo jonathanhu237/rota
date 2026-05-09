@@ -152,6 +152,20 @@ describe("PublicationDetailPage", () => {
       }),
     ).toHaveAttribute("href", "/publications/7/availability")
   })
+
+  it("links to attendance management and shows overtime entry window", () => {
+    renderPage(makePublication({ overtime_entry_window_hours: 12.5 }))
+
+    expect(
+      screen.getByRole("link", {
+        name: "publications.actions.manageAttendance",
+      }),
+    ).toHaveAttribute("href", "/publications/7/attendance")
+    expect(
+      screen.getByText("publications.detail.overtimeEntryWindowHours"),
+    ).toBeInTheDocument()
+    expect(screen.getByText("12.5")).toBeInTheDocument()
+  })
 })
 
 function hrefFor(to: string, params?: Record<string, string>) {
@@ -198,7 +212,7 @@ function makeAdminUser(): User {
   }
 }
 
-function makePublication(): Publication {
+function makePublication(overrides: Partial<Publication> = {}): Publication {
   return {
     id: 7,
     template_id: 3,
@@ -213,5 +227,6 @@ function makePublication(): Publication {
     activated_at: "2026-04-22T00:00:00Z",
     created_at: "2026-04-19T00:00:00Z",
     updated_at: "2026-04-19T00:00:00Z",
+    ...overrides,
   }
 }

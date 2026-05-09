@@ -49,6 +49,7 @@ func main() {
 	publicationRepo := repository.NewPublicationRepository(db)
 	userPositionRepo := repository.NewUserPositionRepository(db)
 	leaveRepo := repository.NewLeaveRepository(db)
+	attendanceRepo := repository.NewAttendanceRepository(db)
 	outboxRepo := repository.NewOutboxRepository(db)
 	brandingRepo := repository.NewBrandingRepository(db)
 	if err := service.EnsureBootstrapAdmin(ctx, service.BootstrapAdminInput{
@@ -142,6 +143,7 @@ func main() {
 		service.WithPublicationBrandingProvider(brandingService),
 	)
 	userPositionService := service.NewUserPositionService(userPositionRepo)
+	attendanceService := service.NewAttendanceService(attendanceRepo, publicationRepo, nil)
 
 	// Initialize handlers
 	healthHandler := handler.NewHealthHandler()
@@ -151,6 +153,7 @@ func main() {
 	templateHandler := handler.NewTemplateHandler(templateService)
 	brandingHandler := handler.NewBrandingHandler(brandingService)
 	publicationHandler := handler.NewPublicationHandler(publicationService)
+	attendanceHandler := handler.NewAttendanceHandler(attendanceService)
 	userPositionHandler := handler.NewUserPositionHandler(userPositionService)
 	shiftChangeService := service.NewShiftChangeService(
 		shiftChangeRepo,
@@ -249,8 +252,19 @@ func main() {
 	mux.HandleFunc("POST /publications/{id}/end", authHandler.RequireAdmin(publicationHandler.End))
 	mux.HandleFunc("GET /publications/{id}/schedule.xlsx", authHandler.RequireAuth(publicationHandler.ExportScheduleXLSX))
 	mux.HandleFunc("GET /publications/{id}/roster", authHandler.RequireAuth(publicationHandler.GetRoster))
+	mux.HandleFunc("GET /publications/{id}/attendance", authHandler.RequireAdmin(attendanceHandler.ListAdmin))
+	mux.HandleFunc("GET /publications/{id}/attendance/shifts/{slot_id}/{occurrence_date}", authHandler.RequireAdmin(attendanceHandler.GetAdminShift))
+	mux.HandleFunc("PUT /publications/{id}/attendance/arrivals", authHandler.RequireAdmin(attendanceHandler.AdminUpsertArrival))
+	mux.HandleFunc("DELETE /publications/{id}/attendance/arrivals/{record_id}", authHandler.RequireAdmin(attendanceHandler.AdminClearArrival))
+	mux.HandleFunc("POST /publications/{id}/attendance/overtime", authHandler.RequireAdmin(attendanceHandler.AdminCreateOvertime))
+	mux.HandleFunc("PATCH /publications/{id}/attendance/overtime/{record_id}", authHandler.RequireAdmin(attendanceHandler.AdminUpdateOvertime))
+	mux.HandleFunc("DELETE /publications/{id}/attendance/overtime/{record_id}", authHandler.RequireAdmin(attendanceHandler.AdminDeleteOvertime))
+	mux.HandleFunc("PATCH /publications/{id}/attendance/settings", authHandler.RequireAdmin(attendanceHandler.UpdateSettings))
 	mux.HandleFunc("GET /publications/current", authHandler.RequireAuth(publicationHandler.GetCurrent))
 	mux.HandleFunc("GET /roster/current", authHandler.RequireAuth(publicationHandler.GetCurrentRoster))
+	mux.HandleFunc("GET /attendance/current", authHandler.RequireAuth(attendanceHandler.Current))
+	mux.HandleFunc("POST /attendance/arrivals", authHandler.RequireAuth(attendanceHandler.RecordLeaderArrival))
+	mux.HandleFunc("POST /attendance/overtime", authHandler.RequireAuth(attendanceHandler.RecordLeaderOvertime))
 	mux.HandleFunc("GET /publications/{id}/submissions/me", authHandler.RequireAuth(publicationHandler.ListMySubmissionSlots))
 	mux.HandleFunc("POST /publications/{id}/submissions", authHandler.RequireAuth(publicationHandler.CreateSubmission))
 	mux.HandleFunc("DELETE /publications/{id}/submissions/{slot_id}/{weekday}", authHandler.RequireAuth(publicationHandler.DeleteSubmission))

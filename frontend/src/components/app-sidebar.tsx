@@ -5,6 +5,7 @@ import {
   CalendarCheck,
   CalendarDays,
   CalendarRange,
+  ClipboardCheck,
   CalendarX,
   ChevronsUpDown,
   FileText,
@@ -102,6 +103,11 @@ export function AppSidebar() {
       title: t("sidebar.roster"),
       url: "/roster",
       icon: CalendarRange,
+    },
+    {
+      title: t("sidebar.attendance"),
+      url: "/attendance",
+      icon: ClipboardCheck,
     },
     {
       title: t("sidebar.availability"),

@@ -285,14 +285,16 @@ func (r *TemplateRepository) Clone(ctx context.Context, id int64, name string) (
 				INSERT INTO template_slot_positions (
 					slot_id,
 					position_id,
-					required_headcount
+					required_headcount,
+					attendance_responsible
 				)
-				VALUES ($1, $2, $3)
+				VALUES ($1, $2, $3, $4)
 				RETURNING
 					id,
 					slot_id,
 					position_id,
 					required_headcount,
+					attendance_responsible,
 					created_at,
 					updated_at;
 			`
@@ -304,11 +306,13 @@ func (r *TemplateRepository) Clone(ctx context.Context, id int64, name string) (
 				clonedSlot.ID,
 				sourcePosition.PositionID,
 				sourcePosition.RequiredHeadcount,
+				sourcePosition.AttendanceResponsible,
 			).Scan(
 				&clonedPosition.ID,
 				&clonedPosition.SlotID,
 				&clonedPosition.PositionID,
 				&clonedPosition.RequiredHeadcount,
+				&clonedPosition.AttendanceResponsible,
 				&clonedPosition.CreatedAt,
 				&clonedPosition.UpdatedAt,
 			)

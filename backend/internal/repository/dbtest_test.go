@@ -148,6 +148,8 @@ func resetIntegrationDB(ctx context.Context, db *sql.DB) error {
 		"app_branding",
 		"email_outbox",
 		"sessions",
+		"attendance_overtime_records",
+		"attendance_records",
 		"leaves",
 		"shift_change_requests",
 		"assignments",
@@ -411,14 +413,15 @@ func seedQualifiedShift(t testing.TB, db *sql.DB, seed qualifiedShiftSeed) *seed
 }
 
 type publicationSeed struct {
-	TemplateID         int64
-	Name               string
-	State              model.PublicationState
-	SubmissionStartAt  time.Time
-	SubmissionEndAt    time.Time
-	PlannedActiveFrom  time.Time
-	PlannedActiveUntil time.Time
-	CreatedAt          time.Time
+	TemplateID               int64
+	Name                     string
+	State                    model.PublicationState
+	SubmissionStartAt        time.Time
+	SubmissionEndAt          time.Time
+	PlannedActiveFrom        time.Time
+	PlannedActiveUntil       time.Time
+	OvertimeEntryWindowHours float64
+	CreatedAt                time.Time
 }
 
 func seedPublication(t testing.TB, db *sql.DB, seed publicationSeed) *model.Publication {
@@ -447,6 +450,9 @@ func seedPublication(t testing.TB, db *sql.DB, seed publicationSeed) *model.Publ
 	if seed.PlannedActiveUntil.IsZero() {
 		seed.PlannedActiveUntil = seed.PlannedActiveFrom.Add(8 * 7 * 24 * time.Hour)
 	}
+	if seed.OvertimeEntryWindowHours == 0 {
+		seed.OvertimeEntryWindowHours = 24
+	}
 
 	const query = `
 		INSERT INTO publications (
@@ -458,14 +464,15 @@ func seedPublication(t testing.TB, db *sql.DB, seed publicationSeed) *model.Publ
 			submission_end_at,
 			planned_active_from,
 			planned_active_until,
+			overtime_entry_window_hours,
 			created_at,
 			updated_at
 		)
-		VALUES ($1, $2, '', $3, $4, $5, $6, $7, $8, $8)
+		VALUES ($1, $2, '', $3, $4, $5, $6, $7, $8, $9, $9)
 		RETURNING
 			id,
 			template_id,
-			$9 AS template_name,
+			$10 AS template_name,
 			name,
 			description,
 			state,
@@ -473,6 +480,7 @@ func seedPublication(t testing.TB, db *sql.DB, seed publicationSeed) *model.Publ
 			submission_end_at,
 			planned_active_from,
 			planned_active_until,
+			overtime_entry_window_hours,
 			activated_at,
 			created_at,
 			updated_at;
@@ -498,6 +506,7 @@ func seedPublication(t testing.TB, db *sql.DB, seed publicationSeed) *model.Publ
 		seed.SubmissionEndAt,
 		seed.PlannedActiveFrom,
 		seed.PlannedActiveUntil,
+		seed.OvertimeEntryWindowHours,
 		seed.CreatedAt,
 		templateName,
 	).Scan(
@@ -511,6 +520,7 @@ func seedPublication(t testing.TB, db *sql.DB, seed publicationSeed) *model.Publ
 		&publication.SubmissionEndAt,
 		&publication.PlannedActiveFrom,
 		&publication.PlannedActiveUntil,
+		&publication.OvertimeEntryWindowHours,
 		&publication.ActivatedAt,
 		&publication.CreatedAt,
 		&publication.UpdatedAt,

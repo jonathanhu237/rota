@@ -10,23 +10,31 @@ import (
 )
 
 var (
-	ErrTemplateSlotNotFound         = model.ErrTemplateSlotNotFound
-	ErrTemplateSlotPositionNotFound = model.ErrTemplateSlotPositionNotFound
+	ErrTemplateSlotNotFound          = model.ErrTemplateSlotNotFound
+	ErrTemplateSlotPositionNotFound  = model.ErrTemplateSlotPositionNotFound
+	ErrAttendanceResponsibleRequired = model.ErrAttendanceResponsibleRequired
+)
+
+const (
+	templateSlotPositionsOneAttendanceResponsibleIndex = "template_slot_positions_one_attendance_responsible_idx"
+	templateSlotPositionsResponsibleHeadcountCheck     = "template_slot_positions_responsible_headcount_chk"
 )
 
 type CreateTemplateSlotPositionParams struct {
-	TemplateID        int64
-	SlotID            int64
-	PositionID        int64
-	RequiredHeadcount int
+	TemplateID            int64
+	SlotID                int64
+	PositionID            int64
+	RequiredHeadcount     int
+	AttendanceResponsible bool
 }
 
 type UpdateTemplateSlotPositionParams struct {
-	TemplateID        int64
-	SlotID            int64
-	SlotPositionID    int64
-	PositionID        int64
-	RequiredHeadcount int
+	TemplateID            int64
+	SlotID                int64
+	SlotPositionID        int64
+	PositionID            int64
+	RequiredHeadcount     int
+	AttendanceResponsible bool
 }
 
 func (r *TemplateRepository) CreateSlotPosition(
@@ -37,12 +45,14 @@ func (r *TemplateRepository) CreateSlotPosition(
 		INSERT INTO template_slot_positions (
 			slot_id,
 			position_id,
-			required_headcount
+			required_headcount,
+			attendance_responsible
 		)
 		SELECT
 			ts.id,
 			$3,
-			$4
+			$4,
+			$5
 		FROM template_slots ts
 		INNER JOIN templates t ON t.id = ts.template_id
 		WHERE ts.id = $2 AND ts.template_id = $1 AND t.is_locked = FALSE
@@ -51,6 +61,7 @@ func (r *TemplateRepository) CreateSlotPosition(
 			slot_id,
 			position_id,
 			required_headcount,
+			attendance_responsible,
 			created_at,
 			updated_at;
 	`
@@ -63,11 +74,13 @@ func (r *TemplateRepository) CreateSlotPosition(
 		params.SlotID,
 		params.PositionID,
 		params.RequiredHeadcount,
+		params.AttendanceResponsible,
 	).Scan(
 		&slotPosition.ID,
 		&slotPosition.SlotID,
 		&slotPosition.PositionID,
 		&slotPosition.RequiredHeadcount,
+		&slotPosition.AttendanceResponsible,
 		&slotPosition.CreatedAt,
 		&slotPosition.UpdatedAt,
 	)
@@ -75,7 +88,7 @@ func (r *TemplateRepository) CreateSlotPosition(
 		return nil, r.resolveTemplateSlotWriteState(ctx, params.TemplateID, params.SlotID)
 	}
 	if err != nil {
-		return nil, err
+		return nil, mapTemplateSlotPositionWriteError(err)
 	}
 
 	return slotPosition, nil
@@ -90,6 +103,7 @@ func (r *TemplateRepository) UpdateSlotPosition(
 		SET
 			position_id = $4,
 			required_headcount = $5,
+			attendance_responsible = $6,
 			updated_at = NOW()
 		FROM template_slots, templates
 		WHERE
@@ -104,6 +118,7 @@ func (r *TemplateRepository) UpdateSlotPosition(
 			template_slot_positions.slot_id,
 			template_slot_positions.position_id,
 			template_slot_positions.required_headcount,
+			template_slot_positions.attendance_responsible,
 			template_slot_positions.created_at,
 			template_slot_positions.updated_at;
 	`
@@ -117,11 +132,13 @@ func (r *TemplateRepository) UpdateSlotPosition(
 		params.SlotPositionID,
 		params.PositionID,
 		params.RequiredHeadcount,
+		params.AttendanceResponsible,
 	).Scan(
 		&slotPosition.ID,
 		&slotPosition.SlotID,
 		&slotPosition.PositionID,
 		&slotPosition.RequiredHeadcount,
+		&slotPosition.AttendanceResponsible,
 		&slotPosition.CreatedAt,
 		&slotPosition.UpdatedAt,
 	)
@@ -129,7 +146,7 @@ func (r *TemplateRepository) UpdateSlotPosition(
 		return nil, r.resolveTemplateSlotPositionWriteState(ctx, params.TemplateID, params.SlotID, params.SlotPositionID)
 	}
 	if err != nil {
-		return nil, err
+		return nil, mapTemplateSlotPositionWriteError(err)
 	}
 
 	return slotPosition, nil
@@ -192,6 +209,7 @@ func listTemplateSlotPositions(
 			slot_id,
 			position_id,
 			required_headcount,
+			attendance_responsible,
 			created_at,
 			updated_at
 		FROM template_slot_positions
@@ -213,6 +231,7 @@ func listTemplateSlotPositions(
 			&slotPosition.SlotID,
 			&slotPosition.PositionID,
 			&slotPosition.RequiredHeadcount,
+			&slotPosition.AttendanceResponsible,
 			&slotPosition.CreatedAt,
 			&slotPosition.UpdatedAt,
 		); err != nil {
@@ -340,6 +359,7 @@ func getTemplateSlotPositionByID(
 			tsp.slot_id,
 			tsp.position_id,
 			tsp.required_headcount,
+			tsp.attendance_responsible,
 			tsp.created_at,
 			tsp.updated_at
 		FROM template_slot_positions tsp
@@ -353,6 +373,7 @@ func getTemplateSlotPositionByID(
 		&slotPosition.SlotID,
 		&slotPosition.PositionID,
 		&slotPosition.RequiredHeadcount,
+		&slotPosition.AttendanceResponsible,
 		&slotPosition.CreatedAt,
 		&slotPosition.UpdatedAt,
 	)
@@ -434,4 +455,20 @@ func getTemplateRecordByID(ctx context.Context, db queryer, id int64) (*model.Te
 	}
 
 	return template, nil
+}
+
+func mapTemplateSlotPositionWriteError(err error) error {
+	var pqErr *pq.Error
+	if !errors.As(err, &pqErr) {
+		return err
+	}
+
+	switch {
+	case pqErr.Code == "23505" && pqErr.Constraint == templateSlotPositionsOneAttendanceResponsibleIndex:
+		return ErrAttendanceResponsibleRequired
+	case pqErr.Code == "23514" && pqErr.Constraint == templateSlotPositionsResponsibleHeadcountCheck:
+		return ErrAttendanceResponsibleRequired
+	default:
+		return err
+	}
 }

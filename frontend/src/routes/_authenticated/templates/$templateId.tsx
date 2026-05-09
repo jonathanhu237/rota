@@ -628,6 +628,11 @@ function TemplateDetailPage() {
                                   headcount: positionEntry.required_headcount,
                                 })}
                               </div>
+                              {positionEntry.attendance_responsible && (
+                                <div className="text-xs font-medium text-primary">
+                                  {t("templates.position.attendanceResponsible")}
+                                </div>
+                              )}
                             </div>
                             {!isLocked && (
                               <div className="flex flex-wrap gap-2">

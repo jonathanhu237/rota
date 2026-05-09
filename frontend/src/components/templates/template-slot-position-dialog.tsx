@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -57,6 +58,7 @@ export function TemplateSlotPositionDialog({
     defaultValues: {
       position_id: positionEntry?.position_id ?? 0,
       required_headcount: positionEntry?.required_headcount ?? 1,
+      attendance_responsible: positionEntry?.attendance_responsible ?? false,
     },
   })
 
@@ -64,6 +66,7 @@ export function TemplateSlotPositionDialog({
     reset({
       position_id: positionEntry?.position_id ?? 0,
       required_headcount: positionEntry?.required_headcount ?? 1,
+      attendance_responsible: positionEntry?.attendance_responsible ?? false,
     })
   }, [open, positionEntry, reset])
 
@@ -135,6 +138,17 @@ export function TemplateSlotPositionDialog({
               </p>
             )}
           </div>
+          <label className="flex items-start gap-2 text-sm">
+            <Checkbox {...register("attendance_responsible")} />
+            <span className="grid gap-1">
+              <span className="font-medium">
+                {t("templates.position.attendanceResponsible")}
+              </span>
+              <span className="text-muted-foreground">
+                {t("templates.positionDialog.attendanceResponsibleDescription")}
+              </span>
+            </span>
+          </label>
           <DialogFooter>
             <Button
               type="button"

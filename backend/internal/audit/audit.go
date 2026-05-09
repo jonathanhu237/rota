@@ -61,6 +61,15 @@ const (
 	ActionAssignmentCreate = "assignment.create"
 	ActionAssignmentDelete = "assignment.delete"
 
+	ActionAttendanceArrivalRecord       = "attendance.arrival.record"
+	ActionAttendanceArrivalAdminAdjust  = "attendance.arrival.admin_adjust"
+	ActionAttendanceArrivalAdminClear   = "attendance.arrival.admin_clear"
+	ActionAttendanceOvertimeRecord      = "attendance.overtime.record"
+	ActionAttendanceOvertimeAdminCreate = "attendance.overtime.admin_create"
+	ActionAttendanceOvertimeAdminAdjust = "attendance.overtime.admin_adjust"
+	ActionAttendanceOvertimeAdminDelete = "attendance.overtime.admin_delete"
+	ActionAttendanceSettingsUpdate      = "attendance.settings.update"
+
 	ActionAuthLoginSuccess         = "auth.login.success"
 	ActionAuthLoginFailure         = "auth.login.failure"
 	ActionAuthLogout               = "auth.logout"
@@ -82,6 +91,8 @@ const (
 	TargetTypeAssignment             = "assignment"
 	TargetTypeShiftChangeRequest     = "shift_change_request"
 	TargetTypeLeave                  = "leave"
+	TargetTypeAttendanceRecord       = "attendance_record"
+	TargetTypeAttendanceOvertime     = "attendance_overtime"
 )
 
 // Event captures a single audit record. Actor and ActorIP are taken from

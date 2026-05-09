@@ -17,8 +17,9 @@ var (
 )
 
 const (
-	publicationsSingleNonEndedIndex = "publications_single_non_ended_idx"
-	publicationsWindowCheckName     = "publications_submission_window_check"
+	publicationsSingleNonEndedIndex      = "publications_single_non_ended_idx"
+	publicationsWindowCheckName          = "publications_submission_window_check"
+	publicationsOvertimeWindowHoursCheck = "publications_overtime_entry_window_hours_chk"
 )
 
 type ListPublicationsParams struct {
@@ -27,23 +28,25 @@ type ListPublicationsParams struct {
 }
 
 type CreatePublicationParams struct {
-	TemplateID         int64
-	Name               string
-	Description        string
-	State              model.PublicationState
-	SubmissionStartAt  time.Time
-	SubmissionEndAt    time.Time
-	PlannedActiveFrom  time.Time
-	PlannedActiveUntil time.Time
-	CreatedAt          time.Time
+	TemplateID               int64
+	Name                     string
+	Description              string
+	State                    model.PublicationState
+	SubmissionStartAt        time.Time
+	SubmissionEndAt          time.Time
+	PlannedActiveFrom        time.Time
+	PlannedActiveUntil       time.Time
+	OvertimeEntryWindowHours float64
+	CreatedAt                time.Time
 }
 
 type UpdatePublicationFieldsParams struct {
-	ID                 int64
-	Name               *string
-	Description        *string
-	PlannedActiveUntil *time.Time
-	UpdatedAt          time.Time
+	ID                       int64
+	Name                     *string
+	Description              *string
+	PlannedActiveUntil       *time.Time
+	OvertimeEntryWindowHours *float64
+	UpdatedAt                time.Time
 }
 
 type DeletePublicationParams struct {
@@ -103,6 +106,7 @@ func (r *PublicationRepository) ListPaginated(
 			p.submission_end_at,
 			p.planned_active_from,
 			p.planned_active_until,
+			p.overtime_entry_window_hours,
 			p.activated_at,
 			p.created_at,
 			p.updated_at
@@ -150,6 +154,7 @@ func (r *PublicationRepository) GetCurrent(ctx context.Context) (*model.Publicat
 			p.submission_end_at,
 			p.planned_active_from,
 			p.planned_active_until,
+			p.overtime_entry_window_hours,
 			p.activated_at,
 			p.created_at,
 			p.updated_at
@@ -220,14 +225,15 @@ func (r *PublicationRepository) CreatePublication(
 			submission_end_at,
 			planned_active_from,
 			planned_active_until,
+			overtime_entry_window_hours,
 			created_at,
 			updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
 		RETURNING
 			id,
 			template_id,
-			$10 AS template_name,
+			$11 AS template_name,
 			name,
 			description,
 			state,
@@ -235,6 +241,7 @@ func (r *PublicationRepository) CreatePublication(
 			submission_end_at,
 			planned_active_from,
 			planned_active_until,
+			overtime_entry_window_hours,
 			activated_at,
 			created_at,
 			updated_at;
@@ -251,6 +258,7 @@ func (r *PublicationRepository) CreatePublication(
 		params.SubmissionEndAt,
 		params.PlannedActiveFrom,
 		params.PlannedActiveUntil,
+		params.OvertimeEntryWindowHours,
 		params.CreatedAt,
 		template.Name,
 	))
@@ -275,7 +283,8 @@ func (r *PublicationRepository) UpdatePublicationFields(
 			name = COALESCE($2, p.name),
 			description = COALESCE($3, p.description),
 			planned_active_until = COALESCE($4, p.planned_active_until),
-			updated_at = $5
+			overtime_entry_window_hours = COALESCE($5, p.overtime_entry_window_hours),
+			updated_at = $6
 		FROM templates t
 		WHERE p.id = $1
 			AND p.template_id = t.id
@@ -290,6 +299,7 @@ func (r *PublicationRepository) UpdatePublicationFields(
 			p.submission_end_at,
 			p.planned_active_from,
 			p.planned_active_until,
+			p.overtime_entry_window_hours,
 			p.activated_at,
 			p.created_at,
 			p.updated_at;
@@ -307,6 +317,10 @@ func (r *PublicationRepository) UpdatePublicationFields(
 	if params.PlannedActiveUntil != nil {
 		plannedActiveUntil = sql.NullTime{Time: *params.PlannedActiveUntil, Valid: true}
 	}
+	var overtimeEntryWindowHours sql.NullFloat64
+	if params.OvertimeEntryWindowHours != nil {
+		overtimeEntryWindowHours = sql.NullFloat64{Float64: *params.OvertimeEntryWindowHours, Valid: true}
+	}
 
 	publication, err := scanPublication(r.db.QueryRowContext(
 		ctx,
@@ -315,6 +329,7 @@ func (r *PublicationRepository) UpdatePublicationFields(
 		name,
 		description,
 		plannedActiveUntil,
+		overtimeEntryWindowHours,
 		params.UpdatedAt,
 	))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -636,6 +651,7 @@ func getPublicationByID(ctx context.Context, db dbtx, id int64) (*model.Publicat
 			p.submission_end_at,
 			p.planned_active_from,
 			p.planned_active_until,
+			p.overtime_entry_window_hours,
 			p.activated_at,
 			p.created_at,
 			p.updated_at
@@ -824,6 +840,7 @@ func scanPublication(row scanner) (*model.Publication, error) {
 		&publication.SubmissionEndAt,
 		&publication.PlannedActiveFrom,
 		&publication.PlannedActiveUntil,
+		&publication.OvertimeEntryWindowHours,
 		&publication.ActivatedAt,
 		&publication.CreatedAt,
 		&publication.UpdatedAt,
@@ -874,6 +891,8 @@ func mapPublicationWriteError(err error) error {
 	case pqErr.Code == "23505" && pqErr.Constraint == publicationsSingleNonEndedIndex:
 		return ErrPublicationAlreadyExists
 	case pqErr.Code == "23514" && pqErr.Constraint == publicationsWindowCheckName:
+		return ErrInvalidPublicationWindow
+	case pqErr.Code == "23514" && pqErr.Constraint == publicationsOvertimeWindowHoursCheck:
 		return ErrInvalidPublicationWindow
 	default:
 		return err

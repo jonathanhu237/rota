@@ -765,8 +765,17 @@ func insertRealisticSlots(ctx context.Context, tx *sql.Tx, templateID int64, pos
 			if _, err := tx.ExecContext(
 				ctx,
 				`
-					INSERT INTO template_slot_positions (slot_id, position_id, required_headcount, created_at, updated_at)
-					VALUES ($1, $2, $3, $4, $4);
+					INSERT INTO template_slot_positions (
+						slot_id,
+						position_id,
+						required_headcount,
+						attendance_responsible,
+						created_at,
+						updated_at
+					)
+					SELECT $1, p.id, $3, p.name LIKE '%负责人%', $4, $4
+					FROM positions p
+					WHERE p.id = $2;
 				`,
 				slotID,
 				positionIDs[position.PositionIndex],

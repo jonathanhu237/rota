@@ -5,8 +5,12 @@ import api from "./axios"
 import type {
   AdminAvailabilityBoard,
   AdminAvailabilityDetail,
+  AdminAttendanceDay,
+  AttendanceOvertimeRecord,
+  AttendanceShift,
   AssignmentBoard,
   Branding,
+  LeaderAttendance,
   Leave,
   LeaveCategory,
   LeavePoolResponse,
@@ -104,6 +108,18 @@ export type AdminAvailabilityDetailResponse = AdminAvailabilityDetail
 
 export type RosterResponse = Roster
 
+export type LeaderAttendanceResponse = LeaderAttendance
+
+export type AdminAttendanceDayResponse = AdminAttendanceDay
+
+export type AttendanceShiftResponse = {
+  shift: AttendanceShift
+}
+
+export type AttendanceOvertimeResponse = {
+  overtime: AttendanceOvertimeRecord
+}
+
 export type CreateUserInput = {
   email: string
   name: string
@@ -188,6 +204,7 @@ export type UpdateTemplateSlotInput = CreateTemplateSlotInput
 export type CreateTemplateSlotPositionInput = {
   position_id: number
   required_headcount: number
+  attendance_responsible: boolean
 }
 
 export type UpdateTemplateSlotPositionInput = CreateTemplateSlotPositionInput
@@ -206,6 +223,46 @@ export type UpdatePublicationInput = {
   name?: string
   description?: string
   planned_active_until?: string
+  overtime_entry_window_hours?: number
+}
+
+export type RecordLeaderArrivalInput = {
+  publication_id: number
+  slot_id: number
+  assignment_id: number
+  occurrence_date: string
+  user_id: number
+  arrived_at?: string
+}
+
+export type RecordLeaderOvertimeInput = {
+  publication_id: number
+  slot_id: number
+  occurrence_date: string
+  user_id: number
+  hours: number
+  note: string
+}
+
+export type AdminUpsertArrivalInput = {
+  slot_id: number
+  assignment_id: number
+  occurrence_date: string
+  user_id: number
+  arrived_at: string
+}
+
+export type AdminCreateOvertimeInput = {
+  slot_id: number
+  occurrence_date: string
+  user_id: number
+  hours: number
+  note: string
+}
+
+export type AdminUpdateOvertimeInput = {
+  hours: number
+  note: string
 }
 
 export type CreateAssignmentInput = {
@@ -506,6 +563,53 @@ export const publicationRosterQueryOptions = (
     enabled: publicationID > 0,
   })
 
+export const leaderAttendanceQueryOptions = queryOptions({
+  queryKey: ["attendance", "current"] as const,
+  queryFn: async () => {
+    const res = await api.get<LeaderAttendanceResponse>("/attendance/current")
+    return res.data
+  },
+})
+
+export const adminAttendanceDayQueryOptions = (
+  publicationID: number,
+  date: string,
+) =>
+  queryOptions({
+    queryKey: ["publications", publicationID, "attendance", date] as const,
+    queryFn: async () => {
+      const res = await api.get<AdminAttendanceDayResponse>(
+        `/publications/${publicationID}/attendance`,
+        { params: { date } },
+      )
+      return res.data
+    },
+    enabled: publicationID > 0 && date !== "",
+  })
+
+export const adminAttendanceShiftQueryOptions = (
+  publicationID: number,
+  slotID: number,
+  occurrenceDate: string,
+) =>
+  queryOptions({
+    queryKey: [
+      "publications",
+      publicationID,
+      "attendance",
+      "shift",
+      slotID,
+      occurrenceDate,
+    ] as const,
+    queryFn: async () => {
+      const res = await api.get<AttendanceShiftResponse>(
+        `/publications/${publicationID}/attendance/shifts/${slotID}/${occurrenceDate}`,
+      )
+      return res.data.shift
+    },
+    enabled: publicationID > 0 && slotID > 0 && occurrenceDate !== "",
+  })
+
 export const myPublicationSubmissionsQueryOptions = (publicationID: number) =>
   queryOptions({
     queryKey: ["publications", "current", "submissions", publicationID],
@@ -729,6 +833,78 @@ export async function endPublication(publicationID: number) {
 
 export async function deletePublication(publicationID: number) {
   await api.delete(`/publications/${publicationID}`)
+}
+
+export async function recordLeaderArrival(input: RecordLeaderArrivalInput) {
+  const res = await api.post<AttendanceShiftResponse>("/attendance/arrivals", input)
+  return res.data.shift
+}
+
+export async function recordLeaderOvertime(input: RecordLeaderOvertimeInput) {
+  const res = await api.post<AttendanceOvertimeResponse>(
+    "/attendance/overtime",
+    input,
+  )
+  return res.data.overtime
+}
+
+export async function adminUpsertArrival(
+  publicationID: number,
+  input: AdminUpsertArrivalInput,
+) {
+  const res = await api.put<AttendanceShiftResponse>(
+    `/publications/${publicationID}/attendance/arrivals`,
+    input,
+  )
+  return res.data.shift
+}
+
+export async function adminClearArrival(publicationID: number, recordID: number) {
+  await api.delete(`/publications/${publicationID}/attendance/arrivals/${recordID}`)
+}
+
+export async function adminCreateOvertime(
+  publicationID: number,
+  input: AdminCreateOvertimeInput,
+) {
+  const res = await api.post<AttendanceOvertimeResponse>(
+    `/publications/${publicationID}/attendance/overtime`,
+    {
+      publication_id: publicationID,
+      ...input,
+    },
+  )
+  return res.data.overtime
+}
+
+export async function adminUpdateOvertime(
+  publicationID: number,
+  recordID: number,
+  input: AdminUpdateOvertimeInput,
+) {
+  const res = await api.patch<AttendanceOvertimeResponse>(
+    `/publications/${publicationID}/attendance/overtime/${recordID}`,
+    input,
+  )
+  return res.data.overtime
+}
+
+export async function adminDeleteOvertime(
+  publicationID: number,
+  recordID: number,
+) {
+  await api.delete(`/publications/${publicationID}/attendance/overtime/${recordID}`)
+}
+
+export async function updateAttendanceSettings(
+  publicationID: number,
+  overtimeEntryWindowHours: number,
+) {
+  const res = await api.patch<PublicationResponse>(
+    `/publications/${publicationID}/attendance/settings`,
+    { overtime_entry_window_hours: overtimeEntryWindowHours },
+  )
+  return res.data.publication
 }
 
 function toApiTimestamp(value: string) {

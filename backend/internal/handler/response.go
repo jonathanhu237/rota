@@ -76,12 +76,13 @@ type templateSlotResponse struct {
 }
 
 type templateSlotPositionResponse struct {
-	ID                int64     `json:"id"`
-	SlotID            int64     `json:"slot_id"`
-	PositionID        int64     `json:"position_id"`
-	RequiredHeadcount int       `json:"required_headcount"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID                    int64     `json:"id"`
+	SlotID                int64     `json:"slot_id"`
+	PositionID            int64     `json:"position_id"`
+	RequiredHeadcount     int       `json:"required_headcount"`
+	AttendanceResponsible bool      `json:"attendance_responsible"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
 }
 
 type qualifiedShiftResponse struct {
@@ -99,19 +100,20 @@ type qualifiedShiftCompositionResponse struct {
 }
 
 type publicationResponse struct {
-	ID                 int64                  `json:"id"`
-	TemplateID         int64                  `json:"template_id"`
-	TemplateName       string                 `json:"template_name"`
-	Name               string                 `json:"name"`
-	Description        string                 `json:"description"`
-	State              model.PublicationState `json:"state"`
-	SubmissionStartAt  time.Time              `json:"submission_start_at"`
-	SubmissionEndAt    time.Time              `json:"submission_end_at"`
-	PlannedActiveFrom  time.Time              `json:"planned_active_from"`
-	PlannedActiveUntil time.Time              `json:"planned_active_until"`
-	ActivatedAt        *time.Time             `json:"activated_at"`
-	CreatedAt          time.Time              `json:"created_at"`
-	UpdatedAt          time.Time              `json:"updated_at"`
+	ID                       int64                  `json:"id"`
+	TemplateID               int64                  `json:"template_id"`
+	TemplateName             string                 `json:"template_name"`
+	Name                     string                 `json:"name"`
+	Description              string                 `json:"description"`
+	State                    model.PublicationState `json:"state"`
+	SubmissionStartAt        time.Time              `json:"submission_start_at"`
+	SubmissionEndAt          time.Time              `json:"submission_end_at"`
+	PlannedActiveFrom        time.Time              `json:"planned_active_from"`
+	PlannedActiveUntil       time.Time              `json:"planned_active_until"`
+	OvertimeEntryWindowHours float64                `json:"overtime_entry_window_hours"`
+	ActivatedAt              *time.Time             `json:"activated_at"`
+	CreatedAt                time.Time              `json:"created_at"`
+	UpdatedAt                time.Time              `json:"updated_at"`
 }
 
 type publicationSlotResponse struct {
@@ -327,12 +329,13 @@ func newTemplateSlotResponse(slot *model.TemplateSlot) templateSlotResponse {
 
 func newTemplateSlotPositionResponse(slotPosition *model.TemplateSlotPosition) templateSlotPositionResponse {
 	return templateSlotPositionResponse{
-		ID:                slotPosition.ID,
-		SlotID:            slotPosition.SlotID,
-		PositionID:        slotPosition.PositionID,
-		RequiredHeadcount: slotPosition.RequiredHeadcount,
-		CreatedAt:         slotPosition.CreatedAt,
-		UpdatedAt:         slotPosition.UpdatedAt,
+		ID:                    slotPosition.ID,
+		SlotID:                slotPosition.SlotID,
+		PositionID:            slotPosition.PositionID,
+		RequiredHeadcount:     slotPosition.RequiredHeadcount,
+		AttendanceResponsible: slotPosition.AttendanceResponsible,
+		CreatedAt:             slotPosition.CreatedAt,
+		UpdatedAt:             slotPosition.UpdatedAt,
 	}
 }
 
@@ -342,19 +345,20 @@ func newPublicationResponse(publication *model.Publication) *publicationResponse
 	}
 
 	return &publicationResponse{
-		ID:                 publication.ID,
-		TemplateID:         publication.TemplateID,
-		TemplateName:       publication.TemplateName,
-		Name:               publication.Name,
-		Description:        publication.Description,
-		State:              publication.State,
-		SubmissionStartAt:  publication.SubmissionStartAt,
-		SubmissionEndAt:    publication.SubmissionEndAt,
-		PlannedActiveFrom:  publication.PlannedActiveFrom,
-		PlannedActiveUntil: publication.PlannedActiveUntil,
-		ActivatedAt:        publication.ActivatedAt,
-		CreatedAt:          publication.CreatedAt,
-		UpdatedAt:          publication.UpdatedAt,
+		ID:                       publication.ID,
+		TemplateID:               publication.TemplateID,
+		TemplateName:             publication.TemplateName,
+		Name:                     publication.Name,
+		Description:              publication.Description,
+		State:                    publication.State,
+		SubmissionStartAt:        publication.SubmissionStartAt,
+		SubmissionEndAt:          publication.SubmissionEndAt,
+		PlannedActiveFrom:        publication.PlannedActiveFrom,
+		PlannedActiveUntil:       publication.PlannedActiveUntil,
+		OvertimeEntryWindowHours: publication.OvertimeEntryWindowHours,
+		ActivatedAt:              publication.ActivatedAt,
+		CreatedAt:                publication.CreatedAt,
+		UpdatedAt:                publication.UpdatedAt,
 	}
 }
 

@@ -392,12 +392,17 @@ func TestTemplateHandler(t *testing.T) {
 
 		handler := NewTemplateHandler(&stubTemplateService{
 			createTemplateSlotPositionFunc: func(ctx context.Context, input service.CreateTemplateSlotPositionInput) (*model.TemplateSlotPosition, error) {
-				return sampleTemplateSlotPosition(), nil
+				if !input.AttendanceResponsible {
+					t.Fatalf("expected attendance responsible marker in input: %+v", input)
+				}
+				slotPosition := sampleTemplateSlotPosition()
+				slotPosition.AttendanceResponsible = true
+				return slotPosition, nil
 			},
 		})
 		recorder := httptest.NewRecorder()
 		req := requestWithPathValues(jsonRequest(t, http.MethodPost, "/templates/1/slots/2/positions", map[string]any{
-			"position_id": 7, "required_headcount": 2,
+			"position_id": 7, "required_headcount": 1, "attendance_responsible": true,
 		}), map[string]string{"id": "1", "slot_id": "2"})
 
 		handler.CreateSlotPosition(recorder, req)
@@ -406,9 +411,27 @@ func TestTemplateHandler(t *testing.T) {
 			t.Fatalf("expected status 201, got %d", recorder.Code)
 		}
 		response := decodeJSONResponse[templateSlotPositionDetailResponse](t, recorder)
-		if response.Position.ID != 3 || response.Position.SlotID != 2 {
+		if response.Position.ID != 3 || response.Position.SlotID != 2 || !response.Position.AttendanceResponsible {
 			t.Fatalf("unexpected slot position response: %+v", response)
 		}
+	})
+
+	t.Run("CreateSlotPosition maps attendance responsible errors", func(t *testing.T) {
+		t.Parallel()
+
+		handler := NewTemplateHandler(&stubTemplateService{
+			createTemplateSlotPositionFunc: func(ctx context.Context, input service.CreateTemplateSlotPositionInput) (*model.TemplateSlotPosition, error) {
+				return nil, service.ErrAttendanceResponsibleRequired
+			},
+		})
+		recorder := httptest.NewRecorder()
+		req := requestWithPathValues(jsonRequest(t, http.MethodPost, "/templates/1/slots/2/positions", map[string]any{
+			"position_id": 7, "required_headcount": 2, "attendance_responsible": true,
+		}), map[string]string{"id": "1", "slot_id": "2"})
+
+		handler.CreateSlotPosition(recorder, req)
+
+		assertErrorResponse(t, recorder, http.StatusConflict, "ATTENDANCE_RESPONSIBLE_REQUIRED")
 	})
 
 	t.Run("DeleteSlotPosition maps slot position not found", func(t *testing.T) {

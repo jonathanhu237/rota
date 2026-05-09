@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   createTemplateSchema,
+  createTemplateSlotPositionSchema,
   createTemplateSlotSchema,
 } from "./template-schemas"
 
@@ -43,6 +44,36 @@ describe("createTemplateSlotSchema", () => {
       weekdays: [],
       start_time: "09:00",
       end_time: "10:00",
+    })
+
+    expect(result.success).toBe(false)
+  })
+})
+
+describe("createTemplateSlotPositionSchema", () => {
+  it("allows a single-headcount attendance responsible position", () => {
+    const schema = createTemplateSlotPositionSchema(t)
+
+    const result = schema.parse({
+      position_id: 7,
+      required_headcount: 1,
+      attendance_responsible: true,
+    })
+
+    expect(result).toEqual({
+      position_id: 7,
+      required_headcount: 1,
+      attendance_responsible: true,
+    })
+  })
+
+  it("rejects attendance responsible positions with headcount above one", () => {
+    const schema = createTemplateSlotPositionSchema(t)
+
+    const result = schema.safeParse({
+      position_id: 7,
+      required_headcount: 2,
+      attendance_responsible: true,
     })
 
     expect(result.success).toBe(false)

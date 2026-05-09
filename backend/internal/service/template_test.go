@@ -877,6 +877,54 @@ func TestTemplateServiceCreateTemplateSlotPosition(t *testing.T) {
 			t.Fatalf("expected ErrInvalidHeadcount, got %v", err)
 		}
 	})
+
+	t.Run("responsible position must have headcount one", func(t *testing.T) {
+		t.Parallel()
+
+		service := NewTemplateService(&templateRepositoryMock{}, &positionLookupRepositoryMock{})
+
+		_, err := service.CreateTemplateSlotPosition(context.Background(), CreateTemplateSlotPositionInput{
+			TemplateID:            1,
+			SlotID:                2,
+			PositionID:            3,
+			RequiredHeadcount:     2,
+			AttendanceResponsible: true,
+		})
+		if !errors.Is(err, ErrAttendanceResponsibleRequired) {
+			t.Fatalf("expected ErrAttendanceResponsibleRequired, got %v", err)
+		}
+	})
+
+	t.Run("passes responsible marker and maps duplicate responsible repository error", func(t *testing.T) {
+		t.Parallel()
+
+		service := NewTemplateService(
+			&templateRepositoryMock{
+				createSlotPositionFunc: func(ctx context.Context, params repository.CreateTemplateSlotPositionParams) (*model.TemplateSlotPosition, error) {
+					if !params.AttendanceResponsible || params.RequiredHeadcount != 1 {
+						t.Fatalf("unexpected responsible params: %+v", params)
+					}
+					return nil, repository.ErrAttendanceResponsibleRequired
+				},
+			},
+			&positionLookupRepositoryMock{
+				getByIDFunc: func(ctx context.Context, id int64) (*model.Position, error) {
+					return &model.Position{ID: id}, nil
+				},
+			},
+		)
+
+		_, err := service.CreateTemplateSlotPosition(context.Background(), CreateTemplateSlotPositionInput{
+			TemplateID:            1,
+			SlotID:                2,
+			PositionID:            3,
+			RequiredHeadcount:     1,
+			AttendanceResponsible: true,
+		})
+		if !errors.Is(err, ErrAttendanceResponsibleRequired) {
+			t.Fatalf("expected ErrAttendanceResponsibleRequired, got %v", err)
+		}
+	})
 }
 
 func TestTemplateServiceUpdateTemplateSlotPosition(t *testing.T) {
@@ -968,6 +1016,24 @@ func TestTemplateServiceUpdateTemplateSlotPosition(t *testing.T) {
 		})
 		if !errors.Is(err, ErrTemplateSlotPositionNotFound) {
 			t.Fatalf("expected ErrTemplateSlotPositionNotFound, got %v", err)
+		}
+	})
+
+	t.Run("responsible update must have headcount one", func(t *testing.T) {
+		t.Parallel()
+
+		service := NewTemplateService(&templateRepositoryMock{}, &positionLookupRepositoryMock{})
+
+		_, err := service.UpdateTemplateSlotPosition(context.Background(), UpdateTemplateSlotPositionInput{
+			TemplateID:            2,
+			SlotID:                4,
+			SlotPositionID:        8,
+			PositionID:            3,
+			RequiredHeadcount:     2,
+			AttendanceResponsible: true,
+		})
+		if !errors.Is(err, ErrAttendanceResponsibleRequired) {
+			t.Fatalf("expected ErrAttendanceResponsibleRequired, got %v", err)
 		}
 	})
 }

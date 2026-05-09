@@ -32,8 +32,15 @@ vi.mock("./axios", () => ({
 }))
 
 import {
+  adminAttendanceDayQueryOptions,
+  adminAttendanceShiftQueryOptions,
   adminAvailabilityBoardQueryOptions,
   adminAvailabilityDetailQueryOptions,
+  adminClearArrival,
+  adminCreateOvertime,
+  adminDeleteOvertime,
+  adminUpdateOvertime,
+  adminUpsertArrival,
   autoAssignPublication,
   activatePublication,
   confirmEmailChange,
@@ -47,13 +54,17 @@ import {
   getBranding,
   leavePoolQueryOptions,
   leavePreviewQueryOptions,
+  leaderAttendanceQueryOptions,
   previewSetupToken,
+  recordLeaderArrival,
+  recordLeaderOvertime,
   requestEmailChange,
   requestPasswordReset,
   replaceAdminAvailability,
   replaceUserPositions,
   resendInvitation,
   setupPassword,
+  updateAttendanceSettings,
   updateBranding,
   updatePublication,
   updateTemplate,
@@ -409,6 +420,196 @@ describe("admin availability queries", () => {
       {
         submissions: [{ slot_id: 21, weekday: 3 }],
       },
+    )
+  })
+})
+
+describe("attendance queries and mutations", () => {
+  beforeEach(() => {
+    deleteMock.mockReset()
+    getMock.mockReset()
+    postMock.mockReset()
+    patchMock.mockReset()
+    putMock.mockReset()
+  })
+
+  it("requests current leader attendance", async () => {
+    getMock.mockResolvedValue({
+      data: {
+        publication: null,
+        shifts: [],
+      },
+    })
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+    })
+
+    await client.fetchQuery(leaderAttendanceQueryOptions)
+
+    expect(getMock).toHaveBeenCalledWith("/attendance/current")
+  })
+
+  it("requests admin attendance day and shift detail with stable keys", async () => {
+    getMock
+      .mockResolvedValueOnce({
+        data: {
+          publication: null,
+          date: "2026-05-11",
+          shifts: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          shift: {
+            publication_id: 7,
+            slot_id: 21,
+            weekday: 1,
+            start_time: "09:00",
+            end_time: "12:00",
+            occurrence_date: "2026-05-11",
+            scheduled_start: "2026-05-11T09:00:00Z",
+            scheduled_end: "2026-05-11T12:00:00Z",
+            arrival_window_open: true,
+            overtime_window_open: true,
+            roster: [],
+            orphan_arrivals: [],
+            overtime_records: [],
+          },
+        },
+      })
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+    })
+
+    await client.fetchQuery(adminAttendanceDayQueryOptions(7, "2026-05-11"))
+    await client.fetchQuery(
+      adminAttendanceShiftQueryOptions(7, 21, "2026-05-11"),
+    )
+
+    expect(getMock).toHaveBeenNthCalledWith(
+      1,
+      "/publications/7/attendance",
+      { params: { date: "2026-05-11" } },
+    )
+    expect(getMock).toHaveBeenNthCalledWith(
+      2,
+      "/publications/7/attendance/shifts/21/2026-05-11",
+    )
+  })
+
+  it("writes leader arrivals and overtime", async () => {
+    postMock
+      .mockResolvedValueOnce({ data: { shift: { slot_id: 21 } } })
+      .mockResolvedValueOnce({ data: { overtime: { id: 88 } } })
+
+    await recordLeaderArrival({
+      publication_id: 7,
+      slot_id: 21,
+      assignment_id: 1002,
+      occurrence_date: "2026-05-11",
+      user_id: 2,
+      arrived_at: "2026-05-11T09:00:00Z",
+    })
+    await recordLeaderOvertime({
+      publication_id: 7,
+      slot_id: 21,
+      occurrence_date: "2026-05-11",
+      user_id: 2,
+      hours: 1.5,
+      note: "cleanup",
+    })
+
+    expect(postMock).toHaveBeenNthCalledWith(1, "/attendance/arrivals", {
+      publication_id: 7,
+      slot_id: 21,
+      assignment_id: 1002,
+      occurrence_date: "2026-05-11",
+      user_id: 2,
+      arrived_at: "2026-05-11T09:00:00Z",
+    })
+    expect(postMock).toHaveBeenNthCalledWith(2, "/attendance/overtime", {
+      publication_id: 7,
+      slot_id: 21,
+      occurrence_date: "2026-05-11",
+      user_id: 2,
+      hours: 1.5,
+      note: "cleanup",
+    })
+  })
+
+  it("writes admin attendance corrections, overtime, and settings", async () => {
+    putMock.mockResolvedValue({ data: { shift: { slot_id: 21 } } })
+    postMock.mockResolvedValue({ data: { overtime: { id: 88 } } })
+    patchMock
+      .mockResolvedValueOnce({ data: { overtime: { id: 88 } } })
+      .mockResolvedValueOnce({ data: { publication: { id: 7 } } })
+    deleteMock.mockResolvedValue({ data: undefined })
+
+    await adminUpsertArrival(7, {
+      slot_id: 21,
+      assignment_id: 1002,
+      occurrence_date: "2026-05-11",
+      user_id: 2,
+      arrived_at: "2026-05-11T09:00:00Z",
+    })
+    await adminClearArrival(7, 55)
+    await adminCreateOvertime(7, {
+      slot_id: 21,
+      occurrence_date: "2026-05-11",
+      user_id: 2,
+      hours: 1,
+      note: "cover",
+    })
+    await adminUpdateOvertime(7, 88, { hours: 1.5, note: "updated" })
+    await adminDeleteOvertime(7, 88)
+    await updateAttendanceSettings(7, 12.5)
+
+    expect(putMock).toHaveBeenCalledWith(
+      "/publications/7/attendance/arrivals",
+      {
+        slot_id: 21,
+        assignment_id: 1002,
+        occurrence_date: "2026-05-11",
+        user_id: 2,
+        arrived_at: "2026-05-11T09:00:00Z",
+      },
+    )
+    expect(deleteMock).toHaveBeenNthCalledWith(
+      1,
+      "/publications/7/attendance/arrivals/55",
+    )
+    expect(postMock).toHaveBeenCalledWith(
+      "/publications/7/attendance/overtime",
+      {
+        publication_id: 7,
+        slot_id: 21,
+        occurrence_date: "2026-05-11",
+        user_id: 2,
+        hours: 1,
+        note: "cover",
+      },
+    )
+    expect(patchMock).toHaveBeenNthCalledWith(
+      1,
+      "/publications/7/attendance/overtime/88",
+      { hours: 1.5, note: "updated" },
+    )
+    expect(deleteMock).toHaveBeenNthCalledWith(
+      2,
+      "/publications/7/attendance/overtime/88",
+    )
+    expect(patchMock).toHaveBeenNthCalledWith(
+      2,
+      "/publications/7/attendance/settings",
+      { overtime_entry_window_hours: 12.5 },
     )
   })
 })

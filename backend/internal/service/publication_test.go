@@ -254,18 +254,19 @@ func (m *publicationRepositoryStatefulMock) CreatePublication(
 
 	now := params.CreatedAt
 	publication := &model.Publication{
-		ID:                 m.nextPublicationID,
-		TemplateID:         params.TemplateID,
-		TemplateName:       template.Name,
-		Name:               params.Name,
-		Description:        params.Description,
-		State:              params.State,
-		SubmissionStartAt:  params.SubmissionStartAt,
-		SubmissionEndAt:    params.SubmissionEndAt,
-		PlannedActiveFrom:  params.PlannedActiveFrom,
-		PlannedActiveUntil: params.PlannedActiveUntil,
-		CreatedAt:          now,
-		UpdatedAt:          now,
+		ID:                       m.nextPublicationID,
+		TemplateID:               params.TemplateID,
+		TemplateName:             template.Name,
+		Name:                     params.Name,
+		Description:              params.Description,
+		State:                    params.State,
+		SubmissionStartAt:        params.SubmissionStartAt,
+		SubmissionEndAt:          params.SubmissionEndAt,
+		PlannedActiveFrom:        params.PlannedActiveFrom,
+		PlannedActiveUntil:       params.PlannedActiveUntil,
+		OvertimeEntryWindowHours: params.OvertimeEntryWindowHours,
+		CreatedAt:                now,
+		UpdatedAt:                now,
 	}
 
 	template.IsLocked = true
@@ -299,6 +300,9 @@ func (m *publicationRepositoryStatefulMock) UpdatePublicationFields(
 	}
 	if params.PlannedActiveUntil != nil {
 		publication.PlannedActiveUntil = *params.PlannedActiveUntil
+	}
+	if params.OvertimeEntryWindowHours != nil {
+		publication.OvertimeEntryWindowHours = *params.OvertimeEntryWindowHours
 	}
 	publication.UpdatedAt = params.UpdatedAt
 
@@ -1198,6 +1202,9 @@ func TestPublicationServiceCreatePublication(t *testing.T) {
 		if publication.State != model.PublicationStateDraft {
 			t.Fatalf("expected draft state, got %s", publication.State)
 		}
+		if publication.OvertimeEntryWindowHours != 24 {
+			t.Fatalf("expected default overtime entry window 24, got %v", publication.OvertimeEntryWindowHours)
+		}
 		if !repo.templates[1].IsLocked {
 			t.Fatal("expected template to be locked")
 		}
@@ -1217,6 +1224,9 @@ func TestPublicationServiceCreatePublication(t *testing.T) {
 		}
 		if event.Metadata["name"] != "May availability" {
 			t.Fatalf("expected name in metadata, got %+v", event.Metadata)
+		}
+		if event.Metadata["overtime_entry_window_hours"] != float64(24) {
+			t.Fatalf("expected overtime entry window in metadata, got %+v", event.Metadata)
 		}
 		for _, key := range []string{"submission_start_at", "submission_end_at", "planned_active_from"} {
 			if _, ok := event.Metadata[key]; !ok {

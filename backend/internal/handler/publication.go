@@ -79,9 +79,10 @@ type createPublicationRequest struct {
 }
 
 type updatePublicationRequest struct {
-	Name               *string    `json:"name"`
-	Description        *string    `json:"description"`
-	PlannedActiveUntil *time.Time `json:"planned_active_until"`
+	Name                     *string    `json:"name"`
+	Description              *string    `json:"description"`
+	PlannedActiveUntil       *time.Time `json:"planned_active_until"`
+	OvertimeEntryWindowHours *float64   `json:"overtime_entry_window_hours"`
 }
 
 type createSubmissionRequest struct {
@@ -191,10 +192,11 @@ func (h *PublicationHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	publication, err := h.publicationService.UpdatePublication(r.Context(), service.UpdatePublicationInput{
-		ID:                 id,
-		Name:               req.Name,
-		Description:        req.Description,
-		PlannedActiveUntil: req.PlannedActiveUntil,
+		ID:                       id,
+		Name:                     req.Name,
+		Description:              req.Description,
+		PlannedActiveUntil:       req.PlannedActiveUntil,
+		OvertimeEntryWindowHours: req.OvertimeEntryWindowHours,
 	})
 	if err != nil {
 		h.writePublicationServiceError(w, err)

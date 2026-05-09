@@ -15,7 +15,10 @@ import (
 	"github.com/jonathanhu237/rota/backend/internal/repository"
 )
 
-const maxPublicationNameLength = 100
+const (
+	maxPublicationNameLength        = 100
+	defaultOvertimeEntryWindowHours = 24
+)
 
 var (
 	ErrInvalidPublicationWindow    = model.ErrInvalidPublicationWindow
@@ -124,10 +127,11 @@ type CreatePublicationInput struct {
 }
 
 type UpdatePublicationInput struct {
-	ID                 int64
-	Name               *string
-	Description        *string
-	PlannedActiveUntil *time.Time
+	ID                       int64
+	Name                     *string
+	Description              *string
+	PlannedActiveUntil       *time.Time
+	OvertimeEntryWindowHours *float64
 }
 
 type CreateAvailabilitySubmissionInput struct {
@@ -262,15 +266,16 @@ func (s *PublicationService) CreatePublication(
 
 	now := s.clock.Now()
 	publication, err := s.publicationRepo.CreatePublication(ctx, repository.CreatePublicationParams{
-		TemplateID:         input.TemplateID,
-		Name:               name,
-		Description:        strings.TrimSpace(input.Description),
-		State:              model.PublicationStateDraft,
-		SubmissionStartAt:  input.SubmissionStartAt,
-		SubmissionEndAt:    input.SubmissionEndAt,
-		PlannedActiveFrom:  input.PlannedActiveFrom,
-		PlannedActiveUntil: input.PlannedActiveUntil,
-		CreatedAt:          now,
+		TemplateID:               input.TemplateID,
+		Name:                     name,
+		Description:              strings.TrimSpace(input.Description),
+		State:                    model.PublicationStateDraft,
+		SubmissionStartAt:        input.SubmissionStartAt,
+		SubmissionEndAt:          input.SubmissionEndAt,
+		PlannedActiveFrom:        input.PlannedActiveFrom,
+		PlannedActiveUntil:       input.PlannedActiveUntil,
+		OvertimeEntryWindowHours: defaultOvertimeEntryWindowHours,
+		CreatedAt:                now,
 	})
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
@@ -282,13 +287,14 @@ func (s *PublicationService) CreatePublication(
 		TargetType: audit.TargetTypePublication,
 		TargetID:   &targetID,
 		Metadata: map[string]any{
-			"template_id":          publication.TemplateID,
-			"name":                 publication.Name,
-			"description":          publication.Description,
-			"submission_start_at":  publication.SubmissionStartAt.Format(time.RFC3339),
-			"submission_end_at":    publication.SubmissionEndAt.Format(time.RFC3339),
-			"planned_active_from":  publication.PlannedActiveFrom.Format(time.RFC3339),
-			"planned_active_until": publication.PlannedActiveUntil.Format(time.RFC3339),
+			"template_id":                 publication.TemplateID,
+			"name":                        publication.Name,
+			"description":                 publication.Description,
+			"submission_start_at":         publication.SubmissionStartAt.Format(time.RFC3339),
+			"submission_end_at":           publication.SubmissionEndAt.Format(time.RFC3339),
+			"planned_active_from":         publication.PlannedActiveFrom.Format(time.RFC3339),
+			"planned_active_until":        publication.PlannedActiveUntil.Format(time.RFC3339),
+			"overtime_entry_window_hours": publication.OvertimeEntryWindowHours,
 		},
 	})
 
@@ -302,7 +308,10 @@ func (s *PublicationService) UpdatePublication(
 	if input.ID <= 0 {
 		return nil, ErrInvalidInput
 	}
-	if input.Name == nil && input.Description == nil && input.PlannedActiveUntil == nil {
+	if input.Name == nil &&
+		input.Description == nil &&
+		input.PlannedActiveUntil == nil &&
+		input.OvertimeEntryWindowHours == nil {
 		publication, err := s.publicationRepo.GetByID(ctx, input.ID)
 		if err != nil {
 			return nil, mapPublicationRepositoryError(err)
@@ -337,14 +346,18 @@ func (s *PublicationService) UpdatePublication(
 	if !current.PlannedActiveFrom.Before(newUntil) {
 		return nil, ErrInvalidPublicationWindow
 	}
+	if input.OvertimeEntryWindowHours != nil && !isValidOvertimeEntryWindowHours(*input.OvertimeEntryWindowHours) {
+		return nil, ErrInvalidInput
+	}
 
 	now := s.clock.Now()
 	updated, err := s.publicationRepo.UpdatePublicationFields(ctx, repository.UpdatePublicationFieldsParams{
-		ID:                 input.ID,
-		Name:               normalizedName,
-		Description:        normalizedDescription,
-		PlannedActiveUntil: input.PlannedActiveUntil,
-		UpdatedAt:          now,
+		ID:                       input.ID,
+		Name:                     normalizedName,
+		Description:              normalizedDescription,
+		PlannedActiveUntil:       input.PlannedActiveUntil,
+		OvertimeEntryWindowHours: input.OvertimeEntryWindowHours,
+		UpdatedAt:                now,
 	})
 	if err != nil {
 		return nil, mapPublicationRepositoryError(err)
@@ -658,6 +671,10 @@ func validatePublicationWindow(
 	return nil
 }
 
+func isValidOvertimeEntryWindowHours(hours float64) bool {
+	return hours >= 0 && hours <= 168
+}
+
 func publicationUpdateMetadata(
 	before *model.Publication,
 	after *model.Publication,
@@ -676,6 +693,13 @@ func publicationUpdateMetadata(
 		metadata["planned_active_until"] = map[string]any{
 			"from": before.PlannedActiveUntil.Format(time.RFC3339),
 			"to":   after.PlannedActiveUntil.Format(time.RFC3339),
+		}
+	}
+	if input.OvertimeEntryWindowHours != nil &&
+		before.OvertimeEntryWindowHours != after.OvertimeEntryWindowHours {
+		metadata["overtime_entry_window_hours"] = map[string]any{
+			"from": before.OvertimeEntryWindowHours,
+			"to":   after.OvertimeEntryWindowHours,
 		}
 	}
 	return metadata

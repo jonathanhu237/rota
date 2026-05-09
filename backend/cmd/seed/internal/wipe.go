@@ -9,6 +9,8 @@ func WipeAllData(ctx context.Context, tx *sql.Tx) error {
 	const query = `
 		TRUNCATE TABLE
 			audit_logs,
+			attendance_overtime_records,
+			attendance_records,
 			shift_change_requests,
 			assignments,
 			availability_submissions,

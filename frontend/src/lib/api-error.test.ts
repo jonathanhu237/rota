@@ -46,6 +46,19 @@ describe("getApiErrorDetails", () => {
 
     expect(details?.code).toBe("LEAVE_NOT_OWNER")
   })
+
+  it("extracts attendance error codes", () => {
+    const details = getApiErrorDetails(
+      createAxiosLikeError({
+        error: {
+          code: "ATTENDANCE_WINDOW_CLOSED",
+          message: "Attendance window is closed",
+        },
+      }),
+    )
+
+    expect(details?.code).toBe("ATTENDANCE_WINDOW_CLOSED")
+  })
 })
 
 describe("getTranslatedApiError", () => {

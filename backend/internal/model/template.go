@@ -6,14 +6,15 @@ import (
 )
 
 var (
-	ErrInvalidHeadcount             = errors.New("invalid headcount")
-	ErrInvalidShiftTime             = errors.New("invalid shift time")
-	ErrInvalidWeekday               = errors.New("invalid weekday")
-	ErrTemplateLocked               = errors.New("template locked")
-	ErrTemplateNotFound             = errors.New("template not found")
-	ErrTemplateSlotOverlap          = errors.New("template slot overlap")
-	ErrTemplateSlotNotFound         = errors.New("template slot not found")
-	ErrTemplateSlotPositionNotFound = errors.New("template slot position not found")
+	ErrInvalidHeadcount              = errors.New("invalid headcount")
+	ErrInvalidShiftTime              = errors.New("invalid shift time")
+	ErrInvalidWeekday                = errors.New("invalid weekday")
+	ErrTemplateLocked                = errors.New("template locked")
+	ErrTemplateNotFound              = errors.New("template not found")
+	ErrTemplateSlotOverlap           = errors.New("template slot overlap")
+	ErrTemplateSlotNotFound          = errors.New("template slot not found")
+	ErrTemplateSlotPositionNotFound  = errors.New("template slot position not found")
+	ErrAttendanceResponsibleRequired = errors.New("attendance responsible position required")
 )
 
 type Template struct {
@@ -39,10 +40,11 @@ type TemplateSlot struct {
 }
 
 type TemplateSlotPosition struct {
-	ID                int64
-	SlotID            int64
-	PositionID        int64
-	RequiredHeadcount int
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	ID                    int64
+	SlotID                int64
+	PositionID            int64
+	RequiredHeadcount     int
+	AttendanceResponsible bool
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }

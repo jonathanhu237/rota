@@ -112,6 +112,7 @@
     },
     "dashboard": "Dashboard",
     "roster": "Roster",
+    "attendance": "Attendance",
     "availability": "Availability",
     "requests": "Requests",
     "leaves": "Leaves",
@@ -128,6 +129,7 @@
   "breadcrumbs": {
     "dashboard": "Dashboard",
     "roster": "Roster",
+    "attendance": "Attendance",
     "availability": "Availability",
     "requests": "Requests",
     "leaves": "Leaves",
@@ -525,6 +527,7 @@
     "position": {
       "position": "Position",
       "requiredHeadcount": "Required Headcount",
+      "attendanceResponsible": "Attendance responsible",
       "summary": "{{headcount}} staff needed"
     },
     "slotDialog": {
@@ -546,7 +549,8 @@
       "submitEdit": "Save Position",
       "submittingCreate": "Creating...",
       "submittingEdit": "Saving...",
-      "selectPosition": "Select a position"
+      "selectPosition": "Select a position",
+      "attendanceResponsibleDescription": "This position records arrivals and overtime for the shift."
     },
     "shift": {
       "weekday": "Weekday",
@@ -584,7 +588,8 @@
       "invalidWeekday": "Weekday must be between Monday and Sunday",
       "invalidShiftTime": "End time must be after start time",
       "positionRequired": "Position is required",
-      "invalidHeadcount": "Required headcount must be at least 1"
+      "invalidHeadcount": "Required headcount must be at least 1",
+      "responsibleHeadcount": "Attendance responsible positions must require exactly 1 person"
     },
     "success": {
       "created": "Template created successfully.",
@@ -614,8 +619,69 @@
       "TEMPLATE_SLOT_NOT_FOUND": "Template slot not found",
       "TEMPLATE_SLOT_OVERLAP": "This slot overlaps with an existing slot on the same day.",
       "TEMPLATE_SLOT_POSITION_NOT_FOUND": "Template slot position not found",
+      "ATTENDANCE_RESPONSIBLE_REQUIRED": "Each shift can have only one attendance responsible position, and it must require exactly 1 person.",
       "TEMPLATE_SHIFT_NOT_FOUND": "Template shift not found",
       "UNAUTHORIZED": "Unauthorized"
+    }
+  },
+  "attendance": {
+    "title": "Attendance",
+    "leaderDescription": "Record arrivals and overtime for shifts you are responsible for.",
+    "adminTitle": "Attendance management",
+    "adminDescription": "Review shift attendance, correct arrivals, and manage overtime.",
+    "empty": "No attendance shifts are available right now.",
+    "noRoster": "No rostered users for this shift.",
+    "orphanArrivals": "Orphan arrivals",
+    "overtime": "Overtime",
+    "settings": "Settings",
+    "overtimeWindow": "Overtime entry window (hours)",
+    "saveSettings": "Save settings",
+    "selectShift": "Select a shift",
+    "arrivalTime": "Arrival time",
+    "recordArrival": "Record arrival",
+    "recorded": "Recorded",
+    "hours": "Hours",
+    "note": "Note",
+    "addOvertime": "Add overtime",
+    "updateOvertime": "Update overtime",
+    "deleteOvertime": "Delete overtime",
+    "clearArrival": "Clear arrival",
+    "setArrival": "Set arrival",
+    "chooseUser": "Choose user",
+    "userId": "User ID",
+    "status": {
+      "pending": "Pending",
+      "present": "Present",
+      "late": "Late",
+      "absent": "Absent"
+    },
+    "summary": {
+      "shift": "{{date}} · {{start}}-{{end}}",
+      "counts": "{{present}} present · {{late}} late · {{pending}} pending · {{absent}} absent"
+    },
+    "success": {
+      "arrivalRecorded": "Arrival recorded.",
+      "arrivalUpdated": "Arrival updated.",
+      "arrivalCleared": "Arrival cleared.",
+      "overtimeRecorded": "Overtime recorded.",
+      "overtimeUpdated": "Overtime updated.",
+      "overtimeDeleted": "Overtime deleted.",
+      "settingsUpdated": "Attendance settings updated."
+    },
+    "errors": {
+      "INVALID_REQUEST": "Invalid request.",
+      "INVALID_OCCURRENCE_DATE": "Invalid occurrence date.",
+      "PUBLICATION_NOT_FOUND": "Publication not found.",
+      "TEMPLATE_SLOT_NOT_FOUND": "Shift not found.",
+      "USER_NOT_FOUND": "User not found or inactive.",
+      "ATTENDANCE_RECORD_NOT_FOUND": "Attendance record not found.",
+      "ATTENDANCE_NOT_LEADER": "You are not responsible for this shift.",
+      "ATTENDANCE_WINDOW_CLOSED": "The attendance window is closed.",
+      "ATTENDANCE_ALREADY_RECORDED": "This arrival has already been recorded.",
+      "ATTENDANCE_ROSTER_STALE": "The roster changed. Refresh and try again.",
+      "ATTENDANCE_RESPONSIBLE_REQUIRED": "This shift needs exactly one attendance responsible position.",
+      "PUBLICATION_NOT_ACTIVE": "The publication is not active.",
+      "INTERNAL_ERROR": "Internal server error."
     }
   },
   "publications": {
@@ -670,6 +736,7 @@
       "submissionEndAt": "Submission end",
       "plannedActiveFrom": "Planned active from",
       "plannedActiveUntil": "Planned active until",
+      "overtimeEntryWindowHours": "Overtime entry window",
       "activatedAt": "Activated at",
       "createdAt": "Created at",
       "updatedAt": "Updated at",
@@ -693,6 +760,7 @@
       "openAssignmentBoard": "Open Assignment Board",
       "manageAvailability": "Manage Availability",
       "viewShiftChanges": "View Shift Changes",
+      "manageAttendance": "Manage Attendance",
       "viewExisting": "View it"
     },
     "publishDialog": {

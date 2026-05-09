@@ -313,6 +313,13 @@ export function PublicationDetailPage() {
                   {t("publications.actions.viewShiftChanges")}
                 </Link>
               )}
+              <Link
+                className={buttonVariants({ variant: "outline" })}
+                params={{ publicationId: String(publication.id) }}
+                to="/publications/$publicationId/attendance"
+              >
+                {t("publications.actions.manageAttendance")}
+              </Link>
               {lifecycleAction === "publish" && (
                 <Button onClick={() => setIsPublishDialogOpen(true)}>
                   {t("publications.actions.publish")}
@@ -381,6 +388,10 @@ export function PublicationDetailPage() {
               <MetadataItem
                 label={t("publications.detail.plannedActiveUntil")}
                 value={formatTimestamp(publication.planned_active_until)}
+              />
+              <MetadataItem
+                label={t("publications.detail.overtimeEntryWindowHours")}
+                value={`${publication.overtime_entry_window_hours ?? 24}`}
               />
               <MetadataItem
                 label={t("publications.detail.activatedAt")}

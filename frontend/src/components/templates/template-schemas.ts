@@ -77,6 +77,16 @@ export function createTemplateSlotPositionSchema(
       })
       .int()
       .min(1, t("templates.validation.invalidHeadcount")),
+    attendance_responsible: z.boolean(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.attendance_responsible && value.required_headcount !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["required_headcount"],
+        message: t("templates.validation.responsibleHeadcount"),
+      })
+    }
   })
 }
 

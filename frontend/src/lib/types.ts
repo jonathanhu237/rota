@@ -68,6 +68,7 @@ export type TemplateSlotPosition = {
   slot_id: number
   position_id: number
   required_headcount: number
+  attendance_responsible: boolean
   created_at: string
   updated_at: string
 }
@@ -116,9 +117,99 @@ export type Publication = {
   submission_end_at: string
   planned_active_from: string
   planned_active_until: string
+  overtime_entry_window_hours?: number
   activated_at: string | null
   created_at: string
   updated_at: string
+}
+
+export type AttendanceStatus = "pending" | "present" | "late" | "absent"
+
+export type AttendanceArrivalRecord = {
+  id: number
+  publication_id: number
+  assignment_id: number
+  occurrence_date: string
+  user_id: number
+  user_name: string
+  user_email: string
+  arrived_at: string
+  recorded_by_user_id: number | null
+  recorded_at: string
+  updated_by_user_id: number | null
+  updated_at: string
+  status?: AttendanceStatus
+}
+
+export type AttendanceRosterEntry = {
+  assignment_id: number
+  position_id: number
+  position_name: string
+  attendance_responsible: boolean
+  user_id: number
+  user_name: string
+  user_email: string
+  status: AttendanceStatus
+  record: AttendanceArrivalRecord | null
+}
+
+export type AttendanceOvertimeRecord = {
+  id: number
+  publication_id: number
+  slot_id: number
+  weekday: number
+  occurrence_date: string
+  user_id: number
+  user_name: string
+  user_email: string
+  hours: number
+  note: string
+  recorded_by_user_id: number | null
+  recorded_at: string
+  updated_by_user_id: number | null
+  updated_at: string
+}
+
+export type AttendanceShift = {
+  publication_id: number
+  slot_id: number
+  weekday: number
+  start_time: string
+  end_time: string
+  occurrence_date: string
+  scheduled_start: string
+  scheduled_end: string
+  arrival_window_open: boolean
+  overtime_window_open: boolean
+  roster: AttendanceRosterEntry[]
+  orphan_arrivals: AttendanceArrivalRecord[]
+  overtime_records: AttendanceOvertimeRecord[]
+}
+
+export type AttendanceShiftSummary = {
+  slot_id: number
+  weekday: number
+  occurrence_date: string
+  scheduled_start: string
+  scheduled_end: string
+  roster_count: number
+  pending_count: number
+  present_count: number
+  late_count: number
+  absent_count: number
+  orphan_count: number
+  overtime_count: number
+}
+
+export type LeaderAttendance = {
+  publication: Publication | null
+  shifts: AttendanceShift[]
+}
+
+export type AdminAttendanceDay = {
+  publication: Publication
+  date: string
+  shifts: AttendanceShiftSummary[]
 }
 
 export type PublicationSlot = {

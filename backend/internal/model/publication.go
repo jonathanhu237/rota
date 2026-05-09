@@ -34,19 +34,20 @@ const (
 )
 
 type Publication struct {
-	ID                 int64
-	TemplateID         int64
-	TemplateName       string
-	Name               string
-	Description        string
-	State              PublicationState
-	SubmissionStartAt  time.Time
-	SubmissionEndAt    time.Time
-	PlannedActiveFrom  time.Time
-	PlannedActiveUntil time.Time
-	ActivatedAt        *time.Time
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID                       int64
+	TemplateID               int64
+	TemplateName             string
+	Name                     string
+	Description              string
+	State                    PublicationState
+	SubmissionStartAt        time.Time
+	SubmissionEndAt          time.Time
+	PlannedActiveFrom        time.Time
+	PlannedActiveUntil       time.Time
+	OvertimeEntryWindowHours float64
+	ActivatedAt              *time.Time
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
 }
 
 type AvailabilitySubmission struct {
@@ -108,6 +109,28 @@ func OccurrenceStart(slot *TemplateSlot, occurrenceDate time.Time) (time.Time, e
 		date.Day(),
 		startClock.Hour(),
 		startClock.Minute(),
+		0,
+		0,
+		time.UTC,
+	), nil
+}
+
+func OccurrenceEnd(slot *TemplateSlot, occurrenceDate time.Time) (time.Time, error) {
+	if slot == nil {
+		return time.Time{}, ErrInvalidOccurrenceDate
+	}
+
+	endClock, err := time.Parse("15:04", slot.EndTime)
+	if err != nil {
+		return time.Time{}, err
+	}
+	date := NormalizeOccurrenceDate(occurrenceDate)
+	return time.Date(
+		date.Year(),
+		date.Month(),
+		date.Day(),
+		endClock.Hour(),
+		endClock.Minute(),
 		0,
 		0,
 		time.UTC,

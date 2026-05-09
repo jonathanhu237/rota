@@ -155,6 +155,7 @@ describe("AppSidebar", () => {
       ["sidebar.availability", "/availability"],
       ["sidebar.requests", "/requests"],
       ["sidebar.leaves", "/leaves"],
+      ["sidebar.attendance", "/attendance"],
     ] as const
 
     for (const [label, href] of navItems) {

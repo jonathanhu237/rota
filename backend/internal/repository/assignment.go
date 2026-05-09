@@ -335,6 +335,7 @@ func (r *PublicationRepository) ActivatePublication(
 			p.submission_end_at,
 			p.planned_active_from,
 			p.planned_active_until,
+			p.overtime_entry_window_hours,
 			p.activated_at,
 			p.created_at,
 			p.updated_at;
@@ -405,6 +406,7 @@ func (r *PublicationRepository) PublishPublication(
 			p.submission_end_at,
 			p.planned_active_from,
 			p.planned_active_until,
+			p.overtime_entry_window_hours,
 			p.activated_at,
 			p.created_at,
 			p.updated_at;
@@ -443,6 +445,7 @@ func (r *PublicationRepository) EndPublication(
 			p.submission_end_at,
 			p.planned_active_from,
 			p.planned_active_until,
+			p.overtime_entry_window_hours,
 			p.activated_at,
 			p.created_at,
 			p.updated_at;
