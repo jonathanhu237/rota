@@ -322,8 +322,8 @@ const leaveWithRequestSelect = `
 		CASE WHEN s.state = 'approved' THEN substitute.name ELSE NULL END,
 		a.slot_id,
 		a.weekday,
-		ts.start_time,
-		ts.end_time,
+		TO_CHAR(ts.start_time, 'HH24:MI'),
+		TO_CHAR(ts.end_time, 'HH24:MI'),
 		a.position_id,
 		p.name
 	FROM leaves l
@@ -374,8 +374,8 @@ const leavePoolCTE = `
 			CASE WHEN s.state = 'approved' THEN substitute.name ELSE NULL END AS substitute_name,
 			a.slot_id AS shift_slot_id,
 			a.weekday AS shift_weekday,
-			ts.start_time AS shift_start_time,
-			ts.end_time AS shift_end_time,
+			TO_CHAR(ts.start_time, 'HH24:MI') AS shift_start_time,
+			TO_CHAR(ts.end_time, 'HH24:MI') AS shift_end_time,
 			a.position_id AS shift_position_id,
 			p.name AS shift_position_name
 		FROM leaves l

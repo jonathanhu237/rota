@@ -216,6 +216,13 @@ func TestLeavePoolRepositoryIntegration(t *testing.T) {
 	if rows[0].Shift == nil || rows[0].Shift.PositionID != assignment.PositionID {
 		t.Fatalf("expected shift context, got %+v", rows[0].Shift)
 	}
+	if rows[0].Shift.StartTime != "09:00" || rows[0].Shift.EndTime != "12:00" {
+		t.Fatalf("expected formatted shift time, got %s-%s", rows[0].Shift.StartTime, rows[0].Shift.EndTime)
+	}
+	wantOccurrenceEnd := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	if !rows[0].Shift.OccurrenceEnd.Equal(wantOccurrenceEnd) {
+		t.Fatalf("expected occurrence end %s, got %s", wantOccurrenceEnd, rows[0].Shift.OccurrenceEnd)
+	}
 
 	rows, total, err = leaveRepo.ListPool(ctx, ListLeavePoolParams{
 		ViewerUserID: carol.ID,
