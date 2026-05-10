@@ -1,6 +1,8 @@
 ## Development Workflow
 
-This project uses **OpenSpec** for spec-driven development. Every behavior change goes through a change folder under `openspec/changes/` before implementation, and specs in `openspec/specs/` are the source of truth.
+This project uses **OpenSpec** for spec-driven development. Material behavior changes go through a change folder under `openspec/changes/` before implementation, and specs in `openspec/specs/` are the source of truth.
+
+Small, low-risk edits can be made directly without OpenSpec when they do not materially change product behavior, backend/frontend contracts, data shape, permissions, scheduling rules, or operational semantics. Examples include typo fixes, comments, formatting, test-only cleanup, scaffold metadata such as page titles, minor copy adjustments, and small visual polish that preserves the existing workflow.
 
 OpenSpec workflow rules live in [`openspec/config.yaml`](openspec/config.yaml). That file is the source of truth for proposal, apply, verify, and archive behavior, including dedicated branch handling, verification review requirements, and archive/merge expectations. Do not duplicate or override those workflow rules here.
 
@@ -23,6 +25,7 @@ OpenSpec workflow rules live in [`openspec/config.yaml`](openspec/config.yaml). 
 
 ### Rules of engagement
 
+- **Small change → direct patch.** If the request is clearly small and low-risk, implement it directly and run the smallest relevant check. Escalate to OpenSpec only when the change affects user workflows, interfaces, persistence, auth/permissions, scheduling invariants, or requires coordinated backend/frontend/spec updates.
 - **Behavior drift → fix the artifact first.** If review finds the implementation diverges from `design.md` / `tasks.md` / specs in a way that changes user-visible behavior or interfaces, update the artifact first and re-apply. Typos, renames, refactors that preserve behavior, comment tweaks, and logging changes can be patched directly without an artifact update.
 - **Single active workflow per working tree.** Keep one OpenSpec change active in this checkout unless the user explicitly asks for a different branch/worktree strategy.
 
