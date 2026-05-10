@@ -14,6 +14,12 @@
       "zh": "中文"
     }
   },
+  "rootError": {
+    "title": "Rota 暂时无法加载",
+    "description": "请刷新页面后重试。如果问题仍然存在，请重新登录或联系管理员。",
+    "retry": "重试",
+    "login": "前往登录"
+  },
   "login": {
     "title": "登录",
     "description": "输入您的凭据以访问 {{productName}}。",
