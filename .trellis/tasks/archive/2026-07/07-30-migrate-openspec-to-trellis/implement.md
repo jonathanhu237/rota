@@ -73,7 +73,7 @@ workflow.
 - [x] Apply fixes locally and repeat rsync/remote checks if any validation
       fails.
 - [x] Run the final Trellis check and update task acceptance checkboxes.
-- [ ] Record the migration in the developer journal.
+- [x] Record the migration in the developer journal.
 - [x] Create one local Conventional Commit containing Trellis initialization,
       migrated specs, workflow cutover, and the archived bootstrap task.
 - [x] Archive this task without an extra automatic commit and report the local
