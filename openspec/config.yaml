@@ -1,3 +1,8 @@
+# LEGACY WORKFLOW SNAPSHOT
+# Rota migrated to Trellis on 2026-07-30. This configuration is retained
+# read-only to explain historical OpenSpec changes; it is not an active
+# instruction source. See ../AGENTS.md and ../.trellis/workflow.md.
+
 schema: spec-driven
 
 context: |

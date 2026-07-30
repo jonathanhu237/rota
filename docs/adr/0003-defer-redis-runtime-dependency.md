@@ -103,7 +103,7 @@ Revisit Redis when one or more of these become true:
 The production and local development stacks stay simpler: Postgres remains the
 only required stateful runtime service.
 
-Future Redis work should be introduced through a focused OpenSpec change with a
+Future Redis work should be introduced through a focused Trellis task with a
 specific use case, failure mode, and verification plan. Adding Redis to the
 stack should come with updated configuration, compose files, health checks,
 tests, and operational notes for the chosen use case.

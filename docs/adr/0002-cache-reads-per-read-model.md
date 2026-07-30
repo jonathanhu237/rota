@@ -93,8 +93,8 @@ core scheduling aggregates.
 
 Redis being present in the stack does not imply that reads are cached by default.
 
-Future OpenSpec changes that add read caching should describe the endpoint-level
-cache contract in their design artifacts and update this ADR only if the project
-policy changes. The first read cache should be a low-risk candidate so the team
-can establish Redis wiring, observability, and invalidation conventions before
-touching core scheduling reads.
+Future Trellis tasks that add read caching should describe the endpoint-level
+cache contract in their design artifacts and update this ADR only if the
+project policy changes. The first read cache should be a low-risk candidate so
+the team can establish Redis wiring, observability, and invalidation
+conventions before touching core scheduling reads.
