@@ -74,7 +74,7 @@ workflow.
       fails.
 - [x] Run the final Trellis check and update task acceptance checkboxes.
 - [ ] Record the migration in the developer journal.
-- [ ] Create one local Conventional Commit containing Trellis initialization,
+- [x] Create one local Conventional Commit containing Trellis initialization,
       migrated specs, workflow cutover, and the archived bootstrap task.
-- [ ] Archive this task without an extra automatic commit and report the local
+- [x] Archive this task without an extra automatic commit and report the local
       branch/commit. Do not push or create a PR.
