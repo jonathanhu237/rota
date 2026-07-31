@@ -74,6 +74,32 @@ describe("AdminAttendancePage", () => {
     ).toBeInTheDocument()
     expect(screen.getByDisplayValue("24")).toBeInTheDocument()
   })
+
+  it("renders a translated day-query error instead of the empty state", async () => {
+    getMock.mockRejectedValue(attendanceConfigurationError())
+
+    renderAdminAttendancePageWithoutData()
+
+    expect(
+      await screen.findByText(
+        "attendance.errors.ATTENDANCE_RESPONSIBLE_REQUIRED",
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText("attendance.empty")).not.toBeInTheDocument()
+  })
+
+  it("renders a translated selected-shift query error", async () => {
+    getMock.mockRejectedValue(attendanceConfigurationError())
+
+    renderAdminAttendancePageWithDayOnly()
+
+    expect(
+      await screen.findByText(
+        "attendance.errors.ATTENDANCE_RESPONSIBLE_REQUIRED",
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText("attendance.empty")).not.toBeInTheDocument()
+  })
 })
 
 function renderAdminAttendancePage() {
@@ -118,6 +144,74 @@ function renderAdminAttendancePage() {
       </ToastProvider>
     </QueryClientProvider>,
   )
+}
+
+function renderAdminAttendancePageWithoutData() {
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+      },
+    },
+  })
+  return renderAdminAttendanceWithClient(client)
+}
+
+function renderAdminAttendancePageWithDayOnly() {
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+        staleTime: Infinity,
+      },
+    },
+  })
+  const date = todayKey()
+  client.setQueryData(["publications", 7, "attendance", date], {
+    publication: makePublication(),
+    date,
+    shifts: [
+      {
+        slot_id: 21,
+        weekday: 1,
+        occurrence_date: date,
+        scheduled_start: `${date}T09:00:00Z`,
+        scheduled_end: `${date}T12:00:00Z`,
+        roster_count: 1,
+        pending_count: 1,
+        present_count: 0,
+        late_count: 0,
+        absent_count: 0,
+        orphan_count: 0,
+        overtime_count: 0,
+      },
+    ],
+  } satisfies AdminAttendanceDay)
+  return renderAdminAttendanceWithClient(client)
+}
+
+function renderAdminAttendanceWithClient(client: QueryClient) {
+  return render(
+    <QueryClientProvider client={client}>
+      <ToastProvider>
+        <AdminAttendancePage />
+      </ToastProvider>
+    </QueryClientProvider>,
+  )
+}
+
+function attendanceConfigurationError() {
+  return {
+    isAxiosError: true,
+    response: {
+      data: {
+        error: {
+          code: "ATTENDANCE_RESPONSIBLE_REQUIRED",
+          message: "configuration error",
+        },
+      },
+    },
+  }
 }
 
 function todayKey() {

@@ -23,6 +23,7 @@ import {
   leavePreviewQueryOptions,
   myLeavesQueryOptions,
 } from "@/lib/queries"
+import { createScheduleDateTimeFormatter } from "@/lib/schedule-time"
 import type {
   LeaveCategory,
   LeaveDirectCandidate,
@@ -60,7 +61,7 @@ export function LeavePage() {
   const [shareURLs, setShareURLs] = useState<string[]>([])
 
   const previewQuery = useQuery(leavePreviewQueryOptions(from, to))
-  const formatter = new Intl.DateTimeFormat(i18n.resolvedLanguage, {
+  const formatter = createScheduleDateTimeFormatter(i18n.resolvedLanguage, {
     dateStyle: "medium",
     timeStyle: "short",
   })
@@ -95,6 +96,9 @@ export function LeavePage() {
         queryClient.invalidateQueries({ queryKey: ["me", "leaves"] }),
         queryClient.invalidateQueries({
           queryKey: myLeavesQueryOptions(1, 10).queryKey,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["me", "leaves", "preview"],
         }),
       ])
       toast({ variant: "default", description: t("leave.toast.created") })

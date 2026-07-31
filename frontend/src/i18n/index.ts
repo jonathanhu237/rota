@@ -20,9 +20,10 @@ function getInitialLanguage() {
     return "en"
   }
 
+  const storage = getLanguageStorage()
   const storedLanguage =
-    window.localStorage.getItem(languageStorageKey) ??
-    window.localStorage.getItem(legacyLanguageStorageKey)
+    storage?.getItem(languageStorageKey) ??
+    storage?.getItem(legacyLanguageStorageKey)
   if (storedLanguage === "en" || storedLanguage === "zh") {
     return storedLanguage
   }
@@ -30,12 +31,21 @@ function getInitialLanguage() {
   return normalizeLanguage(window.navigator.language)
 }
 
+function syncDocumentLanguage(language: string) {
+  if (typeof document !== "undefined") {
+    document.documentElement.lang = normalizeLanguage(language)
+  }
+}
+
+const initialLanguage = getInitialLanguage()
+syncDocumentLanguage(initialLanguage)
+
 i18n.use(initReactI18next).init({
   resources: {
     en: { translation: en },
     zh: { translation: zh },
   },
-  lng: getInitialLanguage(),
+  lng: initialLanguage,
   fallbackLng: "en",
   supportedLngs: ["en", "zh"],
   interpolation: {
@@ -45,13 +55,35 @@ i18n.use(initReactI18next).init({
 
 if (typeof window !== "undefined") {
   i18n.on("languageChanged", (language) => {
-    window.localStorage.setItem(languageStorageKey, normalizeLanguage(language))
+    const normalizedLanguage = normalizeLanguage(language)
+    getLanguageStorage()?.setItem(languageStorageKey, normalizedLanguage)
+    syncDocumentLanguage(normalizedLanguage)
   })
 }
 
 export function applyLanguagePreference(language: "zh" | "en") {
-  window.localStorage.setItem(languageStorageKey, language)
+  getLanguageStorage()?.setItem(languageStorageKey, language)
   return i18n.changeLanguage(language)
+}
+
+function getLanguageStorage() {
+  if (typeof window === "undefined") {
+    return undefined
+  }
+
+  try {
+    const storage = window.localStorage
+    if (
+      !storage ||
+      typeof storage.getItem !== "function" ||
+      typeof storage.setItem !== "function"
+    ) {
+      return undefined
+    }
+    return storage
+  } catch {
+    return undefined
+  }
 }
 
 export default i18n

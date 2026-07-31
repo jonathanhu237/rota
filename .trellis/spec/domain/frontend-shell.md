@@ -539,6 +539,124 @@ The create-publication dialog, publication planned-active edit form, leave reque
 - **THEN** the control uses a styled time input for time entry
 - **AND** no custom listbox, popover menu, or natural-language time parser is introduced
 
+### Requirement: Schedule wall-clock values preserve UTC fields in the UI
+
+#### 1. Scope / Trigger
+
+This contract applies to concrete schedule occurrence timestamps, including
+`occurrence_start`, `occurrence_end`, and attendance `scheduled_start` values.
+It does not apply to true event instants such as `created_at`, `decided_at`, or
+publication lifecycle timestamps.
+
+#### 2. Signatures
+
+- `createScheduleDateTimeFormatter(locale, options)` SHALL set
+  `timeZone: "UTC"`.
+- `scheduleDateTimeToLocalInput(iso)` SHALL return
+  `YYYY-MM-DDTHH:mm` from the ISO value's UTC fields.
+- `scheduleDateTimeLocalToISOString(value)` SHALL interpret a valid
+  `YYYY-MM-DDTHH:mm` value as UTC and return an ISO `Z` timestamp.
+
+#### 3. Contracts
+
+The backend's UTC calendar and clock fields are the business wall-clock value.
+The frontend SHALL localize surrounding date text using the active application
+language without allowing the browser timezone to shift those fields. Event
+instants SHALL retain normal browser-local formatting.
+
+#### 4. Validation & Error Matrix
+
+| Input | Result |
+|---|---|
+| Valid schedule ISO timestamp | render its UTC date/time fields |
+| Valid `YYYY-MM-DDTHH:mm` | return the matching ISO `Z` timestamp |
+| Invalid or impossible datetime-local value | return an empty string |
+| True event instant | use the existing local-instant formatter |
+
+#### 5. Good / Base / Bad Cases
+
+- Good: `2026-08-03T08:00:00Z` displays as `08:00` in both UTC and
+  Asia/Shanghai browsers.
+- Base: an attendance input initialized from that value displays
+  `2026-08-03T08:00` and submits `2026-08-03T08:00:00.000Z`.
+- Bad: `new Date(value).toLocaleString()` displays `16:00` in Asia/Shanghai.
+
+#### 6. Tests Required
+
+- Helper tests run under a non-UTC timezone and assert the `08:00` display and
+  round-trip.
+- Leave and attendance route tests assert that schedule values use the shared
+  helper.
+- Event-instant renderers remain covered by their existing local-time behavior.
+
+#### 7. Wrong vs Correct
+
+Wrong: format schedule timestamps with the browser's implicit timezone.
+Correct: use the shared UTC schedule formatter and UTC-preserving form
+conversion helpers.
+
+### Requirement: Application language controls metadata and shared date UI
+
+The normalized active language SHALL be either `zh` or `en`.
+`document.documentElement.lang` SHALL be synchronized during i18n
+initialization and after every language change. Lack of usable local storage
+SHALL NOT prevent initialization or language changes.
+
+Shared DatePicker controls SHALL derive both visible formatting and
+React DayPicker labels from the active application language. Roster date-only
+labels SHALL use that same language while preserving the UTC calendar day.
+Sidebar trigger, rail, mobile-title, and mobile-description accessibility copy
+SHALL use translation keys.
+
+Saving a language preference SHALL await the language change before producing
+the success toast, so the toast uses the newly selected language.
+
+#### Scenario: Chinese mode synchronizes the document and date picker
+
+- **GIVEN** the active language is Chinese
+- **WHEN** an authenticated page renders
+- **THEN** `<html lang="zh">`
+- **AND** DatePicker month, weekday, navigation, today, and selected-day labels
+  are Chinese
+- **AND** shared sidebar accessibility labels are Chinese
+
+#### Scenario: Preference toast uses the selected language
+
+- **GIVEN** the active language is English
+- **WHEN** a user saves Chinese as the new preference
+- **THEN** the language change completes before the success toast is created
+- **AND** the toast and `<html lang>` are Chinese
+
+### Requirement: Authenticated content contains wide child layouts
+
+The authenticated shell's main flex item SHALL allow shrinking
+(`min-width: 0`). Wide tables MAY scroll inside their existing local
+`overflow-x-auto` containers, but SHALL NOT expand the whole document.
+
+#### Scenario: Admin lists do not overflow the document
+
+- **GIVEN** viewport widths of 768px, 1024px, and 1440px
+- **WHEN** an admin opens `/users`, `/templates`, or `/publications`
+- **THEN** `document.documentElement.scrollWidth -
+  document.documentElement.clientWidth = 0`
+- **AND** the 390px mobile navigation drawer continues to open and close
+
+### Requirement: Attendance query states remain distinct
+
+Leader and publication-administrator attendance pages SHALL evaluate their
+primary query states in the order loading, error, successful empty, then
+populated data. A selected-shift detail error SHALL also be visible when its
+summary query succeeded. API errors SHALL render through the translated
+attendance error catalog and SHALL NOT be coerced to empty arrays.
+
+#### Scenario: Attendance responsibility conflict is not an empty state
+
+- **GIVEN** an attendance query returns HTTP 409
+  `ATTENDANCE_RESPONSIBLE_REQUIRED`
+- **WHEN** retries finish
+- **THEN** the page renders the translated configuration error
+- **AND** it does not render the successful empty-attendance message
+
 ### Requirement: Authenticated shell uses floating sidebar and breadcrumbs
 
 The authenticated layout SHALL render a shadcn floating sidebar and a persistent main-content header. The header SHALL contain a visible sidebar trigger, a vertical separator, and breadcrumbs for the current authenticated route. The sidebar SHALL use icon-collapse behavior on desktop so primary navigation icons remain visible when collapsed. Existing sidebar navigation groups, role-based visibility, unread badge behavior, avatar dropdown actions, theme toggle, and logout behavior SHALL remain unchanged.

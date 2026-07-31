@@ -6,8 +6,9 @@ import (
 )
 
 var (
-	ErrLeaveNotFound = errors.New("leave not found")
-	ErrLeaveNotOwner = errors.New("leave not owner")
+	ErrLeaveNotFound      = errors.New("leave not found")
+	ErrLeaveNotOwner      = errors.New("leave not owner")
+	ErrLeaveAlreadyExists = errors.New("active leave already exists")
 )
 
 type LeaveCategory string

@@ -101,6 +101,25 @@ func TestLeaveHandler(t *testing.T) {
 		assertErrorResponse(t, rec, http.StatusBadRequest, "SHIFT_CHANGE_INVALID_TYPE")
 	})
 
+	t.Run("Create maps duplicate active leave", func(t *testing.T) {
+		handler := NewLeaveHandler(&stubLeaveService{
+			createFunc: func(ctx context.Context, input service.CreateLeaveInput) (*service.LeaveDetail, error) {
+				return nil, service.ErrLeaveAlreadyExists
+			},
+		})
+		req := requestWithUser(jsonRequest(t, http.MethodPost, "/leaves", map[string]any{
+			"assignment_id":   100,
+			"occurrence_date": "2026-04-27",
+			"type":            "give_pool",
+			"category":        "personal",
+		}), sampleUser())
+		rec := httptest.NewRecorder()
+
+		handler.Create(rec, req)
+
+		assertErrorResponse(t, rec, http.StatusConflict, "LEAVE_ALREADY_EXISTS")
+	})
+
 	t.Run("GetByID maps missing leave", func(t *testing.T) {
 		handler := NewLeaveHandler(&stubLeaveService{
 			getByIDFunc: func(ctx context.Context, leaveID int64) (*service.LeaveDetail, error) {

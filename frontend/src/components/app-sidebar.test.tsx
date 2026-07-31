@@ -176,6 +176,9 @@ describe("AppSidebar", () => {
     expect(sidebar).toHaveAttribute("data-state", "expanded")
     expect(sidebar).toHaveAttribute("data-collapsible", "")
     expect(sidebar).toHaveAttribute("data-variant", "floating")
+    expect(
+      screen.getByRole("button", { name: "sidebar.toggleNavigation" }),
+    ).toHaveAttribute("title", "sidebar.toggleNavigation")
   })
 
   it("renders the account group with a settings link for every user", () => {

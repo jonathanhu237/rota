@@ -31,6 +31,7 @@ import {
   rejectShiftChangeRequest,
 } from "@/lib/queries"
 import type { Leave, LeavePoolState, LeaveState } from "@/lib/types"
+import { createScheduleDateTimeFormatter } from "@/lib/schedule-time"
 import { cn } from "@/lib/utils"
 
 export const Route = createFileRoute("/_authenticated/leaves/")({
@@ -65,12 +66,18 @@ export function LeavesWorkbenchPage() {
   const [state, setState] = useState<LeavePoolState>("pending")
   const [page, setPage] = useState(1)
   const poolQuery = useQuery(leavePoolQueryOptions(state, page, pageSize))
-  const dateFormatter = new Intl.DateTimeFormat(i18n.resolvedLanguage, {
-    dateStyle: "medium",
-  })
-  const timeFormatter = new Intl.DateTimeFormat(i18n.resolvedLanguage, {
-    timeStyle: "short",
-  })
+  const dateFormatter = createScheduleDateTimeFormatter(
+    i18n.resolvedLanguage,
+    {
+      dateStyle: "medium",
+    },
+  )
+  const timeFormatter = createScheduleDateTimeFormatter(
+    i18n.resolvedLanguage,
+    {
+      timeStyle: "short",
+    },
+  )
 
   const invalidateLeaves = async () => {
     await Promise.all([

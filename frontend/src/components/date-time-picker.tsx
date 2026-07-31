@@ -1,5 +1,6 @@
 import * as React from "react"
 import { CalendarIcon } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -9,6 +10,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
+import { normalizeLanguage } from "@/i18n"
+import {
+  formatDatePickerDisplayDate,
+  getDatePickerLocale,
+} from "@/lib/date-picker-locale"
 import { cn } from "@/lib/utils"
 
 type DatePickerProps = {
@@ -46,9 +52,12 @@ export function DatePicker({
   placeholder = "Select date",
   "aria-invalid": ariaInvalid,
 }: DatePickerProps) {
+  const { i18n } = useTranslation()
   const [open, setOpen] = React.useState(false)
   const portalContainerRef = React.useRef<HTMLDivElement>(null)
   const selectedDate = parseDateValue(value)
+  const language = normalizeLanguage(i18n.resolvedLanguage)
+  const locale = getDatePickerLocale(language)
 
   return (
     <div ref={portalContainerRef}>
@@ -69,7 +78,9 @@ export function DatePicker({
           }
         >
           <CalendarIcon data-icon="inline-start" />
-          {selectedDate ? formatDisplayDate(selectedDate) : placeholder}
+          {selectedDate
+            ? formatDatePickerDisplayDate(selectedDate, language)
+            : placeholder}
         </PopoverTrigger>
         <PopoverContent
           align="start"
@@ -80,6 +91,7 @@ export function DatePicker({
             mode="single"
             selected={selectedDate}
             defaultMonth={selectedDate}
+            locale={locale}
             onSelect={(date) => {
               onChange(date ? formatDateValue(date) : "")
               setOpen(false)
@@ -202,8 +214,4 @@ function formatDateValue(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, "0")
   const day = String(date.getDate()).padStart(2, "0")
   return `${year}-${month}-${day}`
-}
-
-function formatDisplayDate(date: Date) {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date)
 }

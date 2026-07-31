@@ -61,13 +61,15 @@ export function PreferencesForm({ user }: { user: User }) {
   const mutation = useMutation({
     mutationFn: (values: PreferencesFormValues) =>
       updateOwnProfileMutation.mutationFn(values),
-    onSuccess: (updatedUser, values) => {
+    onSuccess: async (updatedUser, values) => {
       queryClient.setQueryData(["auth", "me"], updatedUser)
-      void applyLanguagePreference(values.language_preference)
+      await applyLanguagePreference(values.language_preference)
       setThemePreference(values.theme_preference)
       toast({
         variant: "default",
-        description: t("settings.preferences.saved"),
+        description: t("settings.preferences.saved", {
+          lng: values.language_preference,
+        }),
       })
     },
   })

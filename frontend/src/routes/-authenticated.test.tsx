@@ -90,13 +90,17 @@ describe("AuthenticatedLayout", () => {
     const { container } = renderLayout()
 
     const sidebar = container.querySelector("[data-slot='sidebar']")
+    const sidebarInset = container.querySelector("[data-slot='sidebar-inset']")
     expect(sidebar).toHaveAttribute("data-variant", "floating")
     expect(sidebar).toHaveAttribute("data-state", "expanded")
+    expect(sidebarInset).toHaveClass("min-w-0")
     expect(screen.getByText("breadcrumbs.publications")).toBeInTheDocument()
 
-    await user.click(
-      screen.getByRole("button", { name: "sidebar.toggleNavigation" }),
+    const sidebarTrigger = container.querySelector(
+      "[data-slot='sidebar-trigger']",
     )
+    expect(sidebarTrigger).not.toBeNull()
+    await user.click(sidebarTrigger as HTMLElement)
 
     expect(sidebar).toHaveAttribute("data-state", "collapsed")
     expect(sidebar).toHaveAttribute("data-collapsible", "icon")

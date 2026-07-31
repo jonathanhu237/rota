@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -152,6 +153,200 @@ func TestLeaveRepositoryIntegration(t *testing.T) {
 			t.Fatalf("expected duplicate shift_change_request_id insert to fail")
 		}
 	})
+
+	t.Run("active occurrence uniqueness rejects sequential duplicate and exposes key", func(t *testing.T) {
+		db := openIntegrationDB(t)
+		leaveRepo := NewLeaveRepository(db)
+		shiftRepo := NewShiftChangeRepository(db)
+		publication, requester, assignment := seedLeavePrerequisites(t, db)
+		occurrence := time.Date(2026, 4, 27, 0, 0, 0, 0, time.UTC)
+
+		first, _, err := createLeaveWorkflow(
+			ctx,
+			leaveRepo,
+			shiftRepo,
+			publication.ID,
+			requester.ID,
+			assignment.ID,
+			occurrence,
+			testTime(),
+		)
+		if err != nil {
+			t.Fatalf("create first workflow: %v", err)
+		}
+
+		if _, _, err := createLeaveWorkflow(
+			ctx,
+			leaveRepo,
+			shiftRepo,
+			publication.ID,
+			requester.ID,
+			assignment.ID,
+			occurrence,
+			testTime().Add(time.Minute),
+		); !errors.Is(err, ErrLeaveAlreadyExists) {
+			t.Fatalf("expected ErrLeaveAlreadyExists, got %v", err)
+		}
+
+		keys, err := leaveRepo.ListActiveOccurrenceKeys(ctx, requester.ID, publication.ID)
+		if err != nil {
+			t.Fatalf("list active occurrence keys: %v", err)
+		}
+		if len(keys) != 1 ||
+			keys[0].AssignmentID != assignment.ID ||
+			!keys[0].OccurrenceDate.Equal(occurrence) {
+			t.Fatalf("unexpected active keys: %+v", keys)
+		}
+
+		var leaveCount, requestCount int
+		if err := db.QueryRowContext(
+			ctx,
+			`SELECT COUNT(*) FROM leaves WHERE user_id = $1 AND publication_id = $2;`,
+			requester.ID,
+			publication.ID,
+		).Scan(&leaveCount); err != nil {
+			t.Fatalf("count leaves: %v", err)
+		}
+		if err := db.QueryRowContext(
+			ctx,
+			`SELECT COUNT(*) FROM shift_change_requests
+			 WHERE requester_user_id = $1 AND requester_assignment_id = $2 AND occurrence_date = $3;`,
+			requester.ID,
+			assignment.ID,
+			occurrence,
+		).Scan(&requestCount); err != nil {
+			t.Fatalf("count requests: %v", err)
+		}
+		if leaveCount != 1 || requestCount != 1 || first.ID == 0 {
+			t.Fatalf("expected one committed workflow, leaves=%d requests=%d first=%+v", leaveCount, requestCount, first)
+		}
+	})
+
+	t.Run("terminal workflow permits resubmission", func(t *testing.T) {
+		db := openIntegrationDB(t)
+		leaveRepo := NewLeaveRepository(db)
+		shiftRepo := NewShiftChangeRepository(db)
+		publication, requester, assignment := seedLeavePrerequisites(t, db)
+		occurrence := time.Date(2026, 4, 27, 0, 0, 0, 0, time.UTC)
+
+		_, firstRequest, err := createLeaveWorkflow(
+			ctx,
+			leaveRepo,
+			shiftRepo,
+			publication.ID,
+			requester.ID,
+			assignment.ID,
+			occurrence,
+			testTime(),
+		)
+		if err != nil {
+			t.Fatalf("create first workflow: %v", err)
+		}
+		if _, err := db.ExecContext(
+			ctx,
+			`UPDATE shift_change_requests
+			 SET state = 'cancelled', decided_at = $1
+			 WHERE id = $2;`,
+			testTime().Add(time.Minute),
+			firstRequest.ID,
+		); err != nil {
+			t.Fatalf("cancel first workflow: %v", err)
+		}
+
+		second, _, err := createLeaveWorkflow(
+			ctx,
+			leaveRepo,
+			shiftRepo,
+			publication.ID,
+			requester.ID,
+			assignment.ID,
+			occurrence,
+			testTime().Add(2*time.Minute),
+		)
+		if err != nil {
+			t.Fatalf("resubmit terminal workflow: %v", err)
+		}
+		if second.ID == 0 {
+			t.Fatalf("expected resubmitted leave")
+		}
+	})
+
+	t.Run("concurrent active occurrence creation commits exactly one workflow", func(t *testing.T) {
+		db := openIntegrationDB(t)
+		leaveRepo := NewLeaveRepository(db)
+		shiftRepo := NewShiftChangeRepository(db)
+		publication, requester, assignment := seedLeavePrerequisites(t, db)
+		occurrence := time.Date(2026, 4, 27, 0, 0, 0, 0, time.UTC)
+
+		ready := sync.WaitGroup{}
+		ready.Add(2)
+		release := make(chan struct{})
+		results := make(chan error, 2)
+		for i := 0; i < 2; i++ {
+			createdAt := testTime().Add(time.Duration(i) * time.Second)
+			go func() {
+				err := leaveRepo.WithTx(ctx, func(tx *sql.Tx) error {
+					request, err := shiftRepo.CreateTx(ctx, tx, CreateShiftChangeRequestParams{
+						PublicationID:         publication.ID,
+						Type:                  model.ShiftChangeTypeGivePool,
+						RequesterUserID:       requester.ID,
+						RequesterAssignmentID: assignment.ID,
+						OccurrenceDate:        occurrence,
+						ExpiresAt:             occurrence.Add(9 * time.Hour),
+						CreatedAt:             createdAt,
+					})
+					if err != nil {
+						return err
+					}
+					leave, err := leaveRepo.Insert(ctx, tx, InsertLeaveParams{
+						UserID:               requester.ID,
+						PublicationID:        publication.ID,
+						ShiftChangeRequestID: request.ID,
+						Category:             model.LeaveCategoryPersonal,
+						CreatedAt:            createdAt,
+						UpdatedAt:            createdAt,
+					})
+					if err != nil {
+						return err
+					}
+					ready.Done()
+					<-release
+					_, err = shiftRepo.SetLeaveIDTx(ctx, tx, request.ID, leave.ID)
+					return err
+				})
+				results <- err
+			}()
+		}
+
+		ready.Wait()
+		close(release)
+		errs := []error{<-results, <-results}
+		successes, duplicates := 0, 0
+		for _, err := range errs {
+			switch {
+			case err == nil:
+				successes++
+			case errors.Is(err, ErrLeaveAlreadyExists):
+				duplicates++
+			default:
+				t.Fatalf("unexpected concurrent error: %v", err)
+			}
+		}
+		if successes != 1 || duplicates != 1 {
+			t.Fatalf("expected one success and one duplicate, got errors=%v", errs)
+		}
+
+		var leaveCount, requestCount int
+		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM leaves;`).Scan(&leaveCount); err != nil {
+			t.Fatalf("count leaves: %v", err)
+		}
+		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM shift_change_requests;`).Scan(&requestCount); err != nil {
+			t.Fatalf("count requests: %v", err)
+		}
+		if leaveCount != 1 || requestCount != 1 {
+			t.Fatalf("expected one committed graph, leaves=%d requests=%d", leaveCount, requestCount)
+		}
+	})
 }
 
 func TestLeavePoolRepositoryIntegration(t *testing.T) {
@@ -178,6 +373,7 @@ func TestLeavePoolRepositoryIntegration(t *testing.T) {
 		now.Add(-2*time.Hour),
 		now.Add(48*time.Hour),
 	)
+	setShiftChangeOccurrenceDate(t, db, publicReq, time.Date(2026, 5, 4, 0, 0, 0, 0, time.UTC))
 	publicLeave := seedLeaveForRequest(t, db, publicReq, model.LeaveCategorySick)
 
 	directReq := seedShiftChangeRequest(
@@ -264,6 +460,7 @@ func TestLeavePoolRepositoryIntegration(t *testing.T) {
 		now.Add(-3*time.Hour),
 		now.Add(72*time.Hour),
 	)
+	setShiftChangeOccurrenceDate(t, db, approvedReq, time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC))
 	approvedLeave := seedLeaveForRequest(t, db, approvedReq, model.LeaveCategoryBereavement)
 	if _, err := db.ExecContext(
 		ctx,
@@ -315,6 +512,7 @@ func TestLeavePoolRepositoryIntegration(t *testing.T) {
 		now.Add(-6*time.Hour),
 		now.Add(-time.Hour),
 	)
+	setShiftChangeOccurrenceDate(t, db, expiredPendingReq, time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC))
 	expiredPendingLeave := seedLeaveForRequest(t, db, expiredPendingReq, model.LeaveCategoryPersonal)
 
 	stateCases := []struct {
@@ -444,4 +642,68 @@ func seedLeaveForRequest(
 		t.Fatalf("seed leave: %v", err)
 	}
 	return leave
+}
+
+func createLeaveWorkflow(
+	ctx context.Context,
+	leaveRepo *LeaveRepository,
+	shiftRepo *ShiftChangeRepository,
+	publicationID int64,
+	requesterUserID int64,
+	requesterAssignmentID int64,
+	occurrenceDate time.Time,
+	createdAt time.Time,
+) (*model.Leave, *model.ShiftChangeRequest, error) {
+	var leave *model.Leave
+	var request *model.ShiftChangeRequest
+	err := leaveRepo.WithTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		request, err = shiftRepo.CreateTx(ctx, tx, CreateShiftChangeRequestParams{
+			PublicationID:         publicationID,
+			Type:                  model.ShiftChangeTypeGivePool,
+			RequesterUserID:       requesterUserID,
+			RequesterAssignmentID: requesterAssignmentID,
+			OccurrenceDate:        occurrenceDate,
+			ExpiresAt:             occurrenceDate.Add(9 * time.Hour),
+			CreatedAt:             createdAt,
+		})
+		if err != nil {
+			return err
+		}
+		leave, err = leaveRepo.Insert(ctx, tx, InsertLeaveParams{
+			UserID:               requesterUserID,
+			PublicationID:        publicationID,
+			ShiftChangeRequestID: request.ID,
+			Category:             model.LeaveCategoryPersonal,
+			CreatedAt:            createdAt,
+			UpdatedAt:            createdAt,
+		})
+		if err != nil {
+			return err
+		}
+		request, err = shiftRepo.SetLeaveIDTx(ctx, tx, request.ID, leave.ID)
+		return err
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return leave, request, nil
+}
+
+func setShiftChangeOccurrenceDate(
+	t testing.TB,
+	db *sql.DB,
+	request *model.ShiftChangeRequest,
+	occurrenceDate time.Time,
+) {
+	t.Helper()
+	if _, err := db.ExecContext(
+		context.Background(),
+		`UPDATE shift_change_requests SET occurrence_date = $1 WHERE id = $2;`,
+		occurrenceDate,
+		request.ID,
+	); err != nil {
+		t.Fatalf("set shift-change occurrence date: %v", err)
+	}
+	request.OccurrenceDate = occurrenceDate
 }

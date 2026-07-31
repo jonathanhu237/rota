@@ -35,7 +35,7 @@ vi.mock("@tanstack/react-router", async () => {
   }
 })
 
-import { RosterPage } from "./roster"
+import { RosterPage, formatRosterWeekStart } from "./roster"
 
 describe("RosterPage schedule export", () => {
   beforeEach(() => {
@@ -74,6 +74,11 @@ describe("RosterPage schedule export", () => {
     expect(
       screen.queryByRole("button", { name: "roster.downloadExcel" }),
     ).not.toBeInTheDocument()
+  })
+
+  it("formats the week date in the application locale without changing day", () => {
+    expect(formatRosterWeekStart("2026-04-20", "en")).toContain("Apr")
+    expect(formatRosterWeekStart("2026-04-20", "zh")).toContain("2026年4月20日")
   })
 })
 

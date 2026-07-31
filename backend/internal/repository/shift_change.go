@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jonathanhu237/rota/backend/internal/model"
+	"github.com/lib/pq"
 )
 
 var (
@@ -15,6 +16,8 @@ var (
 	ErrShiftChangeNotPending     = model.ErrShiftChangeNotPending
 	ErrShiftChangeAssignmentMiss = model.ErrShiftChangeAssignmentMiss
 )
+
+const shiftChangeRequestsActiveLeaveOccurrenceIndex = "shift_change_requests_active_leave_occurrence_uidx"
 
 // ShiftChangeRepository persists shift_change_requests rows.
 type ShiftChangeRepository struct {
@@ -321,6 +324,12 @@ func (r *ShiftChangeRepository) SetLeaveIDTx(
 	req, err := scanShiftChangeRequest(tx.QueryRowContext(ctx, query, requestID, leaveID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrShiftChangeNotFound
+	}
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) &&
+		pqErr.Code == "23505" &&
+		pqErr.Constraint == shiftChangeRequestsActiveLeaveOccurrenceIndex {
+		return nil, ErrLeaveAlreadyExists
 	}
 	return req, err
 }

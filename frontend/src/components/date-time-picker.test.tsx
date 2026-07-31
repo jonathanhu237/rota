@@ -3,8 +3,16 @@ import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
 import { renderWithProviders } from "@/test-utils/render"
+import {
+  formatDatePickerDisplayDate,
+  getDatePickerLocale,
+} from "@/lib/date-picker-locale"
 
-import { DatePicker, DateTimePicker, TimePicker } from "./date-time-picker"
+import {
+  DatePicker,
+  DateTimePicker,
+  TimePicker,
+} from "./date-time-picker"
 
 describe("DatePicker", () => {
   it("emits YYYY-MM-DD values from calendar selection", async () => {
@@ -24,6 +32,18 @@ describe("DatePicker", () => {
     fireEvent.click(document.querySelector('[data-day="4/18/2026"]')!)
 
     expect(onChange).toHaveBeenCalledWith("2026-04-18")
+  })
+
+  it("uses the application language for display and calendar locale", () => {
+    const date = new Date(2026, 3, 17)
+    const zhLocale = getDatePickerLocale("zh-CN")
+
+    expect(formatDatePickerDisplayDate(date, "zh")).toContain("2026年4月17日")
+    expect(zhLocale.code).toBe("zh-CN")
+    expect(zhLocale.labels?.labelNav).toBe("导航栏")
+    expect(zhLocale.labels?.labelPrevious).toBe("前往上个月")
+    expect(zhLocale.labels?.labelNext).toBe("前往下个月")
+    expect(getDatePickerLocale("en-US").code).toBe("en-US")
   })
 })
 

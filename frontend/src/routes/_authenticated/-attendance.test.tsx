@@ -57,7 +57,7 @@ describe("AttendancePage", () => {
     expect(screen.getByText("Leader")).toBeInTheDocument()
     expect(screen.getByText("Worker")).toBeInTheDocument()
     expect(screen.getAllByText("attendance.status.present")).toHaveLength(1)
-    const scheduledStart = toDateTimeLocalForTest("2026-05-11T09:00:00Z")
+    const scheduledStart = "2026-05-11T09:00"
     const arrivalInput = screen.getByDisplayValue(scheduledStart)
     expect(arrivalInput).toHaveAttribute("min", scheduledStart)
     expect(arrivalInput).toHaveAttribute("max")
@@ -75,6 +75,29 @@ describe("AttendancePage", () => {
       })
     })
   })
+
+  it("renders a translated query error instead of the empty state", async () => {
+    getMock.mockRejectedValue({
+      isAxiosError: true,
+      response: {
+        data: {
+          error: {
+            code: "ATTENDANCE_RESPONSIBLE_REQUIRED",
+            message: "configuration error",
+          },
+        },
+      },
+    })
+
+    renderAttendancePageWithoutData()
+
+    expect(
+      await screen.findByText(
+        "attendance.errors.ATTENDANCE_RESPONSIBLE_REQUIRED",
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText("attendance.empty")).not.toBeInTheDocument()
+  })
 })
 
 function renderAttendancePage(data: LeaderAttendance) {
@@ -87,6 +110,24 @@ function renderAttendancePage(data: LeaderAttendance) {
     },
   })
   client.setQueryData(["attendance", "current"], data)
+
+  return render(
+    <QueryClientProvider client={client}>
+      <ToastProvider>
+        <AttendancePage />
+      </ToastProvider>
+    </QueryClientProvider>,
+  )
+}
+
+function renderAttendancePageWithoutData() {
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+      },
+    },
+  })
 
   return render(
     <QueryClientProvider client={client}>
@@ -168,11 +209,4 @@ function makeShift(): AttendanceShift {
     orphan_arrivals: [],
     overtime_records: [],
   }
-}
-
-function toDateTimeLocalForTest(value: string) {
-  const date = new Date(value)
-  const offset = date.getTimezoneOffset()
-  const local = new Date(date.getTime() - offset * 60_000)
-  return local.toISOString().slice(0, 16)
 }

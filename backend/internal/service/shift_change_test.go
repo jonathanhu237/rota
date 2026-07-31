@@ -138,6 +138,22 @@ func (m *shiftChangeRepositoryStatefulMock) SetLeaveIDTx(
 	if !ok {
 		return nil, repository.ErrShiftChangeNotFound
 	}
+	for id, existing := range m.requests {
+		if id == requestID || existing.LeaveID == nil {
+			continue
+		}
+		if existing.State != model.ShiftChangeStatePending &&
+			existing.State != model.ShiftChangeStateApproved {
+			continue
+		}
+		if existing.RequesterUserID == req.RequesterUserID &&
+			existing.RequesterAssignmentID == req.RequesterAssignmentID &&
+			model.NormalizeOccurrenceDate(existing.OccurrenceDate).Equal(
+				model.NormalizeOccurrenceDate(req.OccurrenceDate),
+			) {
+			return nil, repository.ErrLeaveAlreadyExists
+		}
+	}
 	id := leaveID
 	req.LeaveID = &id
 	return cloneShiftChangeRequest(req), nil

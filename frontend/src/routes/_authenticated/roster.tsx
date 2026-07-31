@@ -35,6 +35,7 @@ import {
   publicationRosterQueryOptions,
   rosterCurrentQueryOptions,
 } from "@/lib/queries"
+import { createScheduleDateTimeFormatter } from "@/lib/schedule-time"
 
 export const Route = createFileRoute("/_authenticated/roster")({
   component: RosterPage,
@@ -171,7 +172,10 @@ export function RosterPage() {
             {t("roster.previousWeek")}
           </Button>
           <div className="text-sm text-muted-foreground">
-            {formatDate(roster.week_start)}
+            {formatRosterWeekStart(
+              roster.week_start,
+              i18n.resolvedLanguage,
+            )}
           </div>
           <Button
             type="button"
@@ -247,6 +251,11 @@ function addDays(dateValue: string, days: number) {
   return date.toISOString().slice(0, 10)
 }
 
-function formatDate(dateValue: string) {
-  return new Date(`${dateValue}T00:00:00Z`).toLocaleDateString()
+export function formatRosterWeekStart(
+  dateValue: string,
+  language?: string,
+) {
+  return createScheduleDateTimeFormatter(language, {
+    dateStyle: "medium",
+  }).format(new Date(`${dateValue}T00:00:00Z`))
 }

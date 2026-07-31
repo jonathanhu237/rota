@@ -21,6 +21,7 @@ import {
   myLeavesQueryOptions,
   rejectShiftChangeRequest,
 } from "@/lib/queries"
+import { createScheduleDateTimeFormatter } from "@/lib/schedule-time"
 import type { Leave, LeaveState } from "@/lib/types"
 
 export const Route = createFileRoute("/_authenticated/leaves/$leaveId")({
@@ -44,10 +45,17 @@ function LeaveDetailPage() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const leaveQuery = useQuery(leaveQueryOptions(leaveID))
-  const formatter = new Intl.DateTimeFormat(i18n.resolvedLanguage, {
+  const eventFormatter = new Intl.DateTimeFormat(i18n.resolvedLanguage, {
     dateStyle: "medium",
     timeStyle: "short",
   })
+  const scheduleFormatter = createScheduleDateTimeFormatter(
+    i18n.resolvedLanguage,
+    {
+      dateStyle: "medium",
+      timeStyle: "short",
+    },
+  )
 
   const invalidateLeave = async () => {
     await Promise.all([
@@ -161,11 +169,11 @@ function LeaveDetailPage() {
           />
           <DetailRow
             label={t("leaveDetail.createdAt")}
-            value={formatter.format(new Date(leave.created_at))}
+            value={eventFormatter.format(new Date(leave.created_at))}
           />
           <DetailRow
             label={t("leaveDetail.expiresAt")}
-            value={formatter.format(new Date(request.expires_at))}
+            value={scheduleFormatter.format(new Date(request.expires_at))}
           />
           <DetailRow
             label={t("leaveDetail.requester")}
@@ -174,7 +182,7 @@ function LeaveDetailPage() {
           {leave.shift && (
             <DetailRow
               label={t("leaveDetail.shift")}
-              value={`${formatter.format(new Date(leave.shift.occurrence_start))} - ${formatter.format(new Date(leave.shift.occurrence_end))} · ${leave.shift.position_name}`}
+              value={`${scheduleFormatter.format(new Date(leave.shift.occurrence_start))} - ${scheduleFormatter.format(new Date(leave.shift.occurrence_end))} · ${leave.shift.position_name}`}
             />
           )}
           {leave.counterpart_name && (

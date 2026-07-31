@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/jonathanhu237/rota/backend/internal/audit"
@@ -13,8 +14,9 @@ import (
 )
 
 var (
-	ErrLeaveNotFound = model.ErrLeaveNotFound
-	ErrLeaveNotOwner = model.ErrLeaveNotOwner
+	ErrLeaveNotFound      = model.ErrLeaveNotFound
+	ErrLeaveNotOwner      = model.ErrLeaveNotOwner
+	ErrLeaveAlreadyExists = model.ErrLeaveAlreadyExists
 )
 
 type leaveRepository interface {
@@ -25,6 +27,7 @@ type leaveRepository interface {
 	ListForUser(ctx context.Context, userID int64, page int, pageSize int) ([]*repository.LeaveWithRequest, error)
 	ListForPublication(ctx context.Context, publicationID int64, page int, pageSize int) ([]*repository.LeaveWithRequest, error)
 	ListPool(ctx context.Context, params repository.ListLeavePoolParams) ([]*repository.LeaveWithRequest, int, error)
+	ListActiveOccurrenceKeys(ctx context.Context, userID int64, publicationID int64) ([]repository.ActiveLeaveOccurrenceKey, error)
 }
 
 type leaveShiftChangeRepository interface {
@@ -388,6 +391,15 @@ func (s *LeaveService) PreviewOccurrences(
 		return []*OccurrencePreview{}, nil
 	}
 
+	activeKeys, err := s.leaveRepo.ListActiveOccurrenceKeys(ctx, userID, publication.ID)
+	if err != nil {
+		return nil, err
+	}
+	activeOccurrences := make(map[string]struct{}, len(activeKeys))
+	for _, key := range activeKeys {
+		activeOccurrences[leaveOccurrenceKey(key.AssignmentID, key.OccurrenceDate)] = struct{}{}
+	}
+
 	assignments, err := s.publicationRepo.ListPublicationAssignments(ctx, publication.ID)
 	if err != nil {
 		return nil, err
@@ -421,6 +433,9 @@ func (s *LeaveService) PreviewOccurrences(
 			if err := model.IsValidOccurrenceForAssignment(publication, slot, assignmentOccurrence, date, now); err != nil {
 				continue
 			}
+			if _, exists := activeOccurrences[leaveOccurrenceKey(assignment.AssignmentID, date)]; exists {
+				continue
+			}
 			start, err := model.OccurrenceStart(slot, date)
 			if err != nil {
 				return nil, err
@@ -448,6 +463,11 @@ func (s *LeaveService) PreviewOccurrences(
 		return out[i].AssignmentID < out[j].AssignmentID
 	})
 	return out, nil
+}
+
+func leaveOccurrenceKey(assignmentID int64, occurrenceDate time.Time) string {
+	return strconv.FormatInt(assignmentID, 10) + ":" +
+		model.NormalizeOccurrenceDate(occurrenceDate).Format("2006-01-02")
 }
 
 func (s *LeaveService) newLeaveDetails(

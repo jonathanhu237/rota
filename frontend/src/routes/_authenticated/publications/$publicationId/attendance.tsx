@@ -27,7 +27,13 @@ import {
   adminUpsertArrival,
   updateAttendanceSettings,
 } from "@/lib/queries"
+import {
+  createScheduleDateTimeFormatter,
+  scheduleDateTimeLocalToISOString,
+  scheduleDateTimeToLocalInput,
+} from "@/lib/schedule-time"
 import type { AttendanceRosterEntry, AttendanceShift } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 export const Route = createFileRoute(
   "/_authenticated/publications/$publicationId/attendance",
@@ -38,7 +44,7 @@ export const Route = createFileRoute(
 export function AdminAttendancePage() {
   const { publicationId } = Route.useParams()
   const publicationID = Number(publicationId)
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [date, setDate] = useState(today())
@@ -92,10 +98,12 @@ export function AdminAttendancePage() {
         assignment_id: row.assignment_id,
         occurrence_date: selectedShift.occurrence_date,
         user_id: row.user_id,
-        arrived_at: new Date(
+        arrived_at: scheduleDateTimeLocalToISOString(
           arrivalDrafts[rowKey(row)] ??
-            toDateTimeLocal(row.record?.arrived_at ?? selectedShift.scheduled_start),
-        ).toISOString(),
+            scheduleDateTimeToLocalInput(
+              row.record?.arrived_at ?? selectedShift.scheduled_start,
+            ),
+        ),
       })
     },
     onSuccess: async () => {
@@ -195,6 +203,47 @@ export function AdminAttendancePage() {
   const overtimeWindowValue =
     settingsDraft ||
     String(dayQuery.data?.publication.overtime_entry_window_hours ?? 24)
+  const scheduleFormatter = createScheduleDateTimeFormatter(
+    i18n.resolvedLanguage,
+    {
+      dateStyle: "medium",
+      timeStyle: "short",
+    },
+  )
+
+  if (dayQuery.isLoading || dayQuery.isError) {
+    return (
+      <div className="grid gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {t("attendance.adminTitle")}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {t("attendance.adminDescription")}
+          </p>
+        </div>
+        <Card>
+          <CardContent
+            className={cn(
+              "p-6 text-sm",
+              dayQuery.isError
+                ? "text-destructive"
+                : "text-muted-foreground",
+            )}
+          >
+            {dayQuery.isError
+              ? getTranslatedApiError(
+                  t,
+                  dayQuery.error,
+                  "attendance.errors",
+                  "attendance.errors.INTERNAL_ERROR",
+                )
+              : t("common.loading")}
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="grid gap-4">
@@ -280,7 +329,24 @@ export function AdminAttendancePage() {
           </Card>
         </div>
 
-        {selectedShift ? (
+        {selectedShiftSummary && selectedShiftQuery.isLoading ? (
+          <Card>
+            <CardContent className="p-6 text-sm text-muted-foreground">
+              {t("common.loading")}
+            </CardContent>
+          </Card>
+        ) : selectedShiftSummary && selectedShiftQuery.isError ? (
+          <Card>
+            <CardContent className="p-6 text-sm text-destructive">
+              {getTranslatedApiError(
+                t,
+                selectedShiftQuery.error,
+                "attendance.errors",
+                "attendance.errors.INTERNAL_ERROR",
+              )}
+            </CardContent>
+          </Card>
+        ) : selectedShift ? (
           <Card>
             <CardHeader>
               <CardTitle>
@@ -308,7 +374,10 @@ export function AdminAttendancePage() {
                     shift={selectedShift}
                     value={
                       arrivalDrafts[rowKey(row)] ??
-                      toDateTimeLocal(row.record?.arrived_at ?? selectedShift.scheduled_start)
+                      scheduleDateTimeToLocalInput(
+                        row.record?.arrived_at ??
+                          selectedShift.scheduled_start,
+                      )
                     }
                     pending={arrivalMutation.isPending || clearArrivalMutation.isPending}
                     onChange={(value) =>
@@ -336,7 +405,10 @@ export function AdminAttendancePage() {
                       className="flex items-center justify-between rounded-lg border border-dashed p-3 text-sm"
                     >
                       <span>
-                        {record.user_name} · {new Date(record.arrived_at).toLocaleString()}
+                        {record.user_name} ·{" "}
+                        {scheduleFormatter.format(
+                          new Date(record.arrived_at),
+                        )}
                       </span>
                       <Button
                         type="button"
@@ -448,7 +520,7 @@ export function AdminAttendancePage() {
         ) : (
           <Card>
             <CardContent className="p-6 text-sm text-muted-foreground">
-              {dayQuery.isLoading ? t("common.loading") : t("attendance.empty")}
+              {t("attendance.empty")}
             </CardContent>
           </Card>
         )}
@@ -526,11 +598,4 @@ function today() {
 
 function toTime(value: string) {
   return value.slice(11, 16)
-}
-
-function toDateTimeLocal(value: string) {
-  const date = new Date(value)
-  const offset = date.getTimezoneOffset()
-  const local = new Date(date.getTime() - offset * 60_000)
-  return local.toISOString().slice(0, 16)
 }

@@ -148,6 +148,38 @@ func (m *leaveRepositoryStatefulMock) ListPool(
 	return rows[start:end], total, nil
 }
 
+func (m *leaveRepositoryStatefulMock) ListActiveOccurrenceKeys(
+	ctx context.Context,
+	userID int64,
+	publicationID int64,
+) ([]repository.ActiveLeaveOccurrenceKey, error) {
+	m.mu.Lock()
+	leaves := make([]*model.Leave, 0, len(m.leaves))
+	for _, leave := range m.leaves {
+		if leave.UserID == userID && leave.PublicationID == publicationID {
+			leaves = append(leaves, cloneLeave(leave))
+		}
+	}
+	m.mu.Unlock()
+
+	keys := make([]repository.ActiveLeaveOccurrenceKey, 0, len(leaves))
+	for _, leave := range leaves {
+		req, err := m.request(leave.ShiftChangeRequestID)
+		if err != nil {
+			return nil, err
+		}
+		if req.LeaveID == nil ||
+			(req.State != model.ShiftChangeStatePending && req.State != model.ShiftChangeStateApproved) {
+			continue
+		}
+		keys = append(keys, repository.ActiveLeaveOccurrenceKey{
+			AssignmentID:   req.RequesterAssignmentID,
+			OccurrenceDate: req.OccurrenceDate,
+		})
+	}
+	return keys, nil
+}
+
 func (m *leaveRepositoryStatefulMock) list(keep func(*model.Leave) bool) []*repository.LeaveWithRequest {
 	m.mu.Lock()
 	leaves := make([]*model.Leave, 0, len(m.leaves))
@@ -295,6 +327,26 @@ func TestLeaveServiceCreate(t *testing.T) {
 			t.Fatalf("expected ErrPublicationNotActive, got %v", err)
 		}
 	})
+
+	t.Run("duplicate active occurrence is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+		svc, _, _, _ := buildLeaveFixture(now)
+		input := CreateLeaveInput{
+			UserID:         7,
+			AssignmentID:   100,
+			OccurrenceDate: mondayOccurrence(now),
+			Type:           model.ShiftChangeTypeGivePool,
+			Category:       model.LeaveCategoryPersonal,
+		}
+		if _, err := svc.Create(context.Background(), input); err != nil {
+			t.Fatalf("first Create returned error: %v", err)
+		}
+		if _, err := svc.Create(context.Background(), input); !errors.Is(err, ErrLeaveAlreadyExists) {
+			t.Fatalf("expected ErrLeaveAlreadyExists, got %v", err)
+		}
+	})
 }
 
 func TestLeaveServiceCancel(t *testing.T) {
@@ -419,6 +471,41 @@ func TestLeaveServiceReadListAndPreview(t *testing.T) {
 		}
 		if len(rows) == 0 || rows[0].AssignmentID != 100 {
 			t.Fatalf("expected preview occurrence for assignment 100, got %+v", rows)
+		}
+	})
+
+	t.Run("preview omits active leave occurrence and restores terminal one", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+		svc, _, sc, _ := buildLeaveFixture(now)
+		occurrence := mondayOccurrence(now)
+		detail, err := svc.Create(context.Background(), CreateLeaveInput{
+			UserID:         7,
+			AssignmentID:   100,
+			OccurrenceDate: occurrence,
+			Type:           model.ShiftChangeTypeGivePool,
+			Category:       model.LeaveCategoryPersonal,
+		})
+		if err != nil {
+			t.Fatalf("Create returned error: %v", err)
+		}
+
+		rows, err := svc.PreviewOccurrences(context.Background(), 7, occurrence, occurrence)
+		if err != nil {
+			t.Fatalf("PreviewOccurrences active returned error: %v", err)
+		}
+		if len(rows) != 0 {
+			t.Fatalf("expected active occurrence to be omitted, got %+v", rows)
+		}
+
+		sc.requests[detail.Request.ID].State = model.ShiftChangeStateCancelled
+		rows, err = svc.PreviewOccurrences(context.Background(), 7, occurrence, occurrence)
+		if err != nil {
+			t.Fatalf("PreviewOccurrences terminal returned error: %v", err)
+		}
+		if len(rows) != 1 || rows[0].AssignmentID != 100 {
+			t.Fatalf("expected terminal occurrence to return, got %+v", rows)
 		}
 	})
 

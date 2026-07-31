@@ -313,6 +313,8 @@ func (h *LeaveHandler) writeError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, "SHIFT_CHANGE_SELF", "Cannot target yourself")
 	case errors.Is(err, service.ErrLeaveNotOwner):
 		writeError(w, http.StatusForbidden, "LEAVE_NOT_OWNER", "Not authorized for this leave")
+	case errors.Is(err, service.ErrLeaveAlreadyExists):
+		writeError(w, http.StatusConflict, "LEAVE_ALREADY_EXISTS", "An active leave already exists for this occurrence")
 	case errors.Is(err, service.ErrShiftChangeNotOwner):
 		writeError(w, http.StatusForbidden, "SHIFT_CHANGE_NOT_OWNER", "Not authorized for this request")
 	case errors.Is(err, service.ErrShiftChangeNotQualified):

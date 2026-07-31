@@ -1160,6 +1160,7 @@ The scheduling subsystem SHALL emit the following JSON `error.code` values with 
 - `SHIFT_CHANGE_NOT_OWNER` (403) — caller is not the request's requester, counterpart, or eligible claimer.
 - `SHIFT_CHANGE_NOT_QUALIFIED` (403) — swap or give counterpart is not mutually qualified.
 - `LEAVE_NOT_OWNER` (403) — caller is not the leave's `user_id` on a cancel attempt.
+- `LEAVE_ALREADY_EXISTS` (409) — an active leave-bearing request already exists for the requester, baseline assignment, and occurrence date.
 - `PUBLICATION_ALREADY_EXISTS` (409) — create request violates the single-non-ENDED invariant.
 - `PUBLICATION_NOT_DELETABLE` (409) — delete request on a non-`DRAFT` publication.
 - `PUBLICATION_NOT_COLLECTING` (409) — employee self-service submission write outside `COLLECTING`.
@@ -1199,6 +1200,11 @@ The scheduling subsystem SHALL emit the following JSON `error.code` values with 
 
 - **WHEN** a user other than the leave's `user_id` calls `POST /leaves/{id}/cancel`
 - **THEN** the response is HTTP 403 with error code `LEAVE_NOT_OWNER`
+
+#### Scenario: Duplicate active leave yields LEAVE_ALREADY_EXISTS
+
+- **WHEN** `POST /leaves` would create a second active leave workflow for the same requester, assignment, and occurrence date
+- **THEN** the response is HTTP 409 with error code `LEAVE_ALREADY_EXISTS`
 
 ### Requirement: Admin may edit assignments during PUBLISHED and ACTIVE
 
@@ -1480,6 +1486,114 @@ No background job, trigger, or write-through SHALL maintain a stored leave state
 - **WHEN** any reader fetches the leave
 - **THEN** the response carries `state = "cancelled"`
 
+### Requirement: Active leave workflows are unique per occurrence
+
+At most one leave-bearing shift-change request SHALL be active for a given
+`(requester_user_id, requester_assignment_id, occurrence_date)` tuple.
+`pending` and `approved` requests SHALL count as active. The database SHALL
+enforce this invariant atomically with a partial unique index whose predicate is
+`leave_id IS NOT NULL AND state IN ('pending', 'approved')`.
+
+A sequential or concurrent attempt to create another active leave workflow for
+the same tuple SHALL roll back the entire leave-creation transaction and return
+HTTP 409 with error code `LEAVE_ALREADY_EXISTS`. Requests in `cancelled`,
+`rejected`, `expired`, or `invalidated` state SHALL be terminal and SHALL NOT
+block a later leave request for the same occurrence.
+
+Before installing the invariant, the migration SHALL deterministically preserve
+an `approved` workflow when one exists, because its assignment transfer has
+already been applied. Otherwise it SHALL preserve the earliest pending workflow
+by `(created_at, id)`. It SHALL transition every other pending duplicate to
+`invalidated`, setting `decided_at` when it is absent. The migration SHALL NOT
+resurrect normalized duplicates when rolled back.
+
+#### Implementation contract: Active leave guard
+
+##### 1. Scope / Trigger
+
+This contract applies whenever leave creation or leave preview reads or writes
+an assignment occurrence. Preview filtering improves the normal workflow, while
+the database remains the concurrency boundary.
+
+##### 2. Signatures
+
+- API: `POST /leaves` and
+  `GET /users/me/leaves/preview?from=YYYY-MM-DD&to=YYYY-MM-DD`.
+- Service: `LeaveService.Create(ctx, CreateLeaveInput)` and
+  `LeaveService.PreviewOccurrences(ctx, userID, from, to)`.
+- Repository: `ShiftChangeRepository.SetLeaveIDTx(ctx, tx, requestID,
+  leaveID)` and `LeaveRepository.ListActiveOccurrenceKeys(ctx, userID,
+  publicationID)`.
+- Database:
+  `UNIQUE (requester_user_id, requester_assignment_id, occurrence_date) WHERE
+  leave_id IS NOT NULL AND state IN ('pending', 'approved')`.
+
+##### 3. Contracts
+
+The active key is the requester user, baseline assignment, and normalized
+occurrence date. A successful create commits the shift-change request, leave,
+and `leave_id` link in one transaction. A uniqueness failure rolls all three
+operations back. Preview omits keys returned by
+`ListActiveOccurrenceKeys`; it does not replace the write invariant.
+
+##### 4. Validation & Error Matrix
+
+| Condition | Result |
+|---|---|
+| No active row for the key | create succeeds |
+| Existing `pending` or `approved` row | HTTP 409 `LEAVE_ALREADY_EXISTS` |
+| Existing `cancelled`, `rejected`, `expired`, or `invalidated` row | create may proceed |
+| Legacy approved row plus pending duplicates | preserve approved; invalidate pending |
+| PostgreSQL `23505` from any other constraint | preserve the original repository error |
+
+##### 5. Good / Base / Bad Cases
+
+- Good: two concurrent creates commit exactly one active workflow and return one
+  stable conflict.
+- Base: preview hides an occurrence after its leave becomes pending or approved.
+- Bad: a service-level check followed by an unconstrained insert permits both
+  concurrent requests to commit.
+
+##### 6. Tests Required
+
+- Service tests assert create success, duplicate sentinel propagation, terminal
+  resubmission, and active-key preview filtering.
+- Handler tests assert HTTP 201 success and HTTP 409
+  `LEAVE_ALREADY_EXISTS`.
+- PostgreSQL integration tests race two real transactions, assert exactly one
+  committed leave, and prove terminal resubmission.
+- Migration tests cover pending-only and approved-plus-pending legacy groups,
+  then apply Up/Down/Up and verify the partial unique index.
+
+##### 7. Wrong vs Correct
+
+Wrong: query for an existing leave in the service and assume a subsequent
+insert is safe. Correct: install the partial unique index, link `leave_id`
+inside the transaction, and map only that index's `23505` violation to
+`ErrLeaveAlreadyExists`.
+
+#### Scenario: Sequential duplicate leave is rejected
+
+- **GIVEN** Alice has a pending leave workflow for assignment `A` on
+  `2026-05-04`
+- **WHEN** Alice submits another leave for assignment `A` on `2026-05-04`
+- **THEN** the response is HTTP 409 with error code `LEAVE_ALREADY_EXISTS`
+- **AND** no second leave or shift-change request row is committed
+
+#### Scenario: Concurrent duplicate leave is rejected atomically
+
+- **GIVEN** no active leave exists for Alice's assignment `A` on `2026-05-04`
+- **WHEN** two leave creation transactions race for that same tuple
+- **THEN** exactly one transaction commits
+- **AND** the other returns HTTP 409 with error code `LEAVE_ALREADY_EXISTS`
+
+#### Scenario: Terminal leave permits resubmission
+
+- **GIVEN** Alice's prior leave workflow for assignment `A` on `2026-05-04`
+  is `cancelled`, `rejected`, `expired`, or `invalidated`
+- **WHEN** Alice submits a new valid leave for the same assignment and date
+- **THEN** the new leave workflow is created
+
 ### Requirement: Leave creation
 
 `POST /leaves` SHALL require `RequireAuth`. The body SHALL carry `{ assignment_id, occurrence_date, type, counterpart_user_id?, category, reason? }` where `type ∈ {'give_direct', 'give_pool'}` and `category ∈ {'sick', 'personal', 'bereavement'}`. The endpoint creates one leave row and one underlying SCRT row in a single transaction.
@@ -1526,6 +1640,11 @@ The response SHALL list each occurrence with `{ assignment_id, occurrence_date, 
 
 If no ACTIVE publication exists, the response SHALL be HTTP 200 with an empty `occurrences` array. If `from > to`, the response SHALL be HTTP 400 with error code `INVALID_REQUEST`.
 
+Occurrences already represented by an active leave-bearing shift-change request
+for the viewer SHALL be omitted. This preview filtering is a user-experience
+guard; the database uniqueness invariant remains authoritative when creation
+requests race or use stale preview data.
+
 #### Scenario: Future occurrences in the requested range
 
 - **GIVEN** Alice has assignments in the current ACTIVE publication with multiple future occurrences in `[2026-05-01, 2026-05-31]`
@@ -1547,6 +1666,13 @@ If no ACTIVE publication exists, the response SHALL be HTTP 200 with an empty `o
 - **GIVEN** an occurrence on `2026-04-26` whose `occurrence_start` is in the past at request time
 - **WHEN** Alice calls preview with `from = 2026-04-01`
 - **THEN** the response does NOT include the past occurrence
+
+#### Scenario: Active leave occurrence is filtered out
+
+- **GIVEN** Alice already has a `pending` or `approved` leave workflow for
+  assignment `A` on `2026-05-04`
+- **WHEN** Alice previews a range containing that occurrence
+- **THEN** assignment `A` on `2026-05-04` is not included
 
 #### Scenario: No active publication returns empty list
 

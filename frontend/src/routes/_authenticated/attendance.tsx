@@ -22,6 +22,11 @@ import {
   recordLeaderArrival,
   recordLeaderOvertime,
 } from "@/lib/queries"
+import {
+  createScheduleDateTimeFormatter,
+  scheduleDateTimeLocalToISOString,
+  scheduleDateTimeToLocalInput,
+} from "@/lib/schedule-time"
 import type { AttendanceRosterEntry, AttendanceShift } from "@/lib/types"
 
 export const Route = createFileRoute("/_authenticated/attendance")({
@@ -38,7 +43,7 @@ export function AttendancePage() {
     Record<string, { userID: string; hours: string; note: string }>
   >({})
 
-  const formatter = new Intl.DateTimeFormat(i18n.resolvedLanguage, {
+  const formatter = createScheduleDateTimeFormatter(i18n.resolvedLanguage, {
     dateStyle: "medium",
     timeStyle: "short",
   })
@@ -114,6 +119,17 @@ export function AttendancePage() {
             {t("common.loading")}
           </CardContent>
         </Card>
+      ) : attendanceQuery.isError ? (
+        <Card>
+          <CardContent className="p-6 text-sm text-destructive">
+            {getTranslatedApiError(
+              t,
+              attendanceQuery.error,
+              "attendance.errors",
+              "attendance.errors.INTERNAL_ERROR",
+            )}
+          </CardContent>
+        </Card>
       ) : shifts.length === 0 ? (
         <Card>
           <CardContent className="p-6 text-sm text-muted-foreground">
@@ -160,10 +176,14 @@ export function AttendancePage() {
                           shift={shift}
                           value={
                             arrivalDrafts[rowKey(row)] ??
-                            toDateTimeLocal(shift.scheduled_start)
+                            scheduleDateTimeToLocalInput(shift.scheduled_start)
                           }
-                          min={toDateTimeLocal(shift.scheduled_start)}
-                          max={toDateTimeLocal(new Date().toISOString())}
+                          min={scheduleDateTimeToLocalInput(
+                            shift.scheduled_start,
+                          )}
+                          max={scheduleDateTimeToLocalInput(
+                            new Date().toISOString(),
+                          )}
                           pending={arrivalMutation.isPending}
                           onChange={(value) =>
                             setArrivalDrafts((current) => ({
@@ -178,10 +198,12 @@ export function AttendancePage() {
                               assignment_id: row.assignment_id,
                               occurrence_date: shift.occurrence_date,
                               user_id: row.user_id,
-                              arrived_at: new Date(
+                              arrived_at: scheduleDateTimeLocalToISOString(
                                 arrivalDrafts[rowKey(row)] ??
-                                  toDateTimeLocal(shift.scheduled_start),
-                              ).toISOString(),
+                                  scheduleDateTimeToLocalInput(
+                                    shift.scheduled_start,
+                                  ),
+                              ),
                             })
                           }
                         />
@@ -298,7 +320,11 @@ function LeaderRosterRow({
   onChange: (value: string) => void
   onRecord: () => void
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const formatter = createScheduleDateTimeFormatter(i18n.resolvedLanguage, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  })
 
   return (
     <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-[1fr_220px_auto] sm:items-center">
@@ -319,7 +345,7 @@ function LeaderRosterRow({
       {row.record ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Clock className="size-4" />
-          {new Date(row.record.arrived_at).toLocaleString()}
+          {formatter.format(new Date(row.record.arrived_at))}
         </div>
       ) : (
         <>
@@ -350,11 +376,4 @@ function shiftKey(shift: Pick<AttendanceShift, "slot_id" | "occurrence_date">) {
 
 function rowKey(row: AttendanceRosterEntry) {
   return `${row.assignment_id}:${row.user_id}`
-}
-
-function toDateTimeLocal(value: string) {
-  const date = new Date(value)
-  const offset = date.getTimezoneOffset()
-  const local = new Date(date.getTime() - offset * 60_000)
-  return local.toISOString().slice(0, 16)
 }

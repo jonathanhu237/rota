@@ -104,6 +104,38 @@ describe("PreferencesForm", () => {
       expect(setThemePreferenceMock).toHaveBeenCalledWith("dark")
     })
   })
+
+  it("waits for the new language before showing the saved toast", async () => {
+    const user = userEvent.setup()
+    let resolveLanguageChange: (() => void) | undefined
+    applyLanguagePreferenceMock.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveLanguageChange = resolve
+      }),
+    )
+    updateOwnProfileMock.mockResolvedValue(
+      makeUser({ language_preference: "zh" }),
+    )
+
+    const { getByRole, queryByText, findByText } = renderWithProviders(
+      <PreferencesForm user={makeUser()} />,
+    )
+    await selectOption(
+      user,
+      getByRole,
+      "settings.preferences.language",
+      "settings.preferences.languageZh",
+    )
+    await user.click(getByRole("button", { name: "settings.common.save" }))
+
+    await waitFor(() => {
+      expect(applyLanguagePreferenceMock).toHaveBeenCalledWith("zh")
+    })
+    expect(queryByText("settings.preferences.saved")).not.toBeInTheDocument()
+
+    resolveLanguageChange?.()
+    expect(await findByText("settings.preferences.saved")).toBeInTheDocument()
+  })
 })
 
 async function selectOption(

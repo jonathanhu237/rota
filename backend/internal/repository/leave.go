@@ -9,7 +9,10 @@ import (
 	"github.com/jonathanhu237/rota/backend/internal/model"
 )
 
-var ErrLeaveNotFound = model.ErrLeaveNotFound
+var (
+	ErrLeaveNotFound      = model.ErrLeaveNotFound
+	ErrLeaveAlreadyExists = model.ErrLeaveAlreadyExists
+)
 
 type LeaveWithRequest struct {
 	Leave           *model.Leave
@@ -49,6 +52,11 @@ type InsertLeaveParams struct {
 	Reason               string
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
+}
+
+type ActiveLeaveOccurrenceKey struct {
+	AssignmentID   int64
+	OccurrenceDate time.Time
 }
 
 type LeaveRepository struct {
@@ -170,6 +178,41 @@ func (r *LeaveRepository) ListForPublication(
 	`
 
 	return r.list(ctx, query, publicationID, pageSize, offsetForPage(page, pageSize))
+}
+
+func (r *LeaveRepository) ListActiveOccurrenceKeys(
+	ctx context.Context,
+	userID int64,
+	publicationID int64,
+) ([]ActiveLeaveOccurrenceKey, error) {
+	const query = `
+		SELECT requester_assignment_id, occurrence_date
+		FROM shift_change_requests
+		WHERE requester_user_id = $1
+		  AND publication_id = $2
+		  AND leave_id IS NOT NULL
+		  AND state IN ('pending', 'approved');
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, userID, publicationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	keys := make([]ActiveLeaveOccurrenceKey, 0)
+	for rows.Next() {
+		var key ActiveLeaveOccurrenceKey
+		if err := rows.Scan(&key.AssignmentID, &key.OccurrenceDate); err != nil {
+			return nil, err
+		}
+		key.OccurrenceDate = model.NormalizeOccurrenceDate(key.OccurrenceDate)
+		keys = append(keys, key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return keys, nil
 }
 
 func (r *LeaveRepository) ListPool(

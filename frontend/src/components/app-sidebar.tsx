@@ -195,7 +195,12 @@ export function AppSidebar() {
       .slice(0, 2) ?? ""
 
   return (
-    <Sidebar collapsible="icon" variant="floating">
+    <Sidebar
+      collapsible="icon"
+      variant="floating"
+      mobileTitle={t("sidebar.title")}
+      mobileDescription={t("sidebar.mobileDescription")}
+    >
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -310,7 +315,7 @@ export function AppSidebar() {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
-      <SidebarRail />
+      <SidebarRail label={t("sidebar.toggleNavigation")} />
     </Sidebar>
   )
 }
