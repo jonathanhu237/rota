@@ -45,3 +45,36 @@ Made Trellis the active spec-driven workflow while preserving OpenSpec as read-o
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: Fix release audit findings
+
+**Date**: 2026-07-31
+**Task**: Fix release audit findings
+**Branch**: `main`
+
+### Summary
+
+Fixed duplicate active leave workflows, UTC wall-clock display/input handling, attendance error states, responsive shell containment, Chinese locale consistency, and vulnerable Go/Excelize dependencies; validated on Centaurus and the forwarded production preview.
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cc18071` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
