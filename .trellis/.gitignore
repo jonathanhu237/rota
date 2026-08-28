@@ -24,11 +24,6 @@
 # Update backup directories
 .backup-*
 
-# Local update/cache state
-.template-hashes.json
-.cache/
-worktrees/
-
 # Conflict resolution temp files
 *.new
 
