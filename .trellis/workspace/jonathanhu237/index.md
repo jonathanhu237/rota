@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 2
-- **Last Active**: 2026-07-31
+- **Total Sessions**: 4
+- **Last Active**: 2026-08-29
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~80 | Active |
+| `journal-1.md` | ~113 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 4 | 2026-08-29 | Upgrade Trellis to 0.6.16 | `66c4bda` | `main` |
 | 2 | 2026-07-31 | Fix release audit findings | `cc18071` | `main` |
 | 1 | 2026-07-30 | Migrate OpenSpec to Trellis | `0e31a25` | `codex/migrate-openspec-to-trellis` |
 <!-- @@@/auto:session-history -->

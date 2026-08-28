@@ -78,3 +78,36 @@ Fixed duplicate active leave workflows, UTC wall-clock display/input handling, a
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: Upgrade Trellis to 0.6.16
+<!-- trellis-session: v=2 fp=b6cc707f27eaf7a2 -->
+
+**Date**: 2026-08-29
+**Task**: Upgrade Trellis to 0.6.16
+**Branch**: `main`
+
+### Summary
+
+Finished the user-initiated Trellis 0.6.7 to 0.6.16 upgrade, accepted all .new templates verbatim, and prepared the upgrade for push to origin/main.
+
+### Main Changes
+
+- Applied all 5 .new sidecars to their original paths and removed the sidecars; verified exact SHA-256 matches, including Markdown whitespace.
+- Committed updated Trellis scripts, shared skills, Codex hooks and agent profiles, and the journal merge attribute. Accepted upstream workflow/config defaults as requested.
+- Kept local template hashes and caches out of Git via .git/info/exclude without modifying the accepted upstream .gitignore.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `66c4bda` | chore(trellis): upgrade to 0.6.16 |
+
+### Testing
+
+- [OK] Centaurus: syntax checks for 31 Python files; parsing of 5 JSON and 4 TOML files; hook target, config success/rejection, workflow routing, and subagent hook admission checks passed.
+- [OK] Local: 6 Trellis CLI smoke checks passed; verified no .new files remain. Whitespace check passed with upstream Markdown EOL/EOF whitespace preserved. Backend/frontend unchanged; business suites not rerun.
+
+### Status
+
+[OK] **Completed**
