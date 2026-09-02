@@ -123,3 +123,15 @@ We do not pursue numeric targets for test or comment coverage. Coverage falls ou
 
 - Backend Go: see [backend/AGENTS.md](backend/AGENTS.md).
 - Frontend TS / React: see [frontend/AGENTS.md](frontend/AGENTS.md).
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live in local Markdown under `.scratch/<feature>/`.
+See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context layout: root `CONTEXT.md` and `docs/adr/`.
+See `docs/agents/domain.md`.
