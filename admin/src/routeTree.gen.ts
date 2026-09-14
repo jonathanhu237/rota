@@ -25,7 +25,6 @@ import { Route as AuthenticatedRolesRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedRotaRouteImport } from './routes/_authenticated/rota'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedUsersRouteImport } from './routes/_authenticated/users'
-import { Route as AuthenticatedRotaIndexRouteImport } from './routes/_authenticated/rota/index'
 import { Route as AuthenticatedRotaAttendanceRouteImport } from './routes/_authenticated/rota/attendance'
 import { Route as AuthenticatedRotaAvailabilityRouteImport } from './routes/_authenticated/rota/availability'
 import { Route as AuthenticatedRotaLeavesRouteImport } from './routes/_authenticated/rota/leaves'
@@ -131,11 +130,6 @@ const AuthenticatedUsersRoute = AuthenticatedUsersRouteImport.update({
   id: '/users',
   path: '/users',
   getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedRotaIndexRoute = AuthenticatedRotaIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => AuthenticatedRotaRoute,
 } as any)
 const AuthenticatedRotaAttendanceRoute =
   AuthenticatedRotaAttendanceRouteImport.update({
@@ -298,7 +292,6 @@ export interface FileRoutesByFullPath {
   '/rota/requests': typeof AuthenticatedRotaRequestsRoute
   '/rota/roster': typeof AuthenticatedRotaRosterRoute
   '/rota/templates': typeof AuthenticatedRotaTemplatesRouteWithChildren
-  '/rota/': typeof AuthenticatedRotaIndexRoute
   '/rota/leaves/$leaveId': typeof AuthenticatedRotaLeavesLeaveIdRoute
   '/rota/leaves/new': typeof AuthenticatedRotaLeavesNewRoute
   '/rota/publications/$publicationId': typeof AuthenticatedRotaPublicationsPublicationIdRouteWithChildren
@@ -326,6 +319,7 @@ export interface FileRoutesByTo {
   '/operation-logs': typeof AuthenticatedOperationLogsRoute
   '/personal-settings': typeof AuthenticatedPersonalSettingsRoute
   '/roles': typeof AuthenticatedRolesRoute
+  '/rota': typeof AuthenticatedRotaRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRoute
   '/users': typeof AuthenticatedUsersRoute
   '/': typeof AuthenticatedIndexRoute
@@ -334,7 +328,6 @@ export interface FileRoutesByTo {
   '/rota/positions': typeof AuthenticatedRotaPositionsRoute
   '/rota/requests': typeof AuthenticatedRotaRequestsRoute
   '/rota/roster': typeof AuthenticatedRotaRosterRoute
-  '/rota': typeof AuthenticatedRotaIndexRoute
   '/rota/leaves/$leaveId': typeof AuthenticatedRotaLeavesLeaveIdRoute
   '/rota/leaves/new': typeof AuthenticatedRotaLeavesNewRoute
   '/rota/templates/$templateId': typeof AuthenticatedRotaTemplatesTemplateIdRoute
@@ -374,7 +367,6 @@ export interface FileRoutesById {
   '/_authenticated/rota/requests': typeof AuthenticatedRotaRequestsRoute
   '/_authenticated/rota/roster': typeof AuthenticatedRotaRosterRoute
   '/_authenticated/rota/templates': typeof AuthenticatedRotaTemplatesRouteWithChildren
-  '/_authenticated/rota/': typeof AuthenticatedRotaIndexRoute
   '/_authenticated/rota/leaves/$leaveId': typeof AuthenticatedRotaLeavesLeaveIdRoute
   '/_authenticated/rota/leaves/new': typeof AuthenticatedRotaLeavesNewRoute
   '/_authenticated/rota/publications/$publicationId': typeof AuthenticatedRotaPublicationsPublicationIdRouteWithChildren
@@ -416,7 +408,6 @@ export interface FileRouteTypes {
     | '/rota/requests'
     | '/rota/roster'
     | '/rota/templates'
-    | '/rota/'
     | '/rota/leaves/$leaveId'
     | '/rota/leaves/new'
     | '/rota/publications/$publicationId'
@@ -444,6 +435,7 @@ export interface FileRouteTypes {
     | '/operation-logs'
     | '/personal-settings'
     | '/roles'
+    | '/rota'
     | '/settings'
     | '/users'
     | '/'
@@ -452,7 +444,6 @@ export interface FileRouteTypes {
     | '/rota/positions'
     | '/rota/requests'
     | '/rota/roster'
-    | '/rota'
     | '/rota/leaves/$leaveId'
     | '/rota/leaves/new'
     | '/rota/templates/$templateId'
@@ -491,7 +482,6 @@ export interface FileRouteTypes {
     | '/_authenticated/rota/requests'
     | '/_authenticated/rota/roster'
     | '/_authenticated/rota/templates'
-    | '/_authenticated/rota/'
     | '/_authenticated/rota/leaves/$leaveId'
     | '/_authenticated/rota/leaves/new'
     | '/_authenticated/rota/publications/$publicationId'
@@ -630,13 +620,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/users'
       preLoaderRoute: typeof AuthenticatedUsersRouteImport
       parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/rota/': {
-      id: '/_authenticated/rota/'
-      path: '/'
-      fullPath: '/rota/'
-      preLoaderRoute: typeof AuthenticatedRotaIndexRouteImport
-      parentRoute: typeof AuthenticatedRotaRoute
     }
     '/_authenticated/rota/attendance': {
       id: '/_authenticated/rota/attendance'
@@ -902,7 +885,6 @@ interface AuthenticatedRotaRouteChildren {
   AuthenticatedRotaRequestsRoute: typeof AuthenticatedRotaRequestsRoute
   AuthenticatedRotaRosterRoute: typeof AuthenticatedRotaRosterRoute
   AuthenticatedRotaTemplatesRoute: typeof AuthenticatedRotaTemplatesRouteWithChildren
-  AuthenticatedRotaIndexRoute: typeof AuthenticatedRotaIndexRoute
 }
 
 const AuthenticatedRotaRouteChildren: AuthenticatedRotaRouteChildren = {
@@ -915,7 +897,6 @@ const AuthenticatedRotaRouteChildren: AuthenticatedRotaRouteChildren = {
   AuthenticatedRotaRequestsRoute: AuthenticatedRotaRequestsRoute,
   AuthenticatedRotaRosterRoute: AuthenticatedRotaRosterRoute,
   AuthenticatedRotaTemplatesRoute: AuthenticatedRotaTemplatesRouteWithChildren,
-  AuthenticatedRotaIndexRoute: AuthenticatedRotaIndexRoute,
 }
 
 const AuthenticatedRotaRouteWithChildren =

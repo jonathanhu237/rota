@@ -113,7 +113,6 @@ const english = {
     saving: 'Saving…',
     personalSettings: 'Personal settings',
     rotaNavigation: {
-      dashboard: 'Dashboard',
       availability: 'Availability',
       roster: 'Roster',
       requests: 'Requests',
@@ -672,7 +671,6 @@ const chinese: typeof english = {
     saving: '保存中…',
     personalSettings: '个人设置',
     rotaNavigation: {
-      dashboard: '仪表盘',
       availability: '可用时间',
       roster: '排班表',
       requests: '调班申请',

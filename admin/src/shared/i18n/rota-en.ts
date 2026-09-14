@@ -15,50 +15,6 @@ const translations: Record<string, any> = {
       "zh": "Chinese"
     }
   },
-  "dashboard": {
-    "welcome": "Welcome, {{name}}",
-    "description": "Here is an overview of your scheduling system.",
-    "currentPublication": {
-      "title": "Current publication",
-      "description": "The active scheduling cycle and next action.",
-      "empty": "No active publication.",
-      "window": "{{from}} - {{until}}",
-      "copy": {
-        "preparing": "Scheduling is still being prepared.",
-        "awaiting": "Availability collection has ended. Waiting for assignments."
-      },
-      "cta": {
-        "collectingEmployee": "Submit availability",
-        "collectingAdmin": "Open publication",
-        "assigningAdmin": "Open assignment board",
-        "published": "View roster",
-        "draftAdmin": "View publication",
-        "noneAdmin": "Create publication"
-      }
-    },
-    "todo": {
-      "title": "To-do",
-      "description": "Shift-change requests needing your attention.",
-      "unreadRequests": "You have {{count}} pending shift changes",
-      "cta": "View requests"
-    },
-    "recentLeaves": {
-      "title": "Recent leaves",
-      "description": "Your latest leave requests.",
-      "viewAll": "View all",
-      "empty": "You have no leave requests yet."
-    },
-    "manage": {
-      "title": "Quick links",
-      "description": "Jump to administrative work areas.",
-      "links": {
-        "users": "Users",
-        "positions": "Positions",
-        "templates": "Templates",
-        "publications": "Publications"
-      }
-    }
-  },
   "users": {
     "qualifications": {
       "manage": "Manage qualifications",

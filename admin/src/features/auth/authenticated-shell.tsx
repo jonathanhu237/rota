@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, CalendarCheck, CalendarDays, ChevronDown, ClipboardCheck, ClipboardList, History, House, LogOut, Mail, Monitor, Settings, ShieldCheck, UserCog, UserRound, Users } from 'lucide-react'
+import { Activity, CalendarCheck, ChevronDown, ClipboardCheck, ClipboardList, History, House, LogOut, Mail, Monitor, Settings, ShieldCheck, UserCog, UserRound, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
@@ -120,15 +120,6 @@ export function AuthenticatedShell({ api, user: initialUser, children }: { api: 
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={location.pathname.startsWith('/personal-settings')} tooltip={t('personalSettings')}>
-                    <Link to="/personal-settings" aria-current={location.pathname.startsWith('/personal-settings') ? 'page' : undefined}>
-                      <UserCog aria-hidden="true" data-icon="inline-start" />
-                      <span>{t('personalSettings')}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem><SidebarMenuButton asChild isActive={location.pathname === '/rota'} tooltip={t('common:rotaNavigation.dashboard')}><Link to="/rota" aria-current={location.pathname === '/rota' ? 'page' : undefined}><CalendarDays aria-hidden="true" data-icon="inline-start" /><span>{t('common:rotaNavigation.dashboard')}</span></Link></SidebarMenuButton></SidebarMenuItem>
                 <SidebarMenuItem><SidebarMenuButton asChild isActive={location.pathname.startsWith('/rota/availability')} tooltip={t('common:rotaNavigation.availability')}><Link to="/rota/availability" aria-current={location.pathname.startsWith('/rota/availability') ? 'page' : undefined}><CalendarCheck aria-hidden="true" data-icon="inline-start" /><span>{t('common:rotaNavigation.availability')}</span></Link></SidebarMenuButton></SidebarMenuItem>
                 <SidebarMenuItem><SidebarMenuButton asChild isActive={location.pathname.startsWith('/rota/roster')} tooltip={t('common:rotaNavigation.roster')}><Link to="/rota/roster" aria-current={location.pathname.startsWith('/rota/roster') ? 'page' : undefined}><ClipboardList aria-hidden="true" data-icon="inline-start" /><span>{t('common:rotaNavigation.roster')}</span></Link></SidebarMenuButton></SidebarMenuItem>
                 <SidebarMenuItem><SidebarMenuButton asChild isActive={location.pathname.startsWith('/rota/requests')} tooltip={t('common:rotaNavigation.requests')}><Link to="/rota/requests" aria-current={location.pathname.startsWith('/rota/requests') ? 'page' : undefined}><ClipboardCheck aria-hidden="true" data-icon="inline-start" /><span>{t('common:rotaNavigation.requests')}</span></Link></SidebarMenuButton></SidebarMenuItem>
@@ -185,6 +176,12 @@ export function AuthenticatedShell({ api, user: initialUser, children }: { api: 
                 <p className="truncate text-xs text-muted-foreground">{user.email}</p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link to="/personal-settings">
+                  <UserCog aria-hidden="true" data-icon="inline-start" />
+                  {t('personalSettings')}
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem disabled={logout.isPending} onSelect={(event) => { event.preventDefault(); logout.mutate() }}>
                 <LogOut aria-hidden="true" data-icon="inline-start" />
                 {logout.isPending ? t('auth:loggingOut') : t('logout')}

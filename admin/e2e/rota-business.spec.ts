@@ -86,9 +86,19 @@ test.describe.serial('Rota migrated business acceptance', () => {
     await api(page, '/api/auth/me/preferences', 'PUT', { locale: 'zh-CN' })
     await page.reload()
     await expect(section.getByLabel('组织名称', { exact: true })).toHaveValue(organization)
-    for (const label of ['仪表盘', '可用时间', '排班表', '调班申请', '请假', '考勤']) {
-      await expect(page.getByRole('navigation').getByRole('link', { name: label, exact: true })).toBeVisible()
+    const chineseNavigation = page.getByRole('navigation')
+    for (const label of ['首页', '可用时间', '排班表', '调班申请', '请假', '考勤']) {
+      await expect(chineseNavigation.getByRole('link', { name: label, exact: true })).toBeVisible()
     }
+    await expect(chineseNavigation.getByRole('link', { name: '仪表盘', exact: true })).toHaveCount(0)
+    await expect(chineseNavigation.getByRole('link', { name: '个人设置', exact: true })).toHaveCount(0)
+    await page.getByRole('button', { name: /^Browser Admin, 菜单$/ }).click()
+    const personalSettings = page.getByRole('menuitem', { name: '个人设置', exact: true })
+    await expect(personalSettings).toHaveAttribute('href', '/personal-settings')
+    await personalSettings.focus()
+    await page.keyboard.press('Enter')
+    await expect(page).toHaveURL(/\/personal-settings$/)
+    await expect(page.getByRole('heading', { name: '个人设置', exact: true })).toBeVisible()
     await api(page, '/api/auth/me/preferences', 'PUT', { locale: 'en' })
   })
 
@@ -97,17 +107,23 @@ test.describe.serial('Rota migrated business acceptance', () => {
     page.on('pageerror', error => errors.push(error.message))
     await login(page, employeeA)
     const principal = await api(page, '/api/auth/me')
-    for (const label of ['Dashboard', 'Availability', 'Roster', 'Requests', 'Leaves', 'Attendance']) {
-      await expect(page.getByRole('navigation').getByRole('link', { name: label, exact: true })).toBeVisible()
+    const navigation = page.getByRole('navigation')
+    for (const label of ['Home', 'Availability', 'Roster', 'Requests', 'Leaves', 'Attendance']) {
+      await expect(navigation.getByRole('link', { name: label, exact: true })).toBeVisible()
     }
+    await expect(navigation.getByRole('link', { name: 'Dashboard', exact: true })).toHaveCount(0)
+    await expect(navigation.getByRole('link', { name: 'Personal settings', exact: true })).toHaveCount(0)
     expect(principal.permissions).toEqual(['rota.self'])
     expect(principal.permissions).not.toContain('rota.read')
     expect(principal.permissions).not.toContain('rota.manage')
-    for (const path of ['/rota', '/rota/availability', '/rota/roster', '/rota/requests', '/rota/leaves', '/rota/attendance']) {
-      await page.getByRole('navigation').locator(`a[href="${path}"]`).click()
-      await expect(page).toHaveURL(new RegExp(`${path}$`))
+    for (const path of ['/', '/rota/availability', '/rota/roster', '/rota/requests', '/rota/leaves', '/rota/attendance']) {
+      await navigation.locator(`a[href="${path}"]`).click()
+      await expect(page).toHaveURL(path === '/' ? /\/$/ : new RegExp(`${path}$`))
       await expect(page.locator('main')).not.toContainText(/Page not found|Not Found|页面未找到/)
     }
+    await page.goto('/rota')
+    await expect(page).toHaveURL(/\/rota$/)
+    await expect(page.getByRole('heading')).toHaveCount(0)
     for (const path of ['/positions', '/templates', '/publications', '/publications/9001/attendance']) {
       await api(page, `/api/rota${path}`, 'GET', undefined, 403)
     }

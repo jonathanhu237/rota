@@ -15,50 +15,6 @@ const translations: Record<string, any> = {
       "zh": "中文"
     }
   },
-  "dashboard": {
-    "welcome": "欢迎，{{name}}",
-    "description": "这是您的排班系统概览。",
-    "currentPublication": {
-      "title": "当前排班计划",
-      "description": "当前排班周期和下一步操作。",
-      "empty": "暂无活跃的排班计划。",
-      "window": "{{from}} - {{until}}",
-      "copy": {
-        "preparing": "排班还在筹备中。",
-        "awaiting": "空闲时间收集已结束，等待排班。"
-      },
-      "cta": {
-        "collectingEmployee": "提交空闲时间",
-        "collectingAdmin": "查看排班计划详情",
-        "assigningAdmin": "打开分配面板",
-        "published": "查看排班表",
-        "draftAdmin": "查看排班计划详情",
-        "noneAdmin": "新建排班计划"
-      }
-    },
-    "todo": {
-      "title": "待办",
-      "description": "需要你处理的调班申请。",
-      "unreadRequests": "您有 {{count}} 条调班待处理",
-      "cta": "查看申请"
-    },
-    "recentLeaves": {
-      "title": "最近请假",
-      "description": "你最近提交的请假记录。",
-      "viewAll": "查看全部",
-      "empty": "你还没有提交过请假。"
-    },
-    "manage": {
-      "title": "管理快捷入口",
-      "description": "快速进入管理工作区。",
-      "links": {
-        "users": "用户",
-        "positions": "岗位",
-        "templates": "排班模板",
-        "publications": "排班计划"
-      }
-    }
-  },
   "users": {
     "qualifications": {
       "manage": "管理任职资格",

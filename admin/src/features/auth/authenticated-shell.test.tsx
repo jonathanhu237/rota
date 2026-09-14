@@ -45,7 +45,7 @@ function apiWithLogout(): ApiClient {
   }
 }
 
-describe('AuthenticatedShell logout boundary', () => {
+describe('AuthenticatedShell navigation and logout boundaries', () => {
   beforeEach(async () => {
     navigate.mockReset()
     window.matchMedia = vi.fn().mockImplementation(() => ({
@@ -61,9 +61,9 @@ describe('AuthenticatedShell logout boundary', () => {
   })
 
   it.each([
-    { locale: 'en' as const, labels: ['Dashboard', 'Availability', 'Roster', 'Requests', 'Leaves', 'Attendance'] },
-    { locale: 'zh-CN' as const, labels: ['仪表盘', '可用时间', '排班表', '调班申请', '请假', '考勤'] },
-  ])('renders exact translated employee navigation in $locale', async ({ locale, labels }) => {
+    { locale: 'en' as const, home: 'Home', labels: ['Availability', 'Roster', 'Requests', 'Leaves', 'Attendance'], dashboard: 'Dashboard', personalSettings: 'Personal settings' },
+    { locale: 'zh-CN' as const, home: '首页', labels: ['可用时间', '排班表', '调班申请', '请假', '考勤'], dashboard: '仪表盘', personalSettings: '个人设置' },
+  ])('renders exact translated employee navigation in $locale', async ({ locale, home, labels, dashboard, personalSettings }) => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <ThemeProvider>
@@ -74,11 +74,39 @@ describe('AuthenticatedShell logout boundary', () => {
         </QueryClientProvider>
       </ThemeProvider>,
     )
-    const paths = ['/rota', '/rota/availability', '/rota/roster', '/rota/requests', '/rota/leaves', '/rota/attendance']
+    expect(await screen.findByRole('link', { name: home })).toHaveAttribute('href', '/')
+    const paths = ['/rota/availability', '/rota/roster', '/rota/requests', '/rota/leaves', '/rota/attendance']
     for (const [index, label] of labels.entries()) {
       expect(await screen.findByRole('link', { name: label })).toHaveAttribute('href', paths[index])
     }
-    expect(screen.getByRole('navigation')).not.toHaveTextContent(/returned an object|instead of string/)
+    const navigation = screen.getByRole('navigation')
+    expect(navigation).not.toHaveTextContent(dashboard)
+    expect(navigation).not.toHaveTextContent(personalSettings)
+    expect(navigation).not.toHaveTextContent(/returned an object|instead of string/)
+  })
+
+  it.each([
+    { locale: 'en' as const, menuLabel: 'Menu', personalSettings: 'Personal settings' },
+    { locale: 'zh-CN' as const, menuLabel: '菜单', personalSettings: '个人设置' },
+  ])('keeps personal settings keyboard-accessible in the avatar menu in $locale', async ({ locale, menuLabel, personalSettings }) => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <AuthenticatedShell api={apiWithLogout()} user={{ ...user, locale }}>
+            <div>protected page</div>
+          </AuthenticatedShell>
+        </QueryClientProvider>
+      </ThemeProvider>,
+    )
+
+    const actor = userEvent.setup()
+    await actor.click(screen.getByRole('button', { name: `Account A, ${menuLabel}` }))
+    const settingsItem = screen.getByRole('menuitem', { name: personalSettings })
+    expect(settingsItem).toHaveAttribute('href', '/personal-settings')
+    await settingsItem.focus()
+    await actor.keyboard('{Enter}')
+    expect(screen.queryByRole('menuitem', { name: personalSettings })).toBeNull()
   })
 
   it('removes protected Rota data before navigating to login after logout', async () => {
@@ -98,7 +126,8 @@ describe('AuthenticatedShell logout boundary', () => {
       </ThemeProvider>,
     )
 
-    expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/rota')
+    expect(screen.queryByRole('link', { name: 'Dashboard' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Personal settings' })).toBeNull()
     expect(screen.getByRole('link', { name: 'Availability' })).toHaveAttribute('href', '/rota/availability')
     expect(screen.getByRole('link', { name: 'Roster' })).toHaveAttribute('href', '/rota/roster')
     expect(screen.getByRole('link', { name: 'Requests' })).toHaveAttribute('href', '/rota/requests')

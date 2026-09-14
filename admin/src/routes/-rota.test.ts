@@ -16,14 +16,13 @@ function routeApi(): ApiClient {
 }
 
 describe("Rota routes", () => {
-  it("registers employee and management workflows under the Rota boundary", () => {
+  it("registers employee and management workflows under the Rota boundary without a dashboard index", () => {
     const router = createAppRouter({
       api: routeApi(),
       queryClient: new QueryClient(),
     })
 
     const expectedRoutes = [
-      "/rota",
       "/rota/availability",
       "/rota/attendance",
       "/rota/requests",
@@ -42,6 +41,10 @@ describe("Rota routes", () => {
       "/rota/templates",
       "/rota/templates/$templateId",
     ] as const
+
+    expect(router.routesByPath["/rota"]).toBeDefined()
+    expect(router.routesByPath["/rota"].id).toBe("/_authenticated/rota")
+    expect(Object.prototype.hasOwnProperty.call(router.routesById, "/_authenticated/rota/")).toBe(false)
 
     for (const path of expectedRoutes) {
       const route = router.routesByPath[path]
