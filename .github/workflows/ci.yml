@@ -174,4 +174,5 @@ jobs:
           GOBIN="${RUNNER_TEMP}/bin" go install golang.org/x/vuln/cmd/govulncheck@v1.2.0
       - name: Scan API dependencies and reachable symbols
         working-directory: api
-        run: "${RUNNER_TEMP}/bin/govulncheck" ./...
+        run: |
+          "${RUNNER_TEMP}/bin/govulncheck" ./...
