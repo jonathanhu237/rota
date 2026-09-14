@@ -86,6 +86,9 @@ test.describe.serial('Rota migrated business acceptance', () => {
     await api(page, '/api/auth/me/preferences', 'PUT', { locale: 'zh-CN' })
     await page.reload()
     await expect(section.getByLabel('组织名称', { exact: true })).toHaveValue(organization)
+    for (const label of ['仪表盘', '可用时间', '排班表', '调班申请', '请假', '考勤']) {
+      await expect(page.getByRole('navigation').getByRole('link', { name: label, exact: true })).toBeVisible()
+    }
     await api(page, '/api/auth/me/preferences', 'PUT', { locale: 'en' })
   })
 
@@ -94,6 +97,9 @@ test.describe.serial('Rota migrated business acceptance', () => {
     page.on('pageerror', error => errors.push(error.message))
     await login(page, employeeA)
     const principal = await api(page, '/api/auth/me')
+    for (const label of ['Dashboard', 'Availability', 'Roster', 'Requests', 'Leaves', 'Attendance']) {
+      await expect(page.getByRole('navigation').getByRole('link', { name: label, exact: true })).toBeVisible()
+    }
     expect(principal.permissions).toEqual(['rota.self'])
     expect(principal.permissions).not.toContain('rota.read')
     expect(principal.permissions).not.toContain('rota.manage')

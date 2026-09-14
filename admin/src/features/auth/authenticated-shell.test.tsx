@@ -60,6 +60,27 @@ describe('AuthenticatedShell logout boundary', () => {
     useAccessDraftStore.getState().clearAll()
   })
 
+  it.each([
+    { locale: 'en' as const, labels: ['Dashboard', 'Availability', 'Roster', 'Requests', 'Leaves', 'Attendance'] },
+    { locale: 'zh-CN' as const, labels: ['仪表盘', '可用时间', '排班表', '调班申请', '请假', '考勤'] },
+  ])('renders exact translated employee navigation in $locale', async ({ locale, labels }) => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <AuthenticatedShell api={apiWithLogout()} user={{ ...user, locale }}>
+            <div>protected page</div>
+          </AuthenticatedShell>
+        </QueryClientProvider>
+      </ThemeProvider>,
+    )
+    const paths = ['/rota', '/rota/availability', '/rota/roster', '/rota/requests', '/rota/leaves', '/rota/attendance']
+    for (const [index, label] of labels.entries()) {
+      expect(await screen.findByRole('link', { name: label })).toHaveAttribute('href', paths[index])
+    }
+    expect(screen.getByRole('navigation')).not.toHaveTextContent(/returned an object|instead of string/)
+  })
+
   it('removes protected Rota data before navigating to login after logout', async () => {
     const api = apiWithLogout()
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -77,12 +98,12 @@ describe('AuthenticatedShell logout boundary', () => {
       </ThemeProvider>,
     )
 
-    expect(screen.getByRole('link', { name: /dashboard/i })).toHaveAttribute('href', '/rota')
-    expect(screen.getByRole('link', { name: /availability/i })).toHaveAttribute('href', '/rota/availability')
-    expect(screen.getByRole('link', { name: /roster/i })).toHaveAttribute('href', '/rota/roster')
-    expect(screen.getByRole('link', { name: /requests/i })).toHaveAttribute('href', '/rota/requests')
-    expect(screen.getByRole('link', { name: /leaves/i })).toHaveAttribute('href', '/rota/leaves')
-    expect(screen.getByRole('link', { name: /attendance/i })).toHaveAttribute('href', '/rota/attendance')
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/rota')
+    expect(screen.getByRole('link', { name: 'Availability' })).toHaveAttribute('href', '/rota/availability')
+    expect(screen.getByRole('link', { name: 'Roster' })).toHaveAttribute('href', '/rota/roster')
+    expect(screen.getByRole('link', { name: 'Requests' })).toHaveAttribute('href', '/rota/requests')
+    expect(screen.getByRole('link', { name: 'Leaves' })).toHaveAttribute('href', '/rota/leaves')
+    expect(screen.getByRole('link', { name: 'Attendance' })).toHaveAttribute('href', '/rota/attendance')
     expect(screen.queryByRole('link', { name: /users/i })).toBeNull()
     expect(screen.queryByRole('link', { name: /roles/i })).toBeNull()
 
