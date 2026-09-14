@@ -1,0 +1,464 @@
+import { describe, expect, it } from "vitest"
+
+import { deriveEmployeeDirectory } from "./assignment-board-directory"
+import type { AssignmentBoardEmployee, AssignmentBoardSlot } from "@/features/rota/types"
+import { resolveAssignmentBoardDrop } from "./assignment-board-dnd"
+import {
+  applyDraftToBoard,
+  computeUserHours,
+  discardDrafts,
+  emptyDraftState,
+  enqueueAdd,
+  enqueueMove,
+  enqueueRemove,
+  enqueueReplace,
+  enqueueSwap,
+  getBoardCellKey,
+  markDraftOpError,
+  removeDraftOp,
+} from "./draft-state"
+
+const slots: AssignmentBoardSlot[] = [
+  {
+    slot: {
+      id: 1,
+      weekday: 1,
+      start_time: "09:00",
+      end_time: "11:00",
+    },
+    positions: [
+      {
+        position: { id: 101, name: "Front Desk" },
+        required_headcount: 1,
+        assignments: [
+          {
+            assignment_id: 20,
+            user_id: "user-11",
+            name: "Bob",
+            email: "bob@example.com",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    slot: {
+      id: 2,
+      weekday: 1,
+      start_time: "12:00",
+      end_time: "15:30",
+    },
+    positions: [
+      {
+        position: { id: 101, name: "Front Desk" },
+        required_headcount: 2,
+        assignments: [
+          {
+            assignment_id: 21,
+            user_id: "user-12",
+            name: "Cara",
+            email: "cara@example.com",
+          },
+        ],
+      },
+      {
+        position: { id: 102, name: "Kitchen" },
+        required_headcount: 1,
+        assignments: [
+          {
+            assignment_id: 22,
+            user_id: "user-13",
+            name: "Dana",
+            email: "dana@example.com",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    slot: {
+      id: 3,
+      weekday: 2,
+      start_time: "12:00",
+      end_time: "15:30",
+    },
+    positions: [
+      {
+        position: { id: 102, name: "Kitchen" },
+        required_headcount: 1,
+        assignments: [],
+      },
+    ],
+  },
+]
+
+const employees: AssignmentBoardEmployee[] = [
+  {
+    user_id: "user-10",
+    name: "Alice",
+    email: "alice@example.com",
+    position_ids: [101],
+    submitted_slots: [{ slot_id: 2, weekday: 1 }],
+  },
+  {
+    user_id: "user-11",
+    name: "Bob",
+    email: "bob@example.com",
+    position_ids: [101],
+    submitted_slots: [{ slot_id: 1, weekday: 1 }],
+  },
+  {
+    user_id: "user-12",
+    name: "Cara",
+    email: "cara@example.com",
+    position_ids: [101],
+    submitted_slots: [{ slot_id: 2, weekday: 1 }],
+  },
+  {
+    user_id: "user-13",
+    name: "Dana",
+    email: "dana@example.com",
+    position_ids: [102],
+    submitted_slots: [{ slot_id: 2, weekday: 1 }],
+  },
+]
+
+describe("draft state reducers", () => {
+  it("enqueues a MOVE as unassign then assign", () => {
+    const state = enqueueMove(
+      emptyDraftState,
+      {
+        assignmentID: 20,
+        userID: "user-11",
+        name: "Bob",
+        email: "bob@example.com",
+        slotID: 1,
+        weekday: 1,
+        positionID: 101,
+      },
+      { slotID: 2, weekday: 1, positionID: 101 },
+    )
+
+    expect(state.ops.map((op) => op.kind)).toEqual(["unassign", "assign"])
+    expect(state.ops[1]).toMatchObject({
+      kind: "assign",
+      userID: "user-11",
+      slotID: 2,
+      weekday: 1,
+      positionID: 101,
+      isUnqualified: false,
+    })
+  })
+
+  it("does not enqueue a move when the source and target cell are identical", () => {
+    const state = enqueueMove(
+      emptyDraftState,
+      {
+        assignmentID: 20,
+        userID: "user-11",
+        name: "Bob",
+        slotID: 1,
+        weekday: 1,
+        positionID: 101,
+      },
+      { slotID: 1, weekday: 1, positionID: 101 },
+    )
+
+    expect(state).toBe(emptyDraftState)
+  })
+
+  it("enqueues a SWAP as two unassigns followed by two assigns", () => {
+    const state = enqueueSwap(
+      emptyDraftState,
+      {
+        assignmentID: 20,
+        userID: "user-11",
+        name: "Bob",
+        email: "bob@example.com",
+        slotID: 1,
+        weekday: 1,
+        positionID: 101,
+      },
+      {
+        assignmentID: 22,
+        userID: "user-13",
+        name: "Dana",
+        email: "dana@example.com",
+        slotID: 2,
+        weekday: 1,
+        positionID: 102,
+      },
+      { slotID: 2, weekday: 1, positionID: 102, isUnqualified: true },
+      { slotID: 1, weekday: 1, positionID: 101 },
+    )
+
+    expect(state.ops.map((op) => op.kind)).toEqual([
+      "unassign",
+      "unassign",
+      "assign",
+      "assign",
+    ])
+    expect(state.ops[2]).toMatchObject({
+      kind: "assign",
+      userID: "user-11",
+      slotID: 2,
+      weekday: 1,
+      positionID: 102,
+      isUnqualified: true,
+    })
+  })
+
+  it("enqueues a REPLACE as unassign outgoing then assign incoming", () => {
+    const state = enqueueReplace(
+      emptyDraftState,
+      {
+        assignmentID: 20,
+        userID: "user-11",
+        name: "Bob",
+        email: "bob@example.com",
+        slotID: 1,
+        weekday: 1,
+        positionID: 101,
+      },
+      { userID: "user-10", name: "Alice", email: "alice@example.com" },
+      { slotID: 1, weekday: 1, positionID: 101 },
+    )
+
+    expect(state.ops.map((op) => op.kind)).toEqual(["unassign", "assign"])
+    expect(state.ops[1]).toMatchObject({
+      kind: "assign",
+      userID: "user-10",
+      slotID: 1,
+      weekday: 1,
+      positionID: 101,
+    })
+  })
+
+  it("enqueues an ADD as one assign", () => {
+    const state = enqueueAdd(
+      emptyDraftState,
+      { userID: "user-10", name: "Alice", email: "alice@example.com" },
+      { slotID: 2, weekday: 1, positionID: 101 },
+    )
+
+    expect(state.ops).toHaveLength(1)
+    expect(state.ops[0]).toMatchObject({
+      kind: "assign",
+      userID: "user-10",
+      slotID: 2,
+      weekday: 1,
+      positionID: 101,
+    })
+  })
+
+  it("enqueues a REMOVE as one unassign", () => {
+    const state = enqueueRemove(emptyDraftState, {
+      assignmentID: 20,
+      userID: "user-11",
+      name: "Bob",
+      email: "bob@example.com",
+      slotID: 1,
+      weekday: 1,
+      positionID: 101,
+    })
+
+    expect(state.ops).toHaveLength(1)
+    expect(state.ops[0]).toMatchObject({
+      kind: "unassign",
+      assignmentID: 20,
+      userID: "user-11",
+      slotID: 1,
+      weekday: 1,
+      positionID: 101,
+    })
+  })
+
+  it("marks a seat drop as unqualified when the user lacks the target position", () => {
+    const directory = deriveEmployeeDirectory(employees)
+    const state = resolveAssignmentBoardDrop({
+      directory,
+      draftState: emptyDraftState,
+      source: {
+        kind: "assigned",
+        assignment: {
+          assignment_id: 20,
+          user_id: "user-11",
+          name: "Bob",
+          email: "bob@example.com",
+        },
+        slotID: 1,
+        weekday: 1,
+        positionID: 101,
+      },
+      target: {
+        kind: "seat",
+        slotID: 3,
+        weekday: 2,
+        positionID: 102,
+        headcountIndex: 0,
+        filledBy: null,
+        cellUserIDs: [],
+      },
+    })
+
+    expect(state.ops).toHaveLength(2)
+    expect(state.ops[1]).toMatchObject({
+      kind: "assign",
+      userID: "user-11",
+      slotID: 3,
+      weekday: 2,
+      positionID: 102,
+      isUnqualified: true,
+      isUnsubmitted: true,
+    })
+  })
+
+  it("tracks unsubmitted assignment state through enqueue, projection, and cancel", () => {
+    const directory = deriveEmployeeDirectory(employees)
+    const state = resolveAssignmentBoardDrop({
+      directory,
+      draftState: emptyDraftState,
+      source: {
+        kind: "directory-employee",
+        employee: directory.get("user-10")!,
+      },
+      target: {
+        kind: "seat",
+        slotID: 3,
+        weekday: 2,
+        positionID: 102,
+        headcountIndex: 0,
+        filledBy: null,
+        cellUserIDs: [],
+      },
+    })
+
+    expect(state.ops).toHaveLength(1)
+    expect(state.ops[0]).toMatchObject({
+      kind: "assign",
+      userID: "user-10",
+      isUnqualified: true,
+      isUnsubmitted: true,
+    })
+
+    const projected = applyDraftToBoard(slots, state)
+    expect(projected.get(getBoardCellKey(3, 2, 102))?.[0]).toMatchObject({
+      user_id: "user-10",
+      isUnqualified: true,
+      isUnsubmitted: true,
+    })
+
+    expect(removeDraftOp(state, state.ops[0].id)).toEqual(emptyDraftState)
+  })
+
+  it("keeps draft entries independent from selection changes", () => {
+    const state = enqueueAdd(
+      emptyDraftState,
+      { userID: "user-10", name: "Alice", email: "alice@example.com" },
+      { slotID: 2, weekday: 1, positionID: 101 },
+    )
+    const nextSelection = { slotID: 1, weekday: 1 }
+
+    expect(nextSelection).toEqual({ slotID: 1, weekday: 1 })
+    expect(state.ops).toHaveLength(1)
+    expect(state.ops[0]).toMatchObject({
+      kind: "assign",
+      userID: "user-10",
+      slotID: 2,
+      weekday: 1,
+      positionID: 101,
+    })
+  })
+})
+
+describe("draft projection", () => {
+  it("applies queued move, replace, and add operations to a snapshot", () => {
+    let state = enqueueMove(
+      emptyDraftState,
+      {
+        assignmentID: 20,
+        userID: "user-11",
+        name: "Bob",
+        email: "bob@example.com",
+        slotID: 1,
+        weekday: 1,
+        positionID: 101,
+      },
+      { slotID: 2, weekday: 1, positionID: 101 },
+    )
+    state = enqueueReplace(
+      state,
+      {
+        assignmentID: 22,
+        userID: "user-13",
+        name: "Dana",
+        email: "dana@example.com",
+        slotID: 2,
+        weekday: 1,
+        positionID: 102,
+      },
+      { userID: "user-10", name: "Alice", email: "alice@example.com" },
+      { slotID: 2, weekday: 1, positionID: 102 },
+    )
+
+    const projected = applyDraftToBoard(slots, state)
+
+    expect(projected.get(getBoardCellKey(1, 1, 101))).toEqual([])
+    expect(
+      projected.get(getBoardCellKey(2, 1, 101))?.map((item) => item.name),
+    ).toEqual(["Cara", "Bob"])
+    expect(
+      projected.get(getBoardCellKey(2, 1, 102))?.map((item) => item.name),
+    ).toEqual(["Alice"])
+  })
+
+  it("computes hours with and without drafts", () => {
+    expect(computeUserHours(slots, emptyDraftState, "user-11")).toBe(2)
+
+    const state = enqueueMove(
+      emptyDraftState,
+      {
+        assignmentID: 20,
+        userID: "user-11",
+        name: "Bob",
+        email: "bob@example.com",
+        slotID: 1,
+        weekday: 1,
+        positionID: 101,
+      },
+      { slotID: 2, weekday: 1, positionID: 101 },
+    )
+
+    expect(computeUserHours(slots, state, "user-11")).toBe(3.5)
+  })
+
+  it("stops projection after an operation marked with an error", () => {
+    const state = enqueueAdd(
+      enqueueAdd(
+        emptyDraftState,
+        { userID: "user-10", name: "Alice" },
+        { slotID: 3, weekday: 2, positionID: 102 },
+      ),
+      { userID: "user-12", name: "Cara" },
+      { slotID: 1, weekday: 1, positionID: 101 },
+    )
+    const failed = markDraftOpError(state, state.ops[0].id, "conflict")
+    const projected = applyDraftToBoard(slots, failed)
+
+    expect(projected.get(getBoardCellKey(3, 2, 102))).toEqual([])
+    expect(projected.get(getBoardCellKey(1, 1, 101))).toEqual([
+      slots[0].positions[0].assignments[0],
+    ])
+  })
+
+  it("discards drafts", () => {
+    const state = enqueueAdd(
+      emptyDraftState,
+      { userID: "user-10", name: "Alice", email: "alice@example.com" },
+      { slotID: 2, weekday: 1, positionID: 101 },
+    )
+
+    expect(state.ops).toHaveLength(1)
+    expect(discardDrafts()).toEqual({ ops: [] })
+  })
+})

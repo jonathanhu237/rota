@@ -1,0 +1,1010 @@
+const translations: Record<string, any> = {
+  "common": {
+    "cancel": "Cancel",
+    "active": "Active",
+    "admin": "Admin",
+    "disabled": "Disabled",
+    "employee": "Employee",
+    "notAvailable": "Not available",
+    "loading": "Loading...",
+    "refreshing": "Refreshing...",
+    "selectDate": "Select date",
+    "time": "Time",
+    "languages": {
+      "en": "English",
+      "zh": "Chinese"
+    }
+  },
+  "dashboard": {
+    "welcome": "Welcome, {{name}}",
+    "description": "Here is an overview of your scheduling system.",
+    "currentPublication": {
+      "title": "Current publication",
+      "description": "The active scheduling cycle and next action.",
+      "empty": "No active publication.",
+      "window": "{{from}} - {{until}}",
+      "copy": {
+        "preparing": "Scheduling is still being prepared.",
+        "awaiting": "Availability collection has ended. Waiting for assignments."
+      },
+      "cta": {
+        "collectingEmployee": "Submit availability",
+        "collectingAdmin": "Open publication",
+        "assigningAdmin": "Open assignment board",
+        "published": "View roster",
+        "draftAdmin": "View publication",
+        "noneAdmin": "Create publication"
+      }
+    },
+    "todo": {
+      "title": "To-do",
+      "description": "Shift-change requests needing your attention.",
+      "unreadRequests": "You have {{count}} pending shift changes",
+      "cta": "View requests"
+    },
+    "recentLeaves": {
+      "title": "Recent leaves",
+      "description": "Your latest leave requests.",
+      "viewAll": "View all",
+      "empty": "You have no leave requests yet."
+    },
+    "manage": {
+      "title": "Quick links",
+      "description": "Jump to administrative work areas.",
+      "links": {
+        "users": "Users",
+        "positions": "Positions",
+        "templates": "Templates",
+        "publications": "Publications"
+      }
+    }
+  },
+  "users": {
+    "qualifications": {
+      "manage": "Manage qualifications",
+      "title": "Qualifications",
+      "description": "Select which positions this user is qualified to work.",
+      "empty": "No positions available yet.",
+      "loadError": "Failed to load qualifications.",
+      "save": "Save Qualifications",
+      "saving": "Saving...",
+      "selectedCount_one": "{{count}} position selected",
+      "selectedCount_other": "{{count}} positions selected",
+      "success": {
+        "saved": "Qualifications updated successfully."
+      }
+    }
+  },
+  "positions": {
+    "title": "Position Management",
+    "description": "Create and maintain the roles your department needs to staff.",
+    "createPosition": "Create Position",
+    "name": "Name",
+    "descriptionLabel": "Description",
+    "empty": "No positions found.",
+    "noDescription": "No description",
+    "pageSummary": "Showing {{start}}-{{end}} of {{total}} positions",
+    "table": {
+      "name": "Name",
+      "description": "Description",
+      "actions": "Actions"
+    },
+    "actions": {
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {{page}} of {{totalPages}}"
+    },
+    "form": {
+      "createTitle": "Create position",
+      "createDescription": "Add a role that can be staffed in future schedules.",
+      "editTitle": "Edit position",
+      "editDescription": "Update the selected position's details.",
+      "submitCreate": "Create Position",
+      "submitEdit": "Save Changes",
+      "submittingCreate": "Creating...",
+      "submittingEdit": "Saving..."
+    },
+    "deleteDialog": {
+      "title": "Delete position",
+      "description": "Delete {{name}}? This action cannot be undone.",
+      "confirm": "Delete Position",
+      "submitting": "Deleting..."
+    },
+    "validation": {
+      "nameRequired": "Name is required"
+    },
+    "success": {
+      "created": "Position created successfully.",
+      "updated": "Position updated successfully.",
+      "deleted": "Position deleted successfully."
+    },
+    "errors": {
+      "FORBIDDEN": "Forbidden",
+      "INVALID_REQUEST": "Invalid request",
+      "INTERNAL_ERROR": "Internal server error",
+      "POSITION_IN_USE": "Position is used by a template shift",
+      "POSITION_NOT_FOUND": "Position not found",
+      "UNAUTHORIZED": "Unauthorized"
+    }
+  },
+  "templates": {
+    "title": "Template Management",
+    "description": "Create and maintain reusable weekly slot blueprints.",
+    "createTemplate": "Create Template",
+    "name": "Name",
+    "descriptionLabel": "Description",
+    "empty": "No templates found.",
+    "locked": "Locked",
+    "unlocked": "Unlocked",
+    "pageSummary": "Showing {{start}}-{{end}} of {{total}} templates",
+    "table": {
+      "name": "Name",
+      "shiftCount": "Shift Count",
+      "locked": "Status",
+      "updatedAt": "Updated"
+    },
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {{page}} of {{totalPages}}"
+    },
+    "form": {
+      "createTitle": "Create template",
+      "createDescription": "Add a new reusable weekly template.",
+      "submitCreate": "Create Template",
+      "submittingCreate": "Creating...",
+      "submitEdit": "Save Changes",
+      "submittingEdit": "Saving..."
+    },
+    "detail": {
+      "description": "Update the template details and manage its weekly slots and positions.",
+      "loadErrorTitle": "Failed to load template",
+      "loadErrorDescription": "The template could not be loaded right now."
+    },
+    "actions": {
+      "clone": "Clone",
+      "delete": "Delete",
+      "addSlot": "Add Slot",
+      "editSlot": "Edit Slot",
+      "deleteSlot": "Delete Slot",
+      "addPosition": "Add Position",
+      "editPosition": "Edit Position",
+      "deletePosition": "Delete Position",
+      "addShift": "Add Shift",
+      "editShift": "Edit Shift",
+      "deleteShift": "Delete Shift"
+    },
+    "cloneDialog": {
+      "title": "Clone template",
+      "description": "Create an unlocked copy of {{name}}?",
+      "confirm": "Clone Template",
+      "submitting": "Cloning..."
+    },
+    "deleteDialog": {
+      "title": "Delete template",
+      "description": "Delete {{name}}? This action cannot be undone.",
+      "confirm": "Delete Template",
+      "submitting": "Deleting..."
+    },
+    "deleteSlotDialog": {
+      "title": "Delete slot",
+      "description": "Delete {{summary}}? This action cannot be undone.",
+      "summary": "{{weekdays}} · {{startTime}}-{{endTime}}",
+      "confirm": "Delete Slot",
+      "submitting": "Deleting..."
+    },
+    "deletePositionDialog": {
+      "title": "Delete slot position",
+      "description": "Delete {{summary}}? This action cannot be undone.",
+      "summary": "{{positionName}} · {{startTime}}-{{endTime}} · {{headcount}} staff needed",
+      "confirm": "Delete Position",
+      "submitting": "Deleting..."
+    },
+    "deleteShiftDialog": {
+      "title": "Delete shift",
+      "description": "Delete {{summary}}? This action cannot be undone.",
+      "summary": "{{weekday}} · {{positionName}} · {{startTime}}-{{endTime}} · {{headcount}} staff needed",
+      "confirm": "Delete Shift",
+      "submitting": "Deleting..."
+    },
+    "slotsTitle": "Weekly Slots",
+    "slotsDescription": "Manage the template's time slots and the position mix inside each slot.",
+    "noSlots": "No slots have been added to this template yet.",
+    "noSlotsForWeekday": "No slots scheduled for this weekday yet.",
+    "noPositionsForSlot": "No positions have been added to this slot yet.",
+    "shiftsTitle": "Weekly Shifts",
+    "shiftsDescription": "Manage the template's shifts grouped by weekday.",
+    "positionsLoadError": "Failed to load positions for the slot editor.",
+    "noPositions": "Create positions before adding slot positions.",
+    "noShiftsForWeekday": "No shifts scheduled for this weekday yet.",
+    "unknownPosition": "Unknown position",
+    "lockedBanner": "This template is locked and cannot be edited or deleted. Clone it to make changes.",
+    "slot": {
+      "weekday": "Weekdays",
+      "startTime": "Start Time",
+      "endTime": "End Time",
+      "summary": "{{startTime}}-{{endTime}}",
+      "positionsCount": "{{count}} positions"
+    },
+    "position": {
+      "position": "Position",
+      "requiredHeadcount": "Required Headcount",
+      "attendanceResponsible": "Attendance responsible",
+      "summary": "{{headcount}} staff needed"
+    },
+    "slotDialog": {
+      "createTitle": "Add slot",
+      "createDescription": "Add a time slot and choose the weekdays it applies to.",
+      "editTitle": "Edit slot",
+      "editDescription": "Update the selected time slot and weekday set.",
+      "submitCreate": "Create Slot",
+      "submitEdit": "Save Slot",
+      "submittingCreate": "Creating...",
+      "submittingEdit": "Saving..."
+    },
+    "positionDialog": {
+      "createTitle": "Add slot position",
+      "createDescription": "Add a position requirement to this slot.",
+      "editTitle": "Edit slot position",
+      "editDescription": "Update the selected position requirement.",
+      "submitCreate": "Create Position",
+      "submitEdit": "Save Position",
+      "submittingCreate": "Creating...",
+      "submittingEdit": "Saving...",
+      "selectPosition": "Select a position",
+      "attendanceResponsibleDescription": "This position records arrivals and overtime for the shift."
+    },
+    "shift": {
+      "weekday": "Weekday",
+      "startTime": "Start Time",
+      "endTime": "End Time",
+      "position": "Position",
+      "requiredHeadcount": "Required Headcount",
+      "summary": "{{startTime}}-{{endTime}} · {{headcount}} staff needed"
+    },
+    "shiftDialog": {
+      "createTitle": "Add shift",
+      "createDescription": "Add a weekly shift to this template.",
+      "editTitle": "Edit shift",
+      "editDescription": "Update the selected weekly shift.",
+      "submitCreate": "Create Shift",
+      "submitEdit": "Save Shift",
+      "submittingCreate": "Creating...",
+      "submittingEdit": "Saving...",
+      "selectPosition": "Select a position"
+    },
+    "weekday": {
+      "mon": "Monday",
+      "tue": "Tuesday",
+      "wed": "Wednesday",
+      "thu": "Thursday",
+      "fri": "Friday",
+      "sat": "Saturday",
+      "sun": "Sunday"
+    },
+    "validation": {
+      "nameRequired": "Name is required",
+      "nameTooLong": "Name must be 100 characters or fewer",
+      "descriptionTooLong": "Description must be 500 characters or fewer",
+      "weekdayRequired": "Weekday is required",
+      "invalidWeekday": "Weekday must be between Monday and Sunday",
+      "invalidShiftTime": "End time must be after start time",
+      "positionRequired": "Position is required",
+      "invalidHeadcount": "Required headcount must be at least 1",
+      "responsibleHeadcount": "Attendance responsible positions must require exactly 1 person"
+    },
+    "success": {
+      "created": "Template created successfully.",
+      "updated": "Template updated successfully.",
+      "deleted": "Template deleted successfully.",
+      "cloned": "Template cloned successfully.",
+      "slotCreated": "Slot created successfully.",
+      "slotUpdated": "Slot updated successfully.",
+      "slotDeleted": "Slot deleted successfully.",
+      "positionCreated": "Slot position created successfully.",
+      "positionUpdated": "Slot position updated successfully.",
+      "positionDeleted": "Slot position deleted successfully.",
+      "shiftCreated": "Shift created successfully.",
+      "shiftUpdated": "Shift updated successfully.",
+      "shiftDeleted": "Shift deleted successfully."
+    },
+    "errors": {
+      "FORBIDDEN": "Forbidden",
+      "INVALID_HEADCOUNT": "Required headcount must be positive",
+      "INVALID_REQUEST": "Invalid request",
+      "INVALID_SHIFT_TIME": "End time must be after start time",
+      "INVALID_WEEKDAY": "Weekday must be between Monday and Sunday",
+      "INTERNAL_ERROR": "Internal server error",
+      "POSITION_NOT_FOUND": "Position not found",
+      "TEMPLATE_LOCKED": "Template is locked",
+      "TEMPLATE_NOT_FOUND": "Template not found",
+      "TEMPLATE_SLOT_NOT_FOUND": "Template slot not found",
+      "TEMPLATE_SLOT_OVERLAP": "This slot overlaps with an existing slot on the same day.",
+      "TEMPLATE_SLOT_POSITION_NOT_FOUND": "Template slot position not found",
+      "ATTENDANCE_RESPONSIBLE_REQUIRED": "Each shift can have only one attendance responsible position, and it must require exactly 1 person.",
+      "TEMPLATE_SHIFT_NOT_FOUND": "Template shift not found",
+      "UNAUTHORIZED": "Unauthorized"
+    }
+  },
+  "attendance": {
+    "title": "Attendance",
+    "leaderDescription": "Record arrivals and overtime for shifts you are responsible for.",
+    "adminTitle": "Attendance management",
+    "adminDescription": "Review shift attendance, correct arrivals, and manage overtime.",
+    "empty": "No attendance shifts are available right now.",
+    "noRoster": "No rostered users for this shift.",
+    "orphanArrivals": "Orphan arrivals",
+    "overtime": "Overtime",
+    "settings": "Settings",
+    "overtimeWindow": "Overtime entry window (hours)",
+    "saveSettings": "Save settings",
+    "selectShift": "Select a shift",
+    "arrivalTime": "Arrival time",
+    "recordArrival": "Record arrival",
+    "recorded": "Recorded",
+    "hours": "Hours",
+    "note": "Note",
+    "addOvertime": "Add overtime",
+    "updateOvertime": "Update overtime",
+    "deleteOvertime": "Delete overtime",
+    "clearArrival": "Clear arrival",
+    "setArrival": "Set arrival",
+    "chooseUser": "Choose user",
+    "userId": "User ID",
+    "status": {
+      "pending": "Pending",
+      "present": "Present",
+      "late": "Late",
+      "absent": "Absent"
+    },
+    "summary": {
+      "shift": "{{date}} · {{start}}-{{end}}",
+      "counts": "{{present}} present · {{late}} late · {{pending}} pending · {{absent}} absent"
+    },
+    "success": {
+      "arrivalRecorded": "Arrival recorded.",
+      "arrivalUpdated": "Arrival updated.",
+      "arrivalCleared": "Arrival cleared.",
+      "overtimeRecorded": "Overtime recorded.",
+      "overtimeUpdated": "Overtime updated.",
+      "overtimeDeleted": "Overtime deleted.",
+      "settingsUpdated": "Attendance settings updated."
+    },
+    "errors": {
+      "INVALID_REQUEST": "Invalid request.",
+      "INVALID_OCCURRENCE_DATE": "Invalid occurrence date.",
+      "PUBLICATION_NOT_FOUND": "Publication not found.",
+      "TEMPLATE_SLOT_NOT_FOUND": "Shift not found.",
+      "USER_NOT_FOUND": "User not found or inactive.",
+      "ATTENDANCE_RECORD_NOT_FOUND": "Attendance record not found.",
+      "ATTENDANCE_NOT_LEADER": "You are not responsible for this shift.",
+      "ATTENDANCE_WINDOW_CLOSED": "The attendance window is closed.",
+      "ATTENDANCE_ALREADY_RECORDED": "This arrival has already been recorded.",
+      "ATTENDANCE_ROSTER_STALE": "The roster changed. Refresh and try again.",
+      "ATTENDANCE_RESPONSIBLE_REQUIRED": "This shift needs exactly one attendance responsible position.",
+      "PUBLICATION_NOT_ACTIVE": "The publication is not active.",
+      "INTERNAL_ERROR": "Internal server error."
+    }
+  },
+  "publications": {
+    "title": "Publication Management",
+    "description": "Create submission windows from templates and track their lifecycle.",
+    "createPublication": "Create Publication",
+    "name": "Name",
+    "submissionStartAt": "Submission Start",
+    "submissionEndAt": "Submission End",
+    "plannedActiveFrom": "Planned Active From",
+    "plannedActiveUntil": "Planned Active Until",
+    "empty": "No publications found.",
+    "pageSummary": "Showing {{start}}-{{end}} of {{total}} publications",
+    "table": {
+      "name": "Name",
+      "template": "Template",
+      "state": "State",
+      "submissionWindow": "Submission Window",
+      "activeWindow": "Active Window",
+      "createdAt": "Created",
+      "actions": "Actions"
+    },
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {{page}} of {{totalPages}}"
+    },
+    "state": {
+      "draft": "Draft",
+      "collecting": "Collecting",
+      "assigning": "Assigning",
+      "published": "Published",
+      "active": "Active",
+      "ended": "Ended"
+    },
+    "form": {
+      "createTitle": "Create publication",
+      "createDescription": "Choose a template and set the submission window.",
+      "template": "Template",
+      "selectTemplate": "Select a template",
+      "noTemplates": "Create a template before publishing shifts.",
+      "submitCreate": "Create Publication",
+      "submittingCreate": "Creating..."
+    },
+    "detail": {
+      "description": "Review the publication metadata and current effective state.",
+      "loadErrorTitle": "Failed to load publication",
+      "loadErrorDescription": "The publication could not be loaded right now.",
+      "template": "Template",
+      "state": "State",
+      "submissionStartAt": "Submission start",
+      "submissionEndAt": "Submission end",
+      "plannedActiveFrom": "Planned active from",
+      "plannedActiveUntil": "Planned active until",
+      "overtimeEntryWindowHours": "Overtime entry window",
+      "activatedAt": "Activated at",
+      "createdAt": "Created at",
+      "updatedAt": "Updated at",
+      "editPlannedActiveUntil": "Edit planned end",
+      "save": "Save",
+      "saving": "Saving...",
+      "stateDescription": {
+        "draft": "Submissions open at {{time}}.",
+        "collecting": "Submissions remain open until {{time}}.",
+        "assigning": "Submissions are closed. Review candidates and assign the weekly roster.",
+        "published": "The roster is visible to employees. They can propose shift changes until you activate.",
+        "active": "This publication became active at {{time}}.",
+        "ended": "This publication ended at {{time}}."
+      }
+    },
+    "actions": {
+      "delete": "Delete Publication",
+      "publish": "Publish",
+      "activate": "Activate",
+      "end": "End",
+      "openAssignmentBoard": "Open Assignment Board",
+      "manageAvailability": "Manage Availability",
+      "viewShiftChanges": "View Shift Changes",
+      "manageAttendance": "Manage Attendance",
+      "viewExisting": "View it"
+    },
+    "publishDialog": {
+      "title": "Publish publication",
+      "description": "Publishing makes the schedule visible to employees and lets them propose shift changes. Continue?",
+      "confirm": "Publish Publication",
+      "cancel": "Cancel",
+      "submitting": "Publishing..."
+    },
+    "activateDialog": {
+      "title": "Activate publication",
+      "description": "Activating will lock the schedule. Any pending shift-change requests will expire. Continue?",
+      "confirm": "Activate Publication",
+      "submitting": "Activating..."
+    },
+    "endDialog": {
+      "title": "End publication",
+      "description": "End {{name}} now? It will disappear from the current roster view.",
+      "confirm": "End Publication",
+      "submitting": "Ending..."
+    },
+    "deleteDialog": {
+      "title": "Delete publication",
+      "description": "Delete {{name}}? This action cannot be undone.",
+      "confirm": "Delete Publication",
+      "submitting": "Deleting..."
+    },
+    "shiftChanges": {
+      "title": "Shift Change Requests",
+      "description": "Admin read-only view of shift change requests for {{name}}.",
+      "backToPublication": "Back to publication",
+      "loadError": "The shift change requests could not be loaded right now.",
+      "empty": "No shift change requests to show.",
+      "filter": {
+        "label": "State:",
+        "all": "All",
+        "pending": "Pending",
+        "decided": "Decided"
+      },
+      "table": {
+        "id": "ID",
+        "type": "Type",
+        "requester": "Requester",
+        "counterpart": "Counterpart",
+        "occurrence": "Occurrence",
+        "state": "State",
+        "createdAt": "Created",
+        "decidedAt": "Decided"
+      },
+      "requestType": {
+        "swap": "Swap",
+        "give_direct": "Give (direct)",
+        "give_pool": "Give (pool)"
+      },
+      "state": {
+        "pending": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "cancelled": "Cancelled",
+        "expired": "Expired",
+        "invalidated": "Invalidated"
+      }
+    },
+    "validation": {
+      "templateRequired": "Template is required",
+      "nameRequired": "Name is required",
+      "nameTooLong": "Name must be 100 characters or fewer",
+      "submissionStartRequired": "Submission start is required",
+      "submissionEndRequired": "Submission end is required",
+      "plannedActiveFromRequired": "Planned active from is required",
+      "plannedActiveUntilRequired": "Planned active until is required",
+      "invalidWindow": "Submission start, submission end, planned active start, and planned active end must be in chronological order"
+    },
+    "success": {
+      "created": "Publication created successfully.",
+      "deleted": "Publication deleted successfully.",
+      "published": "Publication published successfully.",
+      "activated": "Publication activated successfully.",
+      "ended": "Publication ended successfully.",
+      "updated": "Publication updated successfully."
+    },
+    "errors": {
+      "FORBIDDEN": "Forbidden",
+      "INVALID_OCCURRENCE_DATE": "Choose a Monday inside the publication active window.",
+      "INVALID_PUBLICATION_WINDOW": "The publication timestamps are not in chronological order",
+      "INVALID_REQUEST": "Invalid request",
+      "INTERNAL_ERROR": "Internal server error",
+      "PUBLICATION_ALREADY_EXISTS": "A non-ended publication already exists.",
+      "PUBLICATION_NOT_ACTIVE": "This publication is not active right now.",
+      "PUBLICATION_NOT_ASSIGNING": "This publication is not accepting assignment changes right now.",
+      "PUBLICATION_NOT_MUTABLE": "This publication is no longer editable right now.",
+      "PUBLICATION_NOT_COLLECTING": "This publication is not collecting availability right now.",
+      "PUBLICATION_NOT_DELETABLE": "Only draft publications can be deleted.",
+      "PUBLICATION_NOT_PUBLISHED": "This publication is not published right now.",
+      "PUBLICATION_NOT_FOUND": "Publication not found",
+      "TEMPLATE_NOT_FOUND": "Template not found",
+      "TEMPLATE_SLOT_NOT_FOUND": "Template slot not found",
+      "TEMPLATE_SLOT_POSITION_NOT_FOUND": "Template slot position not found",
+      "TEMPLATE_SHIFT_NOT_FOUND": "Template shift not found",
+      "ASSIGNMENT_USER_ALREADY_IN_SLOT": "This user is already assigned to another position in this slot.",
+      "ASSIGNMENT_TIME_CONFLICT": "This assignment overlaps with another slot the user is already assigned to.",
+      "SCHEDULING_RETRYABLE": "Another scheduling change was applied at the same time. Please try again.",
+      "NOT_QUALIFIED": "You are not qualified for this shift.",
+      "USER_DISABLED": "This user is disabled.",
+      "USER_NOT_FOUND": "User not found",
+      "UNAUTHORIZED": "Unauthorized"
+    },
+    "assignmentBoard": {
+      "showAllQualified": "Show all qualified employees",
+      "didNotSubmitAvailability": "Didn't submit availability",
+      "publishedWarning": "This schedule is already visible to employees. Editing assignments here may invalidate pending shift-change requests.",
+      "activeWarning": "This schedule is already active. Changes made here take effect immediately."
+    }
+  },
+  "assignments": {
+    "title": "Assignment Board",
+    "descriptionEditable": "Scan coverage by weekday and time, then stage assignment edits for {{name}}.",
+    "descriptionReadOnly": "{{name}} is already active. The board is read-only.",
+    "autoAssign": "Auto-assign",
+    "downloadExcel": "Download Excel",
+    "downloading": "Downloading...",
+    "downloadFailed": "Could not download the schedule workbook.",
+    "backToPublication": "Back to publication",
+    "loadError": "The assignment board could not be loaded right now.",
+    "emptyWeekday": "No shifts are scheduled for this weekday.",
+    "shiftSummary": "{{startTime}}-{{endTime}}",
+    "headcount": "{{assigned}} / {{required}} assigned",
+    "grid": {
+      "time": "Time"
+    },
+    "status": {
+      "full": "Full",
+      "partial": "Partial",
+      "empty": "Empty"
+    },
+    "directory": {
+      "title": "Employee directory",
+      "gaps": "{{count}} coverage gaps",
+      "noGaps": "All cells filled",
+      "search": "Search employee",
+      "sortByHours": "By hours",
+      "sortByName": "By name",
+      "empty": "No employees match this search.",
+      "hours": "{{hours}}h",
+      "fairness": "avg {{avg}}h · range {{min}}–{{max}}h · σ {{stddev}}h",
+      "submitted": "Submitted availability ({{count}})",
+      "notSubmitted": "No availability submitted ({{count}})",
+      "notSubmittedTag": "Not submitted",
+      "unassignedCount": "{{count}} not assigned"
+    },
+    "seat": {
+      "empty": "Empty",
+      "overflow": "Overflow"
+    },
+    "drafts": {
+      "pendingCount": "Unsubmitted changes: {{count}}",
+      "submit": "Submit",
+      "discard": "Discard drafts",
+      "confirmAndSubmit": "Confirm and submit",
+      "cancel": "Cancel",
+      "changed": "Draft",
+      "remove": "Remove",
+      "undoRemove": "Undo removal",
+      "warning": "Warning",
+      "unqualifiedAria": "Qualification mismatch",
+      "unsubmittedAria": "Availability not submitted for this shift",
+      "userHoursLabel": "{{user}} ({{hours}}h)",
+      "submitFailed": "Could not submit {{user}}. Fix the draft or retry.",
+      "submitFailedUnknown": "Unable to submit this draft operation.",
+      "confirmDialog": {
+        "title": "Confirm qualification overrides",
+        "titleUnsubmitted": "Confirm availability exception",
+        "titleBoth": "Confirm qualification / availability exceptions",
+        "description": "These draft assignments bypass the default qualification or cell match.",
+        "unqualifiedSection": "Qualification mismatch ({{count}})",
+        "unsubmittedSection": "Availability not submitted ({{count}})",
+        "warningTitle": "{{user}} -> {{slot}} / {{position}}",
+        "warningReason": "{{user}} is not qualified for {{position}}.",
+        "unsubmittedReason": "{{user}} did not submit availability for this shift."
+      }
+    },
+    "autoAssignDialog": {
+      "title": "Auto-assign shifts",
+      "description": "This will replace all current assignments for {{name}}. Continue?",
+      "confirm": "Auto-assign",
+      "submitting": "Auto-assigning..."
+    },
+    "success": {
+      "autoAssigned": "Assignments auto-assigned successfully."
+    }
+  },
+  "roster": {
+    "title": "Weekly Roster",
+    "description": "See the currently active weekly roster.",
+    "descriptionWithPublication": "Showing the active weekly roster for {{name}}.",
+    "loadError": "The roster could not be loaded right now.",
+    "empty": "There is no active publication right now.",
+    "emptyWeek": "No shifts are scheduled this week.",
+    "previousWeek": "Previous week",
+    "nextWeek": "Next week",
+    "downloadExcel": "Download Excel",
+    "downloading": "Downloading...",
+    "downloadFailed": "Could not download the roster workbook.",
+    "today": "Today",
+    "offSchedule": "Off-schedule",
+    "cell": {
+      "summary": "Assigned {{assigned}} of {{required}}",
+      "empty": "Empty"
+    }
+  },
+  "availability": {
+    "title": "Availability",
+    "description": "See the current publication and mark the shifts you can work.",
+    "empty": "There is no current publication right now.",
+    "currentPublication": "Publication",
+    "template": "Template",
+    "gridTitle": "Your Shift Availability",
+    "gridDescription": "Check every shift you are available to work during this collection window.",
+    "noShiftsForWeekday": "No shifts are available for this weekday.",
+    "noQualifiedShifts": "You do not have any qualified shifts in this publication.",
+    "offSchedule": "Off-schedule",
+    "today": "Today",
+    "stateMessage": {
+      "draft": "Submissions open at {{time}}.",
+      "collecting": "Submissions close at {{time}}. Update your availability before then.",
+      "assigning": "Submissions are closed. The admin is assigning shifts now.",
+      "active": "This publication is active. Availability changes are closed; check the roster view for assignments."
+    },
+    "shift": {
+      "timeRange": "{{startTime}}-{{endTime}}",
+      "composition": "{{summary}}",
+      "compositionEntry": "{{position}} × {{count}}"
+    },
+    "errors": {
+      "FORBIDDEN": "Forbidden",
+      "INVALID_REQUEST": "Invalid request",
+      "INTERNAL_ERROR": "Internal server error",
+      "NOT_QUALIFIED": "You are not qualified for this shift.",
+      "PUBLICATION_NOT_COLLECTING": "Availability can only be changed while submissions are open.",
+      "PUBLICATION_NOT_FOUND": "Publication not found",
+      "TEMPLATE_SHIFT_NOT_FOUND": "Template shift not found",
+      "UNAUTHORIZED": "Unauthorized"
+    }
+  },
+  "adminAvailability": {
+    "title": "Availability Management",
+    "description": "Review and correct submitted availability for {{name}}.",
+    "loadError": "Availability data cannot be loaded right now.",
+    "backToAssignments": "Back to Assignment Board",
+    "pageSummary": "Showing {{start}}-{{end}} of {{total}} employees",
+    "search": {
+      "label": "Search employees",
+      "placeholder": "Name or email"
+    },
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {{page}} of {{totalPages}}"
+    },
+    "table": {
+      "name": "Employee",
+      "positions": "Qualifications",
+      "submittedCount": "Submitted Cells",
+      "submittedCountValue": "{{count}} cells",
+      "actions": "Actions",
+      "edit": "Edit",
+      "empty": "No matching employees."
+    },
+    "editor": {
+      "title": "Edit Availability",
+      "titleForUser": "{{name}} Availability",
+      "description": "{{email}}",
+      "back": "Back to Availability Management",
+      "gridTitle": "Template Availability Grid",
+      "gridDescription": "Edit this employee's complete target availability set.",
+      "autoAssignNote": "Availability edits affect future auto-assign candidate pools only and do not automatically change existing assignments.",
+      "readOnly": "This publication is read-only for availability edits.",
+      "ineligibleSelected": "{{count}} selected cells are no longer eligible. Clear them before saving.",
+      "noSlots": "This publication has no scheduled cells.",
+      "eligible": "Eligible",
+      "ineligible": "Ineligible",
+      "exception": "Submitted exception",
+      "cellLabel": "{{weekday}} {{time}} {{summary}}",
+      "unsavedCount": "{{count}} unsaved changes",
+      "discard": "Discard",
+      "save": "Save",
+      "saving": "Saving...",
+      "saveSuccess": "Availability updated.",
+      "confirmLeave": "Discard unsaved availability changes?"
+    }
+  },
+  "requests": {
+    "title": "Shift Change Requests",
+    "description": "Review swap, give, and release requests for the current published roster.",
+    "descriptionWithPublication": "Requests for {{name}}.",
+    "empty": "No requests available right now.",
+    "unknownUser": "User #{{id}}",
+    "occurrenceLabel": "Occurrence: {{date}}",
+    "sections": {
+      "waiting": "Waiting for my response",
+      "sent": "Sent by me",
+      "pool": "Open pool",
+      "history": "History",
+      "emptyWaiting": "No requests are waiting for your response.",
+      "emptySent": "You have not sent any requests.",
+      "emptyPool": "No shifts are available in the open pool.",
+      "emptyHistory": "No past requests yet."
+    },
+    "type": {
+      "swap": "Swap",
+      "give_direct": "Give (direct)",
+      "give_pool": "Give (pool)"
+    },
+    "state": {
+      "pending": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "cancelled": "Cancelled",
+      "expired": "Expired",
+      "invalidated": "Invalidated"
+    },
+    "actions": {
+      "approve": "Approve",
+      "reject": "Reject",
+      "cancel": "Cancel",
+      "claim": "Claim",
+      "openMenu": "Shift actions",
+      "proposeSwap": "Propose swap...",
+      "giveDirect": "Give to...",
+      "givePool": "Release to pool"
+    },
+    "swapDialog": {
+      "title": "Propose shift swap",
+      "description": "Ask a colleague to swap one of their shifts with yours.",
+      "myShiftLabel": "Your shift",
+      "shiftSummary": "{{startTime}}-{{endTime}}",
+      "counterpartLabel": "Swap with",
+      "selectCounterpart": "Select a colleague",
+      "counterpartShiftLabel": "Their shift to take",
+      "selectCounterpartShift": "Select a shift",
+      "noCounterpartShifts": "This colleague has no shifts in the current roster.",
+      "submit": "Send swap request",
+      "submitting": "Sending...",
+      "success": "Swap request sent."
+    },
+    "giveDirectDialog": {
+      "title": "Give this shift",
+      "description": "Offer this shift to a specific colleague. They will need to accept it.",
+      "counterpartLabel": "Give to",
+      "selectCounterpart": "Select a colleague",
+      "submit": "Send offer",
+      "submitting": "Sending...",
+      "success": "Offer sent."
+    },
+    "givePoolDialog": {
+      "title": "Release to pool",
+      "description": "Release this shift to the open pool so any qualified colleague can pick it up.",
+      "submit": "Release shift",
+      "submitting": "Releasing...",
+      "success": "Shift released to the pool."
+    },
+    "validation": {
+      "counterpartUserRequired": "Please choose a colleague",
+      "counterpartShiftRequired": "Please choose one of their shifts"
+    },
+    "card": {
+      "shift": "Shift #{{id}}",
+      "shiftSummary": "{{weekday}} · {{positionName}} · {{startTime}}-{{endTime}}",
+      "swapSummary": "{{requesterShift}} ↔ {{counterpartShift}}",
+      "metadata": "Requested by {{requester}} · {{createdAt}}"
+    },
+    "history": {
+      "invalidatedReason": "Cancelled because the referenced shift changed before the request was processed."
+    },
+    "toast": {
+      "approved": "Request approved.",
+      "rejected": "Request rejected.",
+      "cancelled": "Request cancelled.",
+      "claimed": "Shift claimed successfully."
+    },
+    "errors": {
+      "FORBIDDEN": "Forbidden",
+      "INVALID_OCCURRENCE_DATE": "Choose a valid future occurrence for this shift.",
+      "INVALID_REQUEST": "Invalid request",
+      "INTERNAL_ERROR": "Something went wrong. Please try again.",
+      "PUBLICATION_NOT_FOUND": "Publication not found",
+      "PUBLICATION_NOT_PUBLISHED": "This publication is not published.",
+      "SHIFT_CHANGE_EXPIRED": "This request has expired.",
+      "SHIFT_CHANGE_INVALIDATED": "This request is no longer valid.",
+      "SHIFT_CHANGE_INVALID_TYPE": "Invalid request type.",
+      "SHIFT_CHANGE_NOT_FOUND": "Request not found",
+      "SHIFT_CHANGE_NOT_OWNER": "You are not allowed to act on this request.",
+      "SHIFT_CHANGE_NOT_PENDING": "This request is no longer pending.",
+      "SHIFT_CHANGE_NOT_QUALIFIED": "You are not qualified for this shift.",
+      "SHIFT_CHANGE_SELF": "You cannot act on your own request.",
+      "SHIFT_CHANGE_TIME_CONFLICT": "This change conflicts with another shift you already have.",
+      "SCHEDULING_RETRYABLE": "Another scheduling change was applied at the same time. Please try again.",
+      "UNAUTHORIZED": "Unauthorized"
+    }
+  },
+  "leaves": {
+    "requestCta": "Request leave",
+    "backToHistory": "Back to leaves",
+    "workbench": {
+      "title": "Leave Workbench",
+      "description": "Track leave requests that still need coverage.",
+      "empty": "No leave requests match this filter.",
+      "urgent": "Starts within 24h",
+      "total": "{{total}} total",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {{page}}",
+      "filters": {
+        "pending": "Pending",
+        "all": "All",
+        "completed": "Completed",
+        "cancelled": "Cancelled",
+        "failed": "Failed"
+      },
+      "columns": {
+        "requester": "Requester",
+        "shift": "Shift",
+        "type": "Type",
+        "status": "Status",
+        "coverage": "Coverage",
+        "actions": "Actions"
+      },
+      "coverage": {
+        "open": "Open pool"
+      },
+      "urgency": {
+        "remaining": "Starts in {{hours}}h"
+      },
+      "actions": {
+        "claim": "Help cover",
+        "approve": "Approve",
+        "reject": "Reject",
+        "cancel": "Cancel leave",
+        "detail": "Detail"
+      },
+      "disabled": {
+        "not_qualified": "Not qualified",
+        "admin_view_only": "Admin view only"
+      },
+      "toast": {
+        "claim": "Leave coverage accepted.",
+        "approve": "Leave coverage approved.",
+        "reject": "Leave coverage rejected.",
+        "cancel": "Leave cancelled."
+      }
+    },
+    "history": {
+      "title": "My Leaves",
+      "description": "Review leave requests you have submitted.",
+      "empty": "You have not submitted any leave requests.",
+      "open": "Open",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {{page}}"
+    }
+  },
+  "leave": {
+    "title": "Leave",
+    "description": "Select upcoming shifts and request coverage.",
+    "from": "From",
+    "to": "To",
+    "shareUrls": "Share URLs",
+    "copy": "Copy",
+    "emptyPreview": "No future shifts are available in this range.",
+    "typeLabel": "Type",
+    "typeGivePool": "Open pool",
+    "typeGiveDirect": "Direct colleague",
+    "categoryLabel": "Category",
+    "categorySick": "Sick",
+    "categoryPersonal": "Personal",
+    "categoryBereavement": "Bereavement",
+    "counterpart": "Counterpart",
+    "counterpartPlaceholder": "Select a colleague",
+    "reason": "Reason",
+    "reasonPlaceholder": "Optional note",
+    "submit": "Submit leave",
+    "toast": {
+      "created": "Leave created."
+    },
+    "type": {
+      "swap": "Swap",
+      "give_direct": "Direct colleague",
+      "give_pool": "Open pool"
+    },
+    "category": {
+      "sick": "Sick",
+      "personal": "Personal",
+      "bereavement": "Bereavement"
+    },
+    "state": {
+      "pending": "Pending",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "errors": {
+      "INVALID_OCCURRENCE_DATE": "Choose a valid future occurrence.",
+      "INVALID_REQUEST": "Invalid request",
+      "INTERNAL_ERROR": "Something went wrong. Please try again.",
+      "LEAVE_NOT_FOUND": "Leave not found",
+      "LEAVE_NOT_OWNER": "You are not allowed to cancel this leave.",
+      "LEAVE_ALREADY_EXISTS": "You already have an active leave request for this shift.",
+      "PUBLICATION_NOT_ACTIVE": "Leave can only be requested for the active publication.",
+      "SHIFT_CHANGE_INVALID_TYPE": "Leave supports direct or pool coverage only.",
+      "SHIFT_CHANGE_NOT_OWNER": "You are not allowed to use that shift.",
+      "SHIFT_CHANGE_NOT_QUALIFIED": "The selected colleague is not qualified.",
+      "SHIFT_CHANGE_SELF": "You cannot choose yourself.",
+      "UNAUTHORIZED": "Unauthorized",
+      "USER_DISABLED": "The selected colleague is disabled."
+    }
+  },
+  "leaveDetail": {
+    "title": "Leave Detail",
+    "reason": "Reason",
+    "createdAt": "Created",
+    "expiresAt": "Expires",
+    "requester": "Requester",
+    "counterpart": "Counterpart",
+    "substitute": "Substitute",
+    "shift": "Shift",
+    "actionsTitle": "Actions",
+    "actions": {
+      "approve": "Approve",
+      "reject": "Reject",
+      "claim": "Claim",
+      "cancel": "Cancel"
+    },
+    "toast": {
+      "approved": "Leave request approved.",
+      "rejected": "Leave request rejected.",
+      "cancelled": "Leave cancelled."
+    }
+  }
+}
+
+export default translations

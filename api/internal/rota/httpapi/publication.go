@@ -1,0 +1,869 @@
+package httpapi
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"time"
+
+	"github.com/jonathanhu237/rota/api/internal/rota/model"
+	"github.com/jonathanhu237/rota/api/internal/rota/service"
+)
+
+type publicationService interface {
+	ListPublications(ctx context.Context, input service.ListPublicationsInput) (*service.ListPublicationsResult, error)
+	CreatePublication(ctx context.Context, input service.CreatePublicationInput) (*model.Publication, error)
+	UpdatePublication(ctx context.Context, input service.UpdatePublicationInput) (*model.Publication, error)
+	GetPublicationByID(ctx context.Context, id int64) (*model.Publication, error)
+	DeletePublication(ctx context.Context, id int64) error
+	GetCurrentPublication(ctx context.Context) (*model.Publication, error)
+	ListAvailabilitySubmissionSlots(ctx context.Context, publicationID int64, userID string) ([]model.SlotRef, error)
+	CreateAvailabilitySubmission(ctx context.Context, input service.CreateAvailabilitySubmissionInput) (*model.AvailabilitySubmission, error)
+	DeleteAvailabilitySubmission(ctx context.Context, input service.DeleteAvailabilitySubmissionInput) error
+	ListQualifiedPublicationSlotPositions(ctx context.Context, publicationID int64, userID string) ([]*model.QualifiedShift, error)
+	ListAdminAvailability(ctx context.Context, input service.ListAdminAvailabilityInput) (*service.AdminAvailabilityBoardResult, error)
+	GetAdminAvailabilityDetail(ctx context.Context, input service.GetAdminAvailabilityDetailInput) (*service.AdminAvailabilityDetailResult, error)
+	ReplaceAdminAvailability(ctx context.Context, input service.ReplaceAdminAvailabilityInput) (*service.AdminAvailabilityDetailResult, error)
+	GetAssignmentBoard(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error)
+	AutoAssignPublication(ctx context.Context, publicationID int64) (*service.AssignmentBoardResult, error)
+	CreateAssignment(ctx context.Context, input service.CreateAssignmentInput) (*model.Assignment, error)
+	DeleteAssignment(ctx context.Context, input service.DeleteAssignmentInput) error
+	ActivatePublication(ctx context.Context, publicationID int64) (*model.Publication, error)
+	PublishPublication(ctx context.Context, publicationID int64) (*model.Publication, error)
+	EndPublication(ctx context.Context, publicationID int64) (*model.Publication, error)
+	GetPublicationRoster(ctx context.Context, publicationID int64, weekStart *time.Time) (*service.RosterResult, error)
+	GetCurrentRoster(ctx context.Context) (*service.RosterResult, error)
+	ExportScheduleXLSX(ctx context.Context, publicationID int64, viewer *model.User, opts service.ExportScheduleOptions) ([]byte, error)
+}
+
+type PublicationHandler struct {
+	publicationService publicationService
+}
+
+const scheduleXLSXContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+type publicationsResponse struct {
+	Publications []publicationResponse `json:"publications"`
+	Pagination   paginationResponse    `json:"pagination"`
+}
+
+type publicationDetailResponse struct {
+	Publication *publicationResponse `json:"publication"`
+}
+
+type currentPublicationResponse struct {
+	Publication *publicationResponse `json:"publication"`
+}
+
+type submissionsMeResponse struct {
+	Submissions []slotRefResponse `json:"submissions"`
+}
+
+type slotRefResponse struct {
+	SlotID  int64 `json:"slot_id"`
+	Weekday int   `json:"weekday"`
+}
+
+type shiftsMeResponse struct {
+	Shifts []qualifiedShiftResponse `json:"shifts"`
+}
+
+type createPublicationRequest struct {
+	TemplateID         int64     `json:"template_id"`
+	Name               string    `json:"name"`
+	Description        string    `json:"description"`
+	SubmissionStartAt  time.Time `json:"submission_start_at"`
+	SubmissionEndAt    time.Time `json:"submission_end_at"`
+	PlannedActiveFrom  time.Time `json:"planned_active_from"`
+	PlannedActiveUntil time.Time `json:"planned_active_until"`
+}
+
+type updatePublicationRequest struct {
+	Name                     *string    `json:"name"`
+	Description              *string    `json:"description"`
+	PlannedActiveUntil       *time.Time `json:"planned_active_until"`
+	OvertimeEntryWindowHours *float64   `json:"overtime_entry_window_hours"`
+}
+
+type createSubmissionRequest struct {
+	SlotID  int64 `json:"slot_id"`
+	Weekday int   `json:"weekday"`
+}
+
+type createAssignmentRequest struct {
+	UserID     string `json:"user_id"`
+	SlotID     int64  `json:"slot_id"`
+	Weekday    int    `json:"weekday"`
+	PositionID int64  `json:"position_id"`
+}
+
+type replaceAdminAvailabilityRequest struct {
+	Submissions *[]slotRefResponse `json:"submissions"`
+}
+
+func NewPublicationHandler(publicationService publicationService) *PublicationHandler {
+	return &PublicationHandler{publicationService: publicationService}
+}
+
+func (h *PublicationHandler) List(w http.ResponseWriter, r *http.Request) {
+	page, err := parseOptionalInt(r.URL.Query().Get("page"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid page parameter")
+		return
+	}
+
+	pageSize, err := parseOptionalInt(r.URL.Query().Get("page_size"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid page size parameter")
+		return
+	}
+
+	result, err := h.publicationService.ListPublications(r.Context(), service.ListPublicationsInput{
+		Page:     page,
+		PageSize: pageSize,
+	})
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	publications := make([]publicationResponse, 0, len(result.Publications))
+	for _, publication := range result.Publications {
+		publications = append(publications, *newPublicationResponse(publication))
+	}
+
+	writeData(w, http.StatusOK, publicationsResponse{
+		Publications: publications,
+		Pagination: paginationResponse{
+			Page:       result.Page,
+			PageSize:   result.PageSize,
+			Total:      result.Total,
+			TotalPages: result.TotalPages,
+		},
+	})
+}
+
+func (h *PublicationHandler) Create(w http.ResponseWriter, r *http.Request) {
+	var req createPublicationRequest
+	if err := readJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+	if req.TemplateID <= 0 ||
+		req.Name == "" ||
+		req.SubmissionStartAt.IsZero() ||
+		req.SubmissionEndAt.IsZero() ||
+		req.PlannedActiveFrom.IsZero() ||
+		req.PlannedActiveUntil.IsZero() {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+
+	publication, err := h.publicationService.CreatePublication(r.Context(), service.CreatePublicationInput{
+		TemplateID:         req.TemplateID,
+		Name:               req.Name,
+		Description:        req.Description,
+		SubmissionStartAt:  req.SubmissionStartAt,
+		SubmissionEndAt:    req.SubmissionEndAt,
+		PlannedActiveFrom:  req.PlannedActiveFrom,
+		PlannedActiveUntil: req.PlannedActiveUntil,
+	})
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusCreated, publicationDetailResponse{
+		Publication: newPublicationResponse(publication),
+	})
+}
+
+func (h *PublicationHandler) Update(w http.ResponseWriter, r *http.Request) {
+	id, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	var req updatePublicationRequest
+	if err := readJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+
+	publication, err := h.publicationService.UpdatePublication(r.Context(), service.UpdatePublicationInput{
+		ID:                       id,
+		Name:                     req.Name,
+		Description:              req.Description,
+		PlannedActiveUntil:       req.PlannedActiveUntil,
+		OvertimeEntryWindowHours: req.OvertimeEntryWindowHours,
+	})
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, publicationDetailResponse{
+		Publication: newPublicationResponse(publication),
+	})
+}
+
+func (h *PublicationHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	id, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	publication, err := h.publicationService.GetPublicationByID(r.Context(), id)
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, publicationDetailResponse{
+		Publication: newPublicationResponse(publication),
+	})
+}
+
+func (h *PublicationHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	id, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	if err := h.publicationService.DeletePublication(r.Context(), id); err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *PublicationHandler) GetCurrent(w http.ResponseWriter, r *http.Request) {
+	publication, err := h.publicationService.GetCurrentPublication(r.Context())
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, currentPublicationResponse{
+		Publication: newPublicationResponse(publication),
+	})
+}
+
+func (h *PublicationHandler) ListMySubmissionSlots(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUserFromRequest(r)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+		return
+	}
+
+	publicationID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	slots, err := h.publicationService.ListAvailabilitySubmissionSlots(r.Context(), publicationID, user.ID)
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	responseSlots := make([]slotRefResponse, 0, len(slots))
+	for _, slot := range slots {
+		responseSlots = append(responseSlots, slotRefResponse{
+			SlotID:  slot.SlotID,
+			Weekday: slot.Weekday,
+		})
+	}
+
+	writeData(w, http.StatusOK, submissionsMeResponse{
+		Submissions: responseSlots,
+	})
+}
+
+func (h *PublicationHandler) CreateSubmission(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUserFromRequest(r)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+		return
+	}
+
+	publicationID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	var req createSubmissionRequest
+	if err := readJSONAllowUnknownFields(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+	if req.SlotID <= 0 || req.Weekday < 1 || req.Weekday > 7 {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+
+	if _, err := h.publicationService.CreateAvailabilitySubmission(r.Context(), service.CreateAvailabilitySubmissionInput{
+		PublicationID: publicationID,
+		UserID:        user.ID,
+		SlotID:        req.SlotID,
+		Weekday:       req.Weekday,
+	}); err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+}
+
+func (h *PublicationHandler) DeleteSubmission(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUserFromRequest(r)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+		return
+	}
+
+	publicationID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	slotID, err := parsePathID(r, "slot_id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid slot id")
+		return
+	}
+	weekday, err := parsePathID(r, "weekday")
+	if err != nil || weekday < 1 || weekday > 7 {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid weekday")
+		return
+	}
+
+	if err := h.publicationService.DeleteAvailabilitySubmission(r.Context(), service.DeleteAvailabilitySubmissionInput{
+		PublicationID: publicationID,
+		UserID:        user.ID,
+		SlotID:        slotID,
+		Weekday:       int(weekday),
+	}); err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *PublicationHandler) ListMyQualifiedShifts(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUserFromRequest(r)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+		return
+	}
+
+	publicationID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	shifts, err := h.publicationService.ListQualifiedPublicationSlotPositions(r.Context(), publicationID, user.ID)
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	responseShifts := make([]qualifiedShiftResponse, 0, len(shifts))
+	for _, shift := range shifts {
+		responseShifts = append(responseShifts, newQualifiedShiftResponse(shift))
+	}
+
+	writeData(w, http.StatusOK, shiftsMeResponse{
+		Shifts: responseShifts,
+	})
+}
+
+func (h *PublicationHandler) ListAdminAvailability(w http.ResponseWriter, r *http.Request) {
+	publicationID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	page, err := parseOptionalInt(r.URL.Query().Get("page"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid page parameter")
+		return
+	}
+
+	pageSize, err := parseOptionalInt(r.URL.Query().Get("page_size"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid page size parameter")
+		return
+	}
+
+	result, err := h.publicationService.ListAdminAvailability(r.Context(), service.ListAdminAvailabilityInput{
+		PublicationID: publicationID,
+		Page:          page,
+		PageSize:      pageSize,
+		Search:        r.URL.Query().Get("search"),
+	})
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, newAdminAvailabilityBoardResponse(result))
+}
+
+func (h *PublicationHandler) GetAdminAvailabilityDetail(w http.ResponseWriter, r *http.Request) {
+	publicationID, userID, ok := h.parseAdminAvailabilityPath(w, r)
+	if !ok {
+		return
+	}
+
+	result, err := h.publicationService.GetAdminAvailabilityDetail(r.Context(), service.GetAdminAvailabilityDetailInput{
+		PublicationID: publicationID,
+		UserID:        userID,
+	})
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, newAdminAvailabilityDetailResponse(result))
+}
+
+func (h *PublicationHandler) ReplaceAdminAvailability(w http.ResponseWriter, r *http.Request) {
+	publicationID, userID, ok := h.parseAdminAvailabilityPath(w, r)
+	if !ok {
+		return
+	}
+
+	var req replaceAdminAvailabilityRequest
+	if err := readJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+	if req.Submissions == nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+
+	submissions := make([]model.SlotRef, 0, len(*req.Submissions))
+	for _, submission := range *req.Submissions {
+		if submission.SlotID <= 0 || submission.Weekday < 1 || submission.Weekday > 7 {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+			return
+		}
+		submissions = append(submissions, model.SlotRef{
+			SlotID:  submission.SlotID,
+			Weekday: submission.Weekday,
+		})
+	}
+
+	result, err := h.publicationService.ReplaceAdminAvailability(r.Context(), service.ReplaceAdminAvailabilityInput{
+		PublicationID: publicationID,
+		UserID:        userID,
+		Submissions:   submissions,
+	})
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, newAdminAvailabilityDetailResponse(result))
+}
+
+func (h *PublicationHandler) parseAdminAvailabilityPath(w http.ResponseWriter, r *http.Request) (int64, string, bool) {
+	publicationID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return 0, "", false
+	}
+
+	userID, err := parsePathUserID(r, "user_id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid user id")
+		return 0, "", false
+	}
+
+	return publicationID, userID, true
+}
+
+func (h *PublicationHandler) GetAssignmentBoard(w http.ResponseWriter, r *http.Request) {
+	publicationID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	result, err := h.publicationService.GetAssignmentBoard(r.Context(), publicationID)
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, newAssignmentBoardResponse(result))
+}
+
+func (h *PublicationHandler) AutoAssign(w http.ResponseWriter, r *http.Request) {
+	publicationID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	result, err := h.publicationService.AutoAssignPublication(r.Context(), publicationID)
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, newAssignmentBoardResponse(result))
+}
+
+func (h *PublicationHandler) CreateAssignment(w http.ResponseWriter, r *http.Request) {
+	publicationID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	var req createAssignmentRequest
+	if err := readJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+	if req.UserID == "" || req.SlotID <= 0 || req.Weekday < 1 || req.Weekday > 7 || req.PositionID <= 0 {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+
+	if _, err := h.publicationService.CreateAssignment(r.Context(), service.CreateAssignmentInput{
+		PublicationID: publicationID,
+		UserID:        req.UserID,
+		SlotID:        req.SlotID,
+		Weekday:       req.Weekday,
+		PositionID:    req.PositionID,
+	}); err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+}
+
+func (h *PublicationHandler) DeleteAssignment(w http.ResponseWriter, r *http.Request) {
+	publicationID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	assignmentID, err := parsePathID(r, "assignment_id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid assignment id")
+		return
+	}
+
+	if err := h.publicationService.DeleteAssignment(r.Context(), service.DeleteAssignmentInput{
+		PublicationID: publicationID,
+		AssignmentID:  assignmentID,
+	}); err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *PublicationHandler) Activate(w http.ResponseWriter, r *http.Request) {
+	publicationID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	publication, err := h.publicationService.ActivatePublication(r.Context(), publicationID)
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, publicationDetailResponse{
+		Publication: newPublicationResponse(publication),
+	})
+}
+
+func (h *PublicationHandler) Publish(w http.ResponseWriter, r *http.Request) {
+	publicationID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	publication, err := h.publicationService.PublishPublication(r.Context(), publicationID)
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, publicationDetailResponse{
+		Publication: newPublicationResponse(publication),
+	})
+}
+
+func (h *PublicationHandler) End(w http.ResponseWriter, r *http.Request) {
+	publicationID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	publication, err := h.publicationService.EndPublication(r.Context(), publicationID)
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, publicationDetailResponse{
+		Publication: newPublicationResponse(publication),
+	})
+}
+
+func (h *PublicationHandler) GetRoster(w http.ResponseWriter, r *http.Request) {
+	publicationID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	weekStart, err := parseOptionalWeekStart(r.URL.Query().Get("week"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid week parameter")
+		return
+	}
+
+	result, err := h.publicationService.GetPublicationRoster(r.Context(), publicationID, weekStart)
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, newRosterResponse(result))
+}
+
+func (h *PublicationHandler) ExportScheduleXLSX(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUserFromRequest(r)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+		return
+	}
+
+	publicationID, err := parsePathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid publication id")
+		return
+	}
+
+	workbook, err := h.publicationService.ExportScheduleXLSX(r.Context(), publicationID, user, service.ExportScheduleOptions{
+		Language: r.URL.Query().Get("lang"),
+	})
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", scheduleXLSXContentType)
+	w.Header().Set("Content-Disposition", `attachment; filename="schedule.xlsx"`)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(workbook)
+}
+
+func (h *PublicationHandler) GetCurrentRoster(w http.ResponseWriter, r *http.Request) {
+	result, err := h.publicationService.GetCurrentRoster(r.Context())
+	if err != nil {
+		h.writePublicationServiceError(w, err)
+		return
+	}
+
+	writeData(w, http.StatusOK, newRosterResponse(result))
+}
+
+func newAssignmentBoardResponse(result *service.AssignmentBoardResult) assignmentBoardResponse {
+	if result == nil {
+		return assignmentBoardResponse{
+			Publication: nil,
+			Slots:       make([]assignmentBoardSlotResponse, 0),
+			Employees:   make([]assignmentBoardEmployeeResponse, 0),
+		}
+	}
+
+	employees := make([]assignmentBoardEmployeeResponse, 0, len(result.Employees))
+	for _, employee := range result.Employees {
+		positionIDs := make([]int64, len(employee.PositionIDs))
+		copy(positionIDs, employee.PositionIDs)
+		submittedSlots := make([]assignmentBoardSlotRefValue, 0, len(employee.SubmittedSlots))
+		for _, submittedSlot := range employee.SubmittedSlots {
+			submittedSlots = append(submittedSlots, assignmentBoardSlotRefValue{
+				SlotID:  submittedSlot.SlotID,
+				Weekday: submittedSlot.Weekday,
+			})
+		}
+		employees = append(employees, assignmentBoardEmployeeResponse{
+			UserID:         employee.UserID,
+			Name:           employee.Name,
+			Email:          employee.Email,
+			PositionIDs:    positionIDs,
+			SubmittedSlots: submittedSlots,
+		})
+	}
+
+	responseSlots := make([]assignmentBoardSlotResponse, 0, len(result.Slots))
+	for _, slotResult := range result.Slots {
+		positions := make([]assignmentBoardPositionResponse, 0, len(slotResult.Positions))
+		for _, positionResult := range slotResult.Positions {
+			assignments := make([]assignmentResponse, 0, len(positionResult.Assignments))
+			for _, assignment := range positionResult.Assignments {
+				assignments = append(assignments, assignmentResponse{
+					AssignmentID: assignment.AssignmentID,
+					UserID:       assignment.UserID,
+					Name:         assignment.Name,
+					Email:        assignment.Email,
+				})
+			}
+
+			positions = append(positions, assignmentBoardPositionResponse{
+				Position:          newPublicationPositionResponse(positionResult.Position),
+				RequiredHeadcount: positionResult.RequiredHeadcount,
+				Assignments:       assignments,
+			})
+		}
+
+		responseSlots = append(responseSlots, assignmentBoardSlotResponse{
+			Slot:      newPublicationSlotResponse(slotResult.Slot),
+			Positions: positions,
+		})
+	}
+
+	return assignmentBoardResponse{
+		Publication: newPublicationResponse(result.Publication),
+		Slots:       responseSlots,
+		Employees:   employees,
+	}
+}
+
+func newRosterResponse(result *service.RosterResult) rosterResponse {
+	if result == nil {
+		return rosterResponse{
+			Publication: nil,
+			Weekdays:    make([]rosterWeekdayResponse, 0),
+		}
+	}
+
+	weekdays := make([]rosterWeekdayResponse, 0, len(result.Weekdays))
+	for _, weekday := range result.Weekdays {
+		slots := make([]rosterSlotResponse, 0, len(weekday.Slots))
+		for _, slotResult := range weekday.Slots {
+			positions := make([]rosterPositionResponse, 0, len(slotResult.Positions))
+			for _, positionResult := range slotResult.Positions {
+				assignments := make([]rosterAssignmentResponse, 0, len(positionResult.Assignments))
+				for _, assignment := range positionResult.Assignments {
+					assignments = append(assignments, rosterAssignmentResponse{
+						AssignmentID: assignment.AssignmentID,
+						UserID:       assignment.UserID,
+						Name:         assignment.Name,
+					})
+				}
+
+				positions = append(positions, rosterPositionResponse{
+					Position:          newPublicationPositionResponse(positionResult.Position),
+					RequiredHeadcount: positionResult.RequiredHeadcount,
+					Assignments:       assignments,
+				})
+			}
+
+			slots = append(slots, rosterSlotResponse{
+				Slot:           newPublicationSlotResponse(slotResult.Slot),
+				OccurrenceDate: slotResult.OccurrenceDate.Format("2006-01-02"),
+				Positions:      positions,
+			})
+		}
+
+		weekdays = append(weekdays, rosterWeekdayResponse{
+			Weekday: weekday.Weekday,
+			Slots:   slots,
+		})
+	}
+
+	weekStart := ""
+	if !result.WeekStart.IsZero() {
+		weekStart = result.WeekStart.Format("2006-01-02")
+	}
+	return rosterResponse{
+		Publication: newPublicationResponse(result.Publication),
+		WeekStart:   weekStart,
+		Weekdays:    weekdays,
+	}
+}
+
+func (h *PublicationHandler) writePublicationServiceError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, service.ErrInvalidInput):
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request")
+	case errors.Is(err, service.ErrInvalidPublicationWindow):
+		writeError(w, http.StatusBadRequest, "INVALID_PUBLICATION_WINDOW", "Invalid publication window")
+	case errors.Is(err, service.ErrInvalidOccurrenceDate):
+		writeError(w, http.StatusBadRequest, "INVALID_OCCURRENCE_DATE", "Invalid occurrence date")
+	case errors.Is(err, service.ErrPublicationAlreadyExists):
+		writeError(w, http.StatusConflict, "PUBLICATION_ALREADY_EXISTS", "Publication already exists")
+	case errors.Is(err, service.ErrPublicationNotFound):
+		writeError(w, http.StatusNotFound, "PUBLICATION_NOT_FOUND", "Publication not found")
+	case errors.Is(err, service.ErrPublicationNotDeletable):
+		writeError(w, http.StatusConflict, "PUBLICATION_NOT_DELETABLE", "Publication is not deletable")
+	case errors.Is(err, service.ErrPublicationNotCollecting):
+		writeError(w, http.StatusConflict, "PUBLICATION_NOT_COLLECTING", "Publication is not collecting submissions")
+	case errors.Is(err, service.ErrPublicationNotMutable):
+		writeError(w, http.StatusConflict, "PUBLICATION_NOT_MUTABLE", "Publication is not mutable")
+	case errors.Is(err, service.ErrPublicationNotAssigning):
+		writeError(w, http.StatusConflict, "PUBLICATION_NOT_ASSIGNING", "Publication is not assigning")
+	case errors.Is(err, service.ErrPublicationNotPublished):
+		writeError(w, http.StatusConflict, "PUBLICATION_NOT_PUBLISHED", "Publication is not published")
+	case errors.Is(err, service.ErrPublicationNotActive):
+		writeError(w, http.StatusConflict, "PUBLICATION_NOT_ACTIVE", "Publication is not active")
+	case errors.Is(err, service.ErrTemplateNotFound):
+		writeError(w, http.StatusNotFound, "TEMPLATE_NOT_FOUND", "Template not found")
+	case errors.Is(err, service.ErrTemplateSlotNotFound):
+		writeError(w, http.StatusNotFound, "TEMPLATE_SLOT_NOT_FOUND", "Template slot not found")
+	case errors.Is(err, service.ErrTemplateSlotPositionNotFound):
+		writeError(w, http.StatusNotFound, "TEMPLATE_SLOT_POSITION_NOT_FOUND", "Template slot position not found")
+	case errors.Is(err, service.ErrUserNotFound):
+		writeError(w, http.StatusNotFound, "USER_NOT_FOUND", "User not found")
+	case errors.Is(err, service.ErrUserDisabled):
+		writeError(w, http.StatusConflict, "USER_DISABLED", "User is disabled")
+	case errors.Is(err, service.ErrAssignmentUserAlreadyInSlot):
+		writeError(w, http.StatusConflict, "ASSIGNMENT_USER_ALREADY_IN_SLOT", "User is already assigned in this slot")
+	case errors.Is(err, service.ErrNotQualified):
+		writeError(w, http.StatusForbidden, "NOT_QUALIFIED", "User is not qualified for this shift")
+	case errors.Is(err, service.ErrSchedulingRetryable):
+		writeError(w, http.StatusServiceUnavailable, "SCHEDULING_RETRYABLE", "Scheduling conflict, please retry")
+	default:
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+	}
+}
+
+func parseOptionalWeekStart(raw string) (*time.Time, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	parsed, err := time.Parse("2006-01-02", raw)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
+}

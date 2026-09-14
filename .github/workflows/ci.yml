@@ -6,12 +6,14 @@ on:
     branches:
       - main
 
+# The npm-generated admin app and the Go API are the active product; CI covers
+# only these maintained applications.
 jobs:
-  backend-test:
+  api-test:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17
+        image: postgres:18.6-trixie
         env:
           POSTGRES_USER: rota
           POSTGRES_PASSWORD: pa55word
@@ -28,87 +30,94 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: backend/go.mod
-          cache-dependency-path: backend/go.sum
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
 
-      - name: Add Go bin to PATH
-        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: Install goose
-        working-directory: backend
-        run: go install -tags="no_clickhouse no_libsql no_mssql no_mysql no_sqlite3 no_vertica no_ydb" github.com/pressly/goose/v3/cmd/goose@v3.27.0
-
-      - name: Run backend vet
-        working-directory: backend
+      - name: Run API vet
+        working-directory: api
         run: go vet ./...
 
-      - name: Run backend tests
-        working-directory: backend
+      - name: Run API tests
+        working-directory: api
         run: go test ./...
 
-      - name: Apply migrations for integration tests
-        working-directory: backend
-        run: goose -dir ../migrations postgres "postgres://rota:pa55word@localhost:5432/rota?sslmode=disable" up
+      - name: Build API
+        working-directory: api
+        run: go build ./...
 
-      - name: Run backend integration tests
-        working-directory: backend
+      - name: Apply migrations for integration tests
+        run: |
+          docker build -t rota-migrate ./api/migrations
+          docker run --rm --network host \
+            -e PGHOST=127.0.0.1 -e PGPORT=5432 -e PGDATABASE=rota \
+            -e PGUSER=rota -e PGPASSWORD=pa55word -e PGSSLMODE=disable \
+            rota-migrate up
+
+      - name: Run API integration tests
+        working-directory: api
         env:
+          TEST_POSTGRES_DSN: postgres://rota:pa55word@localhost:5432/rota?sslmode=disable
           POSTGRES_HOST: localhost
           POSTGRES_PORT: "5432"
           POSTGRES_USER: rota
           POSTGRES_PASSWORD: pa55word
           POSTGRES_DB: rota
-        run: go test -tags=integration ./...
+        # Integration packages share this disposable database and reset
+        # common state; serialize packages to prevent fixture interference.
+        run: go test -p 1 -tags=integration ./...
 
-  frontend-test:
+  admin-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 10.30.3
+          version: 11.24.0
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          cache-dependency-path: admin/pnpm-lock.yaml
 
-      - name: Install frontend dependencies
-        working-directory: frontend
+      - name: Install admin dependencies
+        working-directory: admin
         run: pnpm install --frozen-lockfile
 
-      - name: Run frontend lint
-        working-directory: frontend
+      - name: Run admin lint
+        working-directory: admin
         run: pnpm lint
 
-      - name: Run frontend tests
-        working-directory: frontend
+      - name: Run admin typecheck
+        working-directory: admin
+        run: pnpm check
+
+      - name: Run admin tests
+        working-directory: admin
         run: pnpm test
 
-      - name: Build frontend
-        working-directory: frontend
+      - name: Build admin
+        working-directory: admin
         run: pnpm build
 
   docker-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-
       - uses: docker/setup-buildx-action@v3
-
-      - name: Build backend image
-        run: docker build -t rota-backend ./backend
-
-      - name: Build frontend image
-        run: docker build -t rota-frontend ./frontend
+      - name: Build API image
+        run: docker build -t rota-api ./api
+      - name: Build admin image
+        run: docker build -t rota-admin ./admin
+      - name: Build migration image
+        run: docker build -t rota-migrate ./api/migrations
 
   migrations-roundtrip:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17
+        image: postgres:18.6-trixie
         env:
           POSTGRES_USER: rota
           POSTGRES_PASSWORD: pa55word
@@ -122,44 +131,32 @@ jobs:
           --health-retries=5
     steps:
       - uses: actions/checkout@v5
-
       - uses: actions/setup-go@v5
         with:
-          go-version-file: backend/go.mod
-
-      - name: Add Go bin to PATH
-        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: Install goose
-        working-directory: backend
-        run: go install -tags="no_clickhouse no_libsql no_mssql no_mysql no_sqlite3 no_vertica no_ydb" github.com/pressly/goose/v3/cmd/goose@v3.27.0
-
+          go-version-file: api/go.mod
+      - name: Build migration image
+        run: docker build -t rota-migrate ./api/migrations
       - name: Run migration roundtrip
         shell: bash
         run: |
           set -euo pipefail
-          db_url="postgres://rota:pa55word@localhost:5432/rota?sslmode=disable"
-          goose -dir migrations postgres "$db_url" up
-          goose -dir migrations postgres "$db_url" down
-          goose -dir migrations postgres "$db_url" up
+          migration_env=(
+            --network host
+            -e PGHOST=127.0.0.1 -e PGPORT=5432 -e PGDATABASE=rota
+            -e PGUSER=rota -e PGPASSWORD=pa55word -e PGSSLMODE=disable
+          )
+          docker run --rm "${migration_env[@]}" rota-migrate up
+          docker run --rm "${migration_env[@]}" rota-migrate down 1
+          docker run --rm "${migration_env[@]}" rota-migrate up
 
-          latest_version="$(
-            find migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' \
-              | sort \
-              | tail -n1 \
-              | cut -d_ -f1 \
-              | sed 's/^0*//'
-          )"
+          latest_version="$(find api/migrations -maxdepth 1 -type f -name '*.up.sql' -printf '%f\n' \
+            | sort -V | tail -n1 | cut -d_ -f1 | sed 's/^0*//')"
           latest_version="${latest_version:-0}"
-          current_version="$(
-            goose -dir migrations postgres "$db_url" version 2>&1 \
-              | grep -Eo 'version [0-9]+' \
-              | awk '{print $2}' \
-              | tail -n1
-          )"
-
+          current_version="$(docker run --rm "${migration_env[@]}" --entrypoint migrate rota-migrate \
+            -path=/migrations -database="postgres://rota:pa55word@127.0.0.1:5432/rota?sslmode=disable" version 2>&1 \
+            | tail -n1 | tr -d '[:space:]')"
           if [[ "$current_version" != "$latest_version" ]]; then
-            echo "expected goose version $latest_version, got $current_version"
+            echo "expected migration version $latest_version, got $current_version"
             exit 1
           fi
 
@@ -167,18 +164,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-
       - uses: actions/setup-go@v5
         with:
-          go-version-file: backend/go.mod
-          cache-dependency-path: backend/go.sum
-
-      - name: Add Go bin to PATH
-        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
-
-      - name: Run govulncheck
-        working-directory: backend
-        run: govulncheck ./...
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+      - name: Install pinned govulncheck
+        run: |
+          mkdir -p "${RUNNER_TEMP}/bin"
+          GOBIN="${RUNNER_TEMP}/bin" go install golang.org/x/vuln/cmd/govulncheck@v1.2.0
+      - name: Scan API dependencies and reachable symbols
+        working-directory: api
+        run: "${RUNNER_TEMP}/bin/govulncheck" ./...

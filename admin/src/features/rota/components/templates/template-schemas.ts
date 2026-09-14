@@ -1,0 +1,99 @@
+import { z } from "zod/v3"
+
+const timePattern = /^\d{2}:\d{2}$/
+
+export function createTemplateSchema(
+  t: any,
+) {
+  return z.object({
+    name: z
+      .string()
+      .trim()
+      .min(1, t("templates.validation.nameRequired"))
+      .max(100, t("templates.validation.nameTooLong")),
+    description: z
+      .string()
+      .trim()
+      .max(500, t("templates.validation.descriptionTooLong")),
+  })
+}
+
+export function createTemplateSlotSchema(
+  t: any,
+) {
+  return z
+    .object({
+      weekdays: z
+        .array(
+          z
+            .number({
+              invalid_type_error: t("templates.validation.weekdayRequired"),
+            })
+            .int()
+            .min(1, t("templates.validation.invalidWeekday"))
+            .max(7, t("templates.validation.invalidWeekday")),
+          {
+            invalid_type_error: t("templates.validation.weekdayRequired"),
+            required_error: t("templates.validation.weekdayRequired"),
+          },
+        )
+        .min(1, t("templates.validation.weekdayRequired"))
+        .transform((weekdays) =>
+          Array.from(new Set(weekdays)).sort((left, right) => left - right),
+        ),
+      start_time: z
+        .string()
+        .trim()
+        .regex(timePattern, t("templates.validation.invalidShiftTime")),
+      end_time: z
+        .string()
+        .trim()
+        .regex(timePattern, t("templates.validation.invalidShiftTime")),
+    })
+    .superRefine((value, ctx) => {
+      if (value.end_time <= value.start_time) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["end_time"],
+          message: t("templates.validation.invalidShiftTime"),
+        })
+      }
+    })
+}
+
+export function createTemplateSlotPositionSchema(
+  t: any,
+) {
+  return z.object({
+    position_id: z
+      .number({
+        invalid_type_error: t("templates.validation.positionRequired"),
+      })
+      .int()
+      .min(1, t("templates.validation.positionRequired")),
+    required_headcount: z
+      .number({
+        invalid_type_error: t("templates.validation.invalidHeadcount"),
+      })
+      .int()
+      .min(1, t("templates.validation.invalidHeadcount")),
+    attendance_responsible: z.boolean(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.attendance_responsible && value.required_headcount !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["required_headcount"],
+        message: t("templates.validation.responsibleHeadcount"),
+      })
+    }
+  })
+}
+
+export type TemplateFormValues = z.infer<ReturnType<typeof createTemplateSchema>>
+export type TemplateSlotFormValues = z.infer<
+  ReturnType<typeof createTemplateSlotSchema>
+>
+export type TemplateSlotPositionFormValues = z.infer<
+  ReturnType<typeof createTemplateSlotPositionSchema>
+>

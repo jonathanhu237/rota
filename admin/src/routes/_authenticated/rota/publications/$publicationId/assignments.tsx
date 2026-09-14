@@ -1,0 +1,297 @@
+import { useState } from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Link, createFileRoute, redirect } from "@tanstack/react-router"
+import { CalendarCheck, DownloadIcon } from "lucide-react"
+import { useRotaTranslation as useTranslation } from "@/features/rota/i18n"
+
+import { AssignmentBoard } from "@/features/rota/components/assignments/assignment-board"
+import { AutoAssignDialog } from "@/features/rota/components/publications/auto-assign-dialog"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { Button, buttonVariants } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import { useToast } from "@/components/ui/toast"
+import { getTranslatedApiError } from "@/features/rota/api-error"
+import {
+  downloadPublicationScheduleXLSX,
+  normalizeScheduleExportLanguage,
+} from "@/features/rota/publications"
+import {
+  autoAssignPublication,
+  createAssignment,
+  currentUserQueryOptions,
+  deleteAssignment,
+  publicationAssignmentBoardQueryOptions,
+  toRotaUser,
+} from "@/features/rota/queries"
+
+export const Route = createFileRoute(
+  "/_authenticated/rota/publications/$publicationId/assignments",
+)({
+  beforeLoad: async ({ context }) => {
+    const user = toRotaUser(await context.queryClient.ensureQueryData(currentUserQueryOptions(context.api)))
+    if (!user.is_admin && !user.can_manage) {
+      throw redirect({ to: "/" })
+    }
+  },
+  component: PublicationAssignmentsPage,
+})
+
+export function PublicationAssignmentsPage() {
+  const { api } = Route.useRouteContext()
+  const { publicationId } = Route.useParams()
+  const numericPublicationID = Number(publicationId)
+
+  const { t, i18n } = useTranslation()
+  const { data: currentUser } = useQuery(currentUserQueryOptions(api))
+  const canManage = currentUser?.can_manage === true
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const [isAutoAssignDialogOpen, setIsAutoAssignDialogOpen] = useState(false)
+
+  const boardQuery = useQuery(publicationAssignmentBoardQueryOptions(numericPublicationID))
+  const board = boardQuery.data
+
+  const invalidateBoard = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ["publications", "detail", numericPublicationID, "board"],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["publications", "detail", numericPublicationID],
+      }),
+      queryClient.invalidateQueries({ queryKey: ["publications", "list"] }),
+    ])
+  }
+
+  const updateAssignmentMutation = useMutation({
+    mutationFn: async (
+      action:
+        | {
+            type: "assign"
+            userID: string
+            slotID: number
+            weekday: number
+            positionID: number
+          }
+        | { type: "unassign"; assignmentID: number },
+    ) => {
+      if (action.type === "assign") {
+        await createAssignment(numericPublicationID, {
+          user_id: action.userID,
+          slot_id: action.slotID,
+          weekday: action.weekday,
+          position_id: action.positionID,
+        })
+        return
+      }
+
+      await deleteAssignment(numericPublicationID, action.assignmentID)
+    },
+    onSuccess: async () => {
+      await invalidateBoard()
+    },
+    onError: async (error) => {
+      await invalidateBoard()
+      toast({
+        variant: "destructive",
+        description: getTranslatedApiError(
+          t,
+          error,
+          "publications.errors",
+          "publications.errors.INTERNAL_ERROR",
+        ),
+      })
+    },
+  })
+
+  const autoAssignMutation = useMutation({
+    mutationFn: () => autoAssignPublication(numericPublicationID),
+    onSuccess: async () => {
+      setIsAutoAssignDialogOpen(false)
+      await invalidateBoard()
+      toast({
+        variant: "default",
+        description: t("assignments.success.autoAssigned"),
+      })
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        description: getTranslatedApiError(
+          t,
+          error,
+          "publications.errors",
+          "publications.errors.INTERNAL_ERROR",
+        ),
+      })
+    },
+  })
+
+  const scheduleDownloadMutation = useMutation({
+    mutationFn: async () => {
+      if (!board?.publication) {
+        throw new Error("Missing publication")
+      }
+      await downloadPublicationScheduleXLSX(
+        board.publication,
+        normalizeScheduleExportLanguage(i18n.resolvedLanguage ?? i18n.language),
+      )
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        description: t("assignments.downloadFailed"),
+      })
+    },
+  })
+
+  if (boardQuery.isLoading) {
+    return (
+      <div className="grid gap-4">
+        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-[520px] w-full" />
+      </div>
+    )
+  }
+
+  if (boardQuery.isError || !board) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("assignments.title")}</CardTitle>
+          <CardDescription>{t("assignments.loadError")}</CardDescription>
+        </CardHeader>
+      </Card>
+    )
+  }
+
+  const publicationState = board.publication.state
+  const isReadOnly =
+    !canManage ||
+    (publicationState !== "ASSIGNING" &&
+      publicationState !== "PUBLISHED" &&
+      publicationState !== "ACTIVE")
+  const canAutoAssign = canManage && board.publication.state === "ASSIGNING"
+  const canDownloadSchedule =
+    publicationState === "ASSIGNING" ||
+    publicationState === "PUBLISHED" ||
+    publicationState === "ACTIVE"
+  const isPending =
+    updateAssignmentMutation.isPending || autoAssignMutation.isPending
+
+  return (
+    <>
+      <AutoAssignDialog
+        open={isAutoAssignDialogOpen}
+        publication={board.publication}
+        isPending={autoAssignMutation.isPending}
+        onConfirm={() => autoAssignMutation.mutate()}
+        onOpenChange={setIsAutoAssignDialogOpen}
+      />
+      <div className="grid gap-6">
+        <Card className="overflow-visible">
+          <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-1">
+              <CardTitle>{t("assignments.title")}</CardTitle>
+              <CardDescription>
+                {t(
+                  isReadOnly
+                    ? "assignments.descriptionReadOnly"
+                    : "assignments.descriptionEditable",
+                  {
+                    name: board.publication.name,
+                  },
+                )}
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                className={buttonVariants({ variant: "outline" })}
+                params={{ publicationId }}
+                to="/rota/publications/$publicationId/availability"
+              >
+                <CalendarCheck data-icon="inline-start" />
+                {t("publications.actions.manageAvailability")}
+              </Link>
+              {canDownloadSchedule && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={scheduleDownloadMutation.isPending}
+                  onClick={() => scheduleDownloadMutation.mutate()}
+                >
+                  <DownloadIcon data-icon="inline-start" />
+                  {t(
+                    scheduleDownloadMutation.isPending
+                      ? "assignments.downloading"
+                      : "assignments.downloadExcel",
+                  )}
+                </Button>
+              )}
+              {canAutoAssign && (
+                <Button
+                  type="button"
+                  onClick={() => setIsAutoAssignDialogOpen(true)}
+                  disabled={isPending}
+                >
+                  {t("assignments.autoAssign")}
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {board.publication.state === "PUBLISHED" && (
+              <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                {t("publications.assignmentBoard.publishedWarning")}
+              </div>
+            )}
+            {board.publication.state === "ACTIVE" && (
+              <div className="mb-4 rounded-xl border border-orange-300 bg-orange-50 px-4 py-3 text-sm text-orange-950">
+                {t("publications.assignmentBoard.activeWarning")}
+              </div>
+            )}
+            <AssignmentBoard
+              slots={board.slots}
+              employees={board.employees}
+              isPending={isPending}
+              isReadOnly={isReadOnly}
+              onAssign={(userID, slotID, weekday, positionID) =>
+                updateAssignmentMutation.mutate({
+                  type: "assign",
+                  userID,
+                  slotID,
+                  weekday,
+                  positionID,
+                })
+              }
+              onDraftAssign={(userID, slotID, weekday, positionID) =>
+                createAssignment(numericPublicationID, {
+                  user_id: userID,
+                  slot_id: slotID,
+                  weekday,
+                  position_id: positionID,
+                })
+              }
+              onDraftRefresh={invalidateBoard}
+              onDraftUnassign={(assignmentID) =>
+                deleteAssignment(numericPublicationID, assignmentID)
+              }
+              onUnassign={(assignmentID) =>
+                updateAssignmentMutation.mutate({
+                  type: "unassign",
+                  assignmentID,
+                })
+              }
+            />
+          </CardContent>
+        </Card>
+      </div>
+    </>
+  )
+}

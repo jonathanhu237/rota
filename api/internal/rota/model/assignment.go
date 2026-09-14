@@ -1,0 +1,68 @@
+package model
+
+import (
+	"errors"
+	"time"
+)
+
+var (
+	ErrAssignmentUserAlreadyInSlot = errors.New("assignment user already in slot")
+	ErrSchedulingRetryable         = errors.New("scheduling retryable")
+)
+
+type Assignment struct {
+	ID            int64
+	PublicationID int64
+	UserID        string
+	SlotID        int64
+	Weekday       int
+	PositionID    int64
+	CreatedAt     time.Time
+}
+
+type PublicationShift struct {
+	ID                int64
+	SlotID            int64
+	TemplateID        int64
+	Weekday           int
+	StartTime         string
+	EndTime           string
+	PositionID        int64
+	PositionName      string
+	RequiredHeadcount int
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
+type AssignmentCandidate struct {
+	SlotID     int64
+	Weekday    int
+	PositionID int64
+	UserID     string
+	Name       string
+	Email      string
+}
+
+type AssignmentBoardEmployee struct {
+	UserID         string
+	Name           string
+	Email          string
+	PositionIDs    []int64
+	SubmittedSlots []SubmittedSlot
+}
+
+type SubmittedSlot struct {
+	SlotID  int64
+	Weekday int
+}
+
+type AssignmentParticipant struct {
+	AssignmentID int64
+	SlotID       int64
+	Weekday      int
+	PositionID   int64
+	UserID       string
+	Name         string
+	Email        string
+	CreatedAt    time.Time
+}

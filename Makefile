@@ -1,49 +1,67 @@
--include .env
+GOVULNCHECK_VERSION ?= v1.2.0
+GOVULNCHECK_GO_VERSION ?= go@1.27.0
 
-export
+.PHONY: up down logs logs-admin logs-mailpit migrate-up migrate-down-one migrate-status build test api-test api-build api-vet api-integration admin-install admin-dev admin-lint admin-check admin-test admin-build vuln-check
 
-GOOSE_DRIVER = postgres
-GOOSE_DBSTRING = postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
-GOOSE_MIGRATION_DIR = ./migrations
-SCENARIO ?= basic
+up:
+	docker compose --profile development up -d api admin mailpit
 
-.PHONY: run-backend run-frontend migrate-up migrate-down migrate-reset migrate-status seed test-backend test-integration prod-up prod-down prod-logs prod-pull
+down:
+	docker compose down
 
-run-backend:
-	@cd backend && go run ./cmd/server
+logs:
+	docker compose logs -f api
 
-run-frontend:
-	@cd frontend && pnpm dev
+logs-admin:
+	docker compose logs -f admin
+
+logs-mailpit:
+	docker compose logs -f mailpit
 
 migrate-up:
-	@GOOSE_DRIVER=$(GOOSE_DRIVER) GOOSE_DBSTRING=$(GOOSE_DBSTRING) GOOSE_MIGRATION_DIR=$(GOOSE_MIGRATION_DIR) goose up
+	docker compose up -d postgres
+	docker compose --profile tools run --rm migrate
 
-migrate-down:
-	@GOOSE_DRIVER=$(GOOSE_DRIVER) GOOSE_DBSTRING=$(GOOSE_DBSTRING) GOOSE_MIGRATION_DIR=$(GOOSE_MIGRATION_DIR) goose down
-
-migrate-reset:
-	@GOOSE_DRIVER=$(GOOSE_DRIVER) GOOSE_DBSTRING=$(GOOSE_DBSTRING) GOOSE_MIGRATION_DIR=$(GOOSE_MIGRATION_DIR) goose reset
+migrate-down-one:
+	docker compose --profile tools run --rm migrate down 1
 
 migrate-status:
-	@GOOSE_DRIVER=$(GOOSE_DRIVER) GOOSE_DBSTRING=$(GOOSE_DBSTRING) GOOSE_MIGRATION_DIR=$(GOOSE_MIGRATION_DIR) goose status
+	docker compose --profile tools run --rm migrate version
 
-seed:
-	@cd backend && go run ./cmd/seed --scenario=$(SCENARIO)
+build:
+	docker compose build api admin migrate
 
-test-backend:
-	@cd backend && go test ./...
+api-test:
+	cd api && go test ./...
 
-test-integration:
-	@scripts/test-integration.sh $(TEST_ARGS)
+api-build:
+	cd api && go build ./...
 
-prod-up:
-	@docker compose -f docker-compose.prod.yml --env-file .env up -d
+api-vet:
+	cd api && go vet ./...
 
-prod-down:
-	@docker compose -f docker-compose.prod.yml down
+api-integration:
+	./scripts/test-integration.sh
 
-prod-logs:
-	@docker compose -f docker-compose.prod.yml logs -f
+admin-install:
+	cd admin && pnpm install --ignore-scripts
 
-prod-pull:
-	@docker compose -f docker-compose.prod.yml pull
+admin-dev:
+	cd admin && pnpm dev
+
+admin-lint:
+	cd admin && pnpm lint
+
+admin-check:
+	cd admin && pnpm check
+
+admin-test:
+	cd admin && pnpm test
+
+admin-build:
+	cd admin && pnpm build
+
+vuln-check:
+	cd api && mise exec $(GOVULNCHECK_GO_VERSION) -- go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+
+test: api-vet api-build api-test admin-lint admin-check admin-test admin-build

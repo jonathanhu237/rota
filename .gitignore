@@ -1,4 +1,15 @@
+node_modules/
+dist/
+bin/
+*.tsbuildinfo
+*.log
+.DS_Store
+
+# SQL backups contain account data and encrypted secrets; keep them outside Git.
+backups/
 .env
-backend/server
+.env.*
+!.env.example
+.mise.local.toml
 *.local.*
 certs/

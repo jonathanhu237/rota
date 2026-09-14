@@ -1,0 +1,1009 @@
+const translations: Record<string, any> = {
+  "common": {
+    "cancel": "取消",
+    "active": "启用",
+    "admin": "管理员",
+    "disabled": "禁用",
+    "employee": "员工",
+    "notAvailable": "暂无",
+    "loading": "加载中...",
+    "refreshing": "刷新中...",
+    "selectDate": "选择日期",
+    "time": "时间",
+    "languages": {
+      "en": "英文",
+      "zh": "中文"
+    }
+  },
+  "dashboard": {
+    "welcome": "欢迎，{{name}}",
+    "description": "这是您的排班系统概览。",
+    "currentPublication": {
+      "title": "当前排班计划",
+      "description": "当前排班周期和下一步操作。",
+      "empty": "暂无活跃的排班计划。",
+      "window": "{{from}} - {{until}}",
+      "copy": {
+        "preparing": "排班还在筹备中。",
+        "awaiting": "空闲时间收集已结束，等待排班。"
+      },
+      "cta": {
+        "collectingEmployee": "提交空闲时间",
+        "collectingAdmin": "查看排班计划详情",
+        "assigningAdmin": "打开分配面板",
+        "published": "查看排班表",
+        "draftAdmin": "查看排班计划详情",
+        "noneAdmin": "新建排班计划"
+      }
+    },
+    "todo": {
+      "title": "待办",
+      "description": "需要你处理的调班申请。",
+      "unreadRequests": "您有 {{count}} 条调班待处理",
+      "cta": "查看申请"
+    },
+    "recentLeaves": {
+      "title": "最近请假",
+      "description": "你最近提交的请假记录。",
+      "viewAll": "查看全部",
+      "empty": "你还没有提交过请假。"
+    },
+    "manage": {
+      "title": "管理快捷入口",
+      "description": "快速进入管理工作区。",
+      "links": {
+        "users": "用户",
+        "positions": "岗位",
+        "templates": "排班模板",
+        "publications": "排班计划"
+      }
+    }
+  },
+  "users": {
+    "qualifications": {
+      "manage": "管理任职资格",
+      "title": "任职资格",
+      "description": "选择该用户有资格承担的岗位。",
+      "empty": "当前还没有岗位。",
+      "loadError": "加载任职资格失败。",
+      "save": "保存资格",
+      "saving": "保存中...",
+      "selectedCount_other": "已选择 {{count}} 个岗位",
+      "success": {
+        "saved": "任职资格更新成功。"
+      }
+    }
+  },
+  "positions": {
+    "title": "岗位管理",
+    "description": "创建并维护部门需要排班的岗位。",
+    "createPosition": "创建岗位",
+    "name": "名称",
+    "descriptionLabel": "描述",
+    "empty": "暂无岗位。",
+    "noDescription": "暂无描述",
+    "pageSummary": "显示第 {{start}}-{{end}} 条，共 {{total}} 条岗位",
+    "table": {
+      "name": "名称",
+      "description": "描述",
+      "actions": "操作"
+    },
+    "actions": {
+      "edit": "编辑",
+      "delete": "删除"
+    },
+    "pagination": {
+      "previous": "上一页",
+      "next": "下一页",
+      "page": "第 {{page}} / {{totalPages}} 页"
+    },
+    "form": {
+      "createTitle": "创建岗位",
+      "createDescription": "新增一个可用于后续排班的岗位。",
+      "editTitle": "编辑岗位",
+      "editDescription": "更新所选岗位的详细信息。",
+      "submitCreate": "创建岗位",
+      "submitEdit": "保存更改",
+      "submittingCreate": "创建中...",
+      "submittingEdit": "保存中..."
+    },
+    "deleteDialog": {
+      "title": "删除岗位",
+      "description": "确认删除 {{name}}？此操作无法撤销。",
+      "confirm": "确认删除",
+      "submitting": "删除中..."
+    },
+    "validation": {
+      "nameRequired": "请输入岗位名称"
+    },
+    "success": {
+      "created": "岗位创建成功。",
+      "updated": "岗位更新成功。",
+      "deleted": "岗位删除成功。"
+    },
+    "errors": {
+      "FORBIDDEN": "无权限访问",
+      "INVALID_REQUEST": "请求无效",
+      "INTERNAL_ERROR": "服务器内部错误",
+      "POSITION_IN_USE": "该岗位已被模板班次使用",
+      "POSITION_NOT_FOUND": "岗位不存在",
+      "UNAUTHORIZED": "未授权"
+    }
+  },
+  "templates": {
+    "title": "排班模板管理",
+    "description": "创建并维护可复用的每周时段排班模板。",
+    "createTemplate": "新建排班模板",
+    "name": "名称",
+    "descriptionLabel": "描述",
+    "empty": "暂无排班模板。",
+    "locked": "已锁定",
+    "unlocked": "未锁定",
+    "pageSummary": "显示第 {{start}}-{{end}} 条，共 {{total}} 条排班模板",
+    "table": {
+      "name": "名称",
+      "shiftCount": "班次数量",
+      "locked": "状态",
+      "updatedAt": "更新时间"
+    },
+    "pagination": {
+      "previous": "上一页",
+      "next": "下一页",
+      "page": "第 {{page}} / {{totalPages}} 页"
+    },
+    "form": {
+      "createTitle": "新建排班模板",
+      "createDescription": "新增一个可复用的每周排班模板。",
+      "submitCreate": "新建排班模板",
+      "submittingCreate": "创建中...",
+      "submitEdit": "保存更改",
+      "submittingEdit": "保存中..."
+    },
+    "detail": {
+      "description": "更新排班模板信息并管理其每周时段和岗位配置。",
+      "loadErrorTitle": "加载排班模板失败",
+      "loadErrorDescription": "当前无法加载该排班模板。"
+    },
+    "actions": {
+      "clone": "克隆",
+      "delete": "删除",
+      "addSlot": "新增时段",
+      "editSlot": "编辑时段",
+      "deleteSlot": "删除时段",
+      "addPosition": "新增岗位",
+      "editPosition": "编辑岗位",
+      "deletePosition": "删除岗位",
+      "addShift": "新增班次",
+      "editShift": "编辑班次",
+      "deleteShift": "删除班次"
+    },
+    "cloneDialog": {
+      "title": "克隆排班模板",
+      "description": "确认基于 {{name}} 创建一个未锁定副本？",
+      "confirm": "确认克隆",
+      "submitting": "克隆中..."
+    },
+    "deleteDialog": {
+      "title": "删除排班模板",
+      "description": "确认删除 {{name}}？此操作无法撤销。",
+      "confirm": "确认删除",
+      "submitting": "删除中..."
+    },
+    "deleteSlotDialog": {
+      "title": "删除时段",
+      "description": "确认删除 {{summary}}？此操作无法撤销。",
+      "summary": "{{weekdays}} · {{startTime}}-{{endTime}}",
+      "confirm": "确认删除时段",
+      "submitting": "删除中..."
+    },
+    "deletePositionDialog": {
+      "title": "删除时段岗位",
+      "description": "确认删除 {{summary}}？此操作无法撤销。",
+      "summary": "{{positionName}} · {{startTime}}-{{endTime}} · 需要 {{headcount}} 人",
+      "confirm": "确认删除岗位",
+      "submitting": "删除中..."
+    },
+    "deleteShiftDialog": {
+      "title": "删除班次",
+      "description": "确认删除 {{summary}}？此操作无法撤销。",
+      "summary": "{{weekday}} · {{positionName}} · {{startTime}}-{{endTime}} · 需要 {{headcount}} 人",
+      "confirm": "确认删除班次",
+      "submitting": "删除中..."
+    },
+    "slotsTitle": "每周时段",
+    "slotsDescription": "管理排班模板的时段，以及每个时段内的岗位配置和适用星期。",
+    "noSlots": "这个排班模板还没有添加任何时段。",
+    "noSlotsForWeekday": "这一天还没有任何时段。",
+    "noPositionsForSlot": "这个时段还没有添加岗位配置。",
+    "shiftsTitle": "每周班次",
+    "shiftsDescription": "按星期管理该排班模板的所有班次。",
+    "positionsLoadError": "加载岗位列表失败，无法编辑时段岗位。",
+    "noPositions": "请先创建岗位，再为时段添加岗位配置。",
+    "noShiftsForWeekday": "这一天还没有任何班次。",
+    "unknownPosition": "未知岗位",
+    "lockedBanner": "该排班模板已锁定，无法编辑或删除。如需修改，请先克隆。",
+    "slot": {
+      "weekday": "适用星期",
+      "startTime": "开始时间",
+      "endTime": "结束时间",
+      "summary": "{{startTime}}-{{endTime}}",
+      "positionsCount": "{{count}} 个岗位"
+    },
+    "position": {
+      "position": "岗位",
+      "requiredHeadcount": "所需人数",
+      "attendanceResponsible": "考勤负责人",
+      "summary": "需要 {{headcount}} 人"
+    },
+    "slotDialog": {
+      "createTitle": "新增时段",
+      "createDescription": "新增一个时段，并选择它适用的星期。",
+      "editTitle": "编辑时段",
+      "editDescription": "更新所选时段和适用星期。",
+      "submitCreate": "创建时段",
+      "submitEdit": "保存时段",
+      "submittingCreate": "创建中...",
+      "submittingEdit": "保存中..."
+    },
+    "positionDialog": {
+      "createTitle": "新增时段岗位",
+      "createDescription": "为这个时段新增一个岗位需求。",
+      "editTitle": "编辑时段岗位",
+      "editDescription": "更新所选的岗位需求。",
+      "submitCreate": "创建岗位",
+      "submitEdit": "保存岗位",
+      "submittingCreate": "创建中...",
+      "submittingEdit": "保存中...",
+      "selectPosition": "请选择岗位",
+      "attendanceResponsibleDescription": "该岗位负责记录这个班次的到岗和加班。"
+    },
+    "shift": {
+      "weekday": "星期",
+      "startTime": "开始时间",
+      "endTime": "结束时间",
+      "position": "岗位",
+      "requiredHeadcount": "所需人数",
+      "summary": "{{startTime}}-{{endTime}} · 需要 {{headcount}} 人"
+    },
+    "shiftDialog": {
+      "createTitle": "新增班次",
+      "createDescription": "为该排班模板新增一个每周班次。",
+      "editTitle": "编辑班次",
+      "editDescription": "更新所选的每周班次。",
+      "submitCreate": "创建班次",
+      "submitEdit": "保存班次",
+      "submittingCreate": "创建中...",
+      "submittingEdit": "保存中...",
+      "selectPosition": "请选择岗位"
+    },
+    "weekday": {
+      "mon": "星期一",
+      "tue": "星期二",
+      "wed": "星期三",
+      "thu": "星期四",
+      "fri": "星期五",
+      "sat": "星期六",
+      "sun": "星期日"
+    },
+    "validation": {
+      "nameRequired": "请输入排班模板名称",
+      "nameTooLong": "排班模板名称不能超过 100 个字符",
+      "descriptionTooLong": "排班模板描述不能超过 500 个字符",
+      "weekdayRequired": "请选择星期",
+      "invalidWeekday": "星期必须在星期一到星期日之间",
+      "invalidShiftTime": "结束时间必须晚于开始时间",
+      "positionRequired": "请选择岗位",
+      "invalidHeadcount": "所需人数至少为 1",
+      "responsibleHeadcount": "考勤负责人岗位必须刚好需要 1 人"
+    },
+    "success": {
+      "created": "排班模板创建成功。",
+      "updated": "排班模板更新成功。",
+      "deleted": "排班模板删除成功。",
+      "cloned": "排班模板克隆成功。",
+      "slotCreated": "时段创建成功。",
+      "slotUpdated": "时段更新成功。",
+      "slotDeleted": "时段删除成功。",
+      "positionCreated": "岗位配置创建成功。",
+      "positionUpdated": "岗位配置更新成功。",
+      "positionDeleted": "岗位配置删除成功。",
+      "shiftCreated": "班次创建成功。",
+      "shiftUpdated": "班次更新成功。",
+      "shiftDeleted": "班次删除成功。"
+    },
+    "errors": {
+      "FORBIDDEN": "无权限访问",
+      "INVALID_HEADCOUNT": "所需人数必须为正数",
+      "INVALID_REQUEST": "请求无效",
+      "INVALID_SHIFT_TIME": "结束时间必须晚于开始时间",
+      "INVALID_WEEKDAY": "星期必须在星期一到星期日之间",
+      "INTERNAL_ERROR": "服务器内部错误",
+      "POSITION_NOT_FOUND": "岗位不存在",
+      "TEMPLATE_LOCKED": "排班模板已锁定",
+      "TEMPLATE_NOT_FOUND": "排班模板不存在",
+      "TEMPLATE_SLOT_NOT_FOUND": "模板时段不存在",
+      "TEMPLATE_SLOT_OVERLAP": "该时段与同一天中已有的时段发生重叠。",
+      "TEMPLATE_SLOT_POSITION_NOT_FOUND": "模板时段岗位不存在",
+      "ATTENDANCE_RESPONSIBLE_REQUIRED": "每个班次只能有一个考勤负责人岗位，且该岗位人数必须为 1。",
+      "TEMPLATE_SHIFT_NOT_FOUND": "模板班次不存在",
+      "UNAUTHORIZED": "未授权"
+    }
+  },
+  "attendance": {
+    "title": "考勤",
+    "leaderDescription": "记录你负责班次的到岗和加班。",
+    "adminTitle": "考勤管理",
+    "adminDescription": "查看班次考勤，修正到岗记录并管理加班。",
+    "empty": "当前没有可处理的考勤班次。",
+    "noRoster": "这个班次暂无排班人员。",
+    "orphanArrivals": "孤立到岗记录",
+    "overtime": "加班",
+    "settings": "设置",
+    "overtimeWindow": "加班补录窗口（小时）",
+    "saveSettings": "保存设置",
+    "selectShift": "选择班次",
+    "arrivalTime": "到岗时间",
+    "recordArrival": "记录到岗",
+    "recorded": "已记录",
+    "hours": "工时",
+    "note": "备注",
+    "addOvertime": "添加加班",
+    "updateOvertime": "更新加班",
+    "deleteOvertime": "删除加班",
+    "clearArrival": "清除到岗",
+    "setArrival": "设置到岗",
+    "chooseUser": "选择人员",
+    "userId": "用户 ID",
+    "status": {
+      "pending": "待记录",
+      "present": "正常",
+      "late": "迟到",
+      "absent": "缺勤"
+    },
+    "summary": {
+      "shift": "{{date}} · {{start}}-{{end}}",
+      "counts": "正常 {{present}} · 迟到 {{late}} · 待记录 {{pending}} · 缺勤 {{absent}}"
+    },
+    "success": {
+      "arrivalRecorded": "到岗已记录。",
+      "arrivalUpdated": "到岗记录已更新。",
+      "arrivalCleared": "到岗记录已清除。",
+      "overtimeRecorded": "加班已记录。",
+      "overtimeUpdated": "加班已更新。",
+      "overtimeDeleted": "加班已删除。",
+      "settingsUpdated": "考勤设置已更新。"
+    },
+    "errors": {
+      "INVALID_REQUEST": "请求无效。",
+      "INVALID_OCCURRENCE_DATE": "日期无效。",
+      "PUBLICATION_NOT_FOUND": "排班计划不存在。",
+      "TEMPLATE_SLOT_NOT_FOUND": "班次不存在。",
+      "USER_NOT_FOUND": "用户不存在或未启用。",
+      "ATTENDANCE_RECORD_NOT_FOUND": "考勤记录不存在。",
+      "ATTENDANCE_NOT_LEADER": "你不是该班次负责人。",
+      "ATTENDANCE_WINDOW_CLOSED": "考勤窗口已关闭。",
+      "ATTENDANCE_ALREADY_RECORDED": "该到岗记录已锁定。",
+      "ATTENDANCE_ROSTER_STALE": "排班已变化，请刷新后重试。",
+      "ATTENDANCE_RESPONSIBLE_REQUIRED": "该班次需要且只能有一个考勤负责人岗位。",
+      "PUBLICATION_NOT_ACTIVE": "排班计划尚未生效。",
+      "INTERNAL_ERROR": "服务器内部错误。"
+    }
+  },
+  "publications": {
+    "title": "排班计划管理",
+    "description": "基于排班模板创建可提交空闲时间的时间窗口，并跟踪其状态。",
+    "createPublication": "新建排班计划",
+    "name": "名称",
+    "submissionStartAt": "开始收集时间",
+    "submissionEndAt": "结束收集时间",
+    "plannedActiveFrom": "计划生效时间",
+    "plannedActiveUntil": "计划结束时间",
+    "empty": "暂无排班计划。",
+    "pageSummary": "显示第 {{start}}-{{end}} 条，共 {{total}} 条排班计划",
+    "table": {
+      "name": "名称",
+      "template": "排班模板",
+      "state": "状态",
+      "submissionWindow": "提交窗口",
+      "activeWindow": "生效窗口",
+      "createdAt": "创建时间",
+      "actions": "操作"
+    },
+    "pagination": {
+      "previous": "上一页",
+      "next": "下一页",
+      "page": "第 {{page}} / {{totalPages}} 页"
+    },
+    "state": {
+      "draft": "草稿",
+      "collecting": "收集中",
+      "assigning": "待分配",
+      "published": "已公示",
+      "active": "已生效",
+      "ended": "已结束"
+    },
+    "form": {
+      "createTitle": "新建排班计划",
+      "createDescription": "选择一个排班模板，并设置提交窗口。",
+      "template": "排班模板",
+      "selectTemplate": "请选择排班模板",
+      "noTemplates": "请先创建排班模板，再新建排班计划。",
+      "submitCreate": "新建排班计划",
+      "submittingCreate": "创建中..."
+    },
+    "detail": {
+      "description": "查看排班计划元数据及其当前生效状态。",
+      "loadErrorTitle": "加载排班计划失败",
+      "loadErrorDescription": "当前无法加载该排班计划。",
+      "template": "排班模板",
+      "state": "状态",
+      "submissionStartAt": "开始收集时间",
+      "submissionEndAt": "结束收集时间",
+      "plannedActiveFrom": "计划生效时间",
+      "plannedActiveUntil": "计划结束时间",
+      "overtimeEntryWindowHours": "加班补录窗口",
+      "activatedAt": "生效时间",
+      "createdAt": "创建时间",
+      "updatedAt": "更新时间",
+      "editPlannedActiveUntil": "编辑计划结束时间",
+      "save": "保存",
+      "saving": "保存中...",
+      "stateDescription": {
+        "draft": "将在 {{time}} 开放提交。",
+        "collecting": "可提交时间截止到 {{time}}。",
+        "assigning": "提交已关闭。请查看候选人并完成班次分配。",
+        "published": "排班已对员工公示，他们可以在生效前提出换班请求。",
+        "active": "该排班计划已于 {{time}} 生效。",
+        "ended": "该排班计划已于 {{time}} 结束。"
+      }
+    },
+    "actions": {
+      "delete": "删除排班计划",
+      "publish": "公示",
+      "activate": "生效",
+      "end": "结束",
+      "openAssignmentBoard": "打开分配面板",
+      "manageAvailability": "管理空闲时间",
+      "viewShiftChanges": "查看换班请求",
+      "manageAttendance": "管理考勤",
+      "viewExisting": "查看当前排班计划"
+    },
+    "publishDialog": {
+      "title": "公示排班计划",
+      "description": "公示后排班将对员工可见，他们可以提出换班请求。是否继续？",
+      "confirm": "确认公示",
+      "cancel": "取消",
+      "submitting": "公示中..."
+    },
+    "activateDialog": {
+      "title": "生效排班计划",
+      "description": "生效后排班将被锁定，所有待处理的换班请求都会失效。是否继续？",
+      "confirm": "确认生效",
+      "submitting": "生效中..."
+    },
+    "endDialog": {
+      "title": "结束排班计划",
+      "description": "现在结束 {{name}} 吗？结束后它将从当前排班视图中消失。",
+      "confirm": "确认结束",
+      "submitting": "结束中..."
+    },
+    "deleteDialog": {
+      "title": "删除排班计划",
+      "description": "确认删除 {{name}}？此操作无法撤销。",
+      "confirm": "确认删除排班计划",
+      "submitting": "删除中..."
+    },
+    "shiftChanges": {
+      "title": "换班请求",
+      "description": "{{name}} 的换班请求（管理员只读视图）。",
+      "backToPublication": "返回排班计划详情",
+      "loadError": "当前无法加载换班请求。",
+      "empty": "当前没有换班请求。",
+      "filter": {
+        "label": "状态：",
+        "all": "全部",
+        "pending": "待处理",
+        "decided": "已处理"
+      },
+      "table": {
+        "id": "编号",
+        "type": "类型",
+        "requester": "申请人",
+        "counterpart": "对方",
+        "occurrence": "日期",
+        "state": "状态",
+        "createdAt": "创建时间",
+        "decidedAt": "处理时间"
+      },
+      "requestType": {
+        "swap": "换班",
+        "give_direct": "指定让班",
+        "give_pool": "让班（公开）"
+      },
+      "state": {
+        "pending": "待处理",
+        "approved": "已通过",
+        "rejected": "已拒绝",
+        "cancelled": "已取消",
+        "expired": "已过期",
+        "invalidated": "已失效"
+      }
+    },
+    "validation": {
+      "templateRequired": "请选择排班模板",
+      "nameRequired": "请输入名称",
+      "nameTooLong": "名称不能超过 100 个字符",
+      "submissionStartRequired": "请选择开始收集时间",
+      "submissionEndRequired": "请选择结束收集时间",
+      "plannedActiveFromRequired": "请选择计划生效时间",
+      "plannedActiveUntilRequired": "请选择计划结束时间",
+      "invalidWindow": "开始收集、结束收集、计划生效和计划结束时间必须按时间顺序排列"
+    },
+    "success": {
+      "created": "排班计划创建成功。",
+      "deleted": "排班计划删除成功。",
+      "published": "排班计划已成功公示。",
+      "activated": "排班计划已成功生效。",
+      "ended": "排班计划已成功结束。",
+      "updated": "排班计划已更新。"
+    },
+    "errors": {
+      "FORBIDDEN": "无权限访问",
+      "INVALID_OCCURRENCE_DATE": "请选择生效窗口内的周一。",
+      "INVALID_PUBLICATION_WINDOW": "排班计划时间窗口顺序不正确",
+      "INVALID_REQUEST": "请求无效",
+      "INTERNAL_ERROR": "服务器内部错误",
+      "PUBLICATION_ALREADY_EXISTS": "当前已经存在一个未结束的排班计划。",
+      "PUBLICATION_NOT_ACTIVE": "当前排班计划不处于已生效状态。",
+      "PUBLICATION_NOT_ASSIGNING": "当前排班计划现在不能修改分配。",
+      "PUBLICATION_NOT_MUTABLE": "当前排班计划现在不能再编辑。",
+      "PUBLICATION_NOT_COLLECTING": "当前排班计划不在可提交空闲时间的阶段。",
+      "PUBLICATION_NOT_DELETABLE": "只有草稿状态的排班计划可以删除。",
+      "PUBLICATION_NOT_PUBLISHED": "当前排班计划还没有进入公示状态。",
+      "PUBLICATION_NOT_FOUND": "排班计划不存在",
+      "TEMPLATE_NOT_FOUND": "排班模板不存在",
+      "TEMPLATE_SLOT_NOT_FOUND": "模板时段不存在",
+      "TEMPLATE_SLOT_POSITION_NOT_FOUND": "模板时段岗位不存在",
+      "TEMPLATE_SHIFT_NOT_FOUND": "模板班次不存在",
+      "ASSIGNMENT_USER_ALREADY_IN_SLOT": "该用户已在此时段被分配到其他岗位。",
+      "ASSIGNMENT_TIME_CONFLICT": "该分配与用户已有的班次时间冲突。",
+      "SCHEDULING_RETRYABLE": "另一个排班变更同时完成，请重试。",
+      "NOT_QUALIFIED": "您没有该班次的任职资格。",
+      "USER_DISABLED": "该用户已被禁用。",
+      "USER_NOT_FOUND": "用户不存在",
+      "UNAUTHORIZED": "未授权"
+    },
+    "assignmentBoard": {
+      "showAllQualified": "显示所有具备资格的员工",
+      "didNotSubmitAvailability": "未提交空闲时间",
+      "publishedWarning": "该排班已经对员工可见。在这里修改分配可能会使待处理的调班申请失效。",
+      "activeWarning": "该排班已经生效。在这里做出的修改会立即生效。"
+    }
+  },
+  "assignments": {
+    "title": "分配面板",
+    "descriptionEditable": "按星期和时间查看覆盖情况，并为 {{name}} 暂存分配调整。",
+    "descriptionReadOnly": "{{name}} 已经生效，当前面板为只读。",
+    "autoAssign": "自动分配",
+    "downloadExcel": "下载 Excel",
+    "downloading": "下载中...",
+    "downloadFailed": "无法下载排班工作簿。",
+    "backToPublication": "返回排班计划详情",
+    "loadError": "当前无法加载分配面板。",
+    "emptyWeekday": "这一天没有排班班次。",
+    "shiftSummary": "{{startTime}}-{{endTime}}",
+    "headcount": "已分配 {{assigned}} / 需求 {{required}}",
+    "grid": {
+      "time": "时间"
+    },
+    "status": {
+      "full": "已满",
+      "partial": "部分",
+      "empty": "空缺"
+    },
+    "directory": {
+      "title": "员工目录",
+      "gaps": "仍缺 {{count}} 个 cell",
+      "noGaps": "全部 cell 已满",
+      "search": "搜索员工",
+      "sortByHours": "按工时",
+      "sortByName": "按姓名",
+      "empty": "没有匹配的员工。",
+      "hours": "{{hours}} 小时",
+      "fairness": "平均 {{avg}}h · 范围 {{min}}h–{{max}}h · 标准差 {{stddev}}h",
+      "submitted": "已提交空闲时间 ({{count}})",
+      "notSubmitted": "未提交空闲时间 ({{count}})",
+      "notSubmittedTag": "未提交",
+      "unassignedCount": "{{count}} 人未排上"
+    },
+    "seat": {
+      "empty": "空缺",
+      "overflow": "超额"
+    },
+    "drafts": {
+      "pendingCount": "未提交的更改：{{count}} 项",
+      "submit": "提交",
+      "discard": "放弃草稿",
+      "confirmAndSubmit": "确认并提交",
+      "cancel": "取消",
+      "changed": "草稿",
+      "remove": "移除",
+      "undoRemove": "撤销移除",
+      "warning": "警告",
+      "unqualifiedAria": "资格不匹配",
+      "unsubmittedAria": "未提交此班次的空闲时间",
+      "userHoursLabel": "{{user}} ({{hours}}h)",
+      "submitFailed": "无法提交 {{user}} 的草稿。请修正后重试。",
+      "submitFailedUnknown": "无法提交该草稿操作。",
+      "confirmDialog": {
+        "title": "确认资格覆盖",
+        "titleUnsubmitted": "确认未提交破例",
+        "titleBoth": "确认资格 / 未提交破例",
+        "description": "这些草稿分配绕过了默认的资格或单元格匹配。",
+        "unqualifiedSection": "资格不匹配 ({{count}})",
+        "unsubmittedSection": "未提交空闲时间 ({{count}})",
+        "warningTitle": "{{user}} -> {{slot}} / {{position}}",
+        "warningReason": "{{user}} 没有“{{position}}”的资格。",
+        "unsubmittedReason": "{{user}} 没有提交此班次的空闲时间。"
+      }
+    },
+    "autoAssignDialog": {
+      "title": "自动分配班次",
+      "description": "这会替换 {{name}} 当前的所有分配。是否继续？",
+      "confirm": "自动分配",
+      "submitting": "自动分配中..."
+    },
+    "success": {
+      "autoAssigned": "班次已自动分配成功。"
+    }
+  },
+  "roster": {
+    "title": "每周排班表",
+    "description": "查看当前已生效的每周排班。",
+    "descriptionWithPublication": "正在显示 {{name}} 的当前每周排班。",
+    "loadError": "当前无法加载排班表。",
+    "empty": "当前没有已生效的排班计划。",
+    "emptyWeek": "本周没有排班班次。",
+    "previousWeek": "上一周",
+    "nextWeek": "下一周",
+    "downloadExcel": "下载 Excel",
+    "downloading": "下载中...",
+    "downloadFailed": "无法下载排班表工作簿。",
+    "today": "今天",
+    "offSchedule": "排班外",
+    "cell": {
+      "summary": "已分配 {{assigned}} / 需求 {{required}}",
+      "empty": "空缺"
+    }
+  },
+  "availability": {
+    "title": "提交空闲时间",
+    "description": "选择您能值班的时段。",
+    "empty": "当前没有可用的排班计划。",
+    "currentPublication": "排班计划",
+    "template": "排班模板",
+    "gridTitle": "我的班次空闲时间",
+    "gridDescription": "请勾选在本次收集窗口中您可以值班的所有班次。",
+    "noShiftsForWeekday": "这一天没有可选班次。",
+    "noQualifiedShifts": "您在这个排班计划中没有符合资格的班次。",
+    "offSchedule": "排班外",
+    "today": "今天",
+    "stateMessage": {
+      "draft": "将在 {{time}} 开放提交。",
+      "collecting": "提交截止到 {{time}}，请在此之前更新您的空闲时间。",
+      "assigning": "提交已关闭，管理员正在分配班次。",
+      "active": "当前排班计划已经生效，不能再修改空闲时间；请到排班表查看最终分配。"
+    },
+    "shift": {
+      "timeRange": "{{startTime}}-{{endTime}}",
+      "composition": "{{summary}}",
+      "compositionEntry": "{{position}} × {{count}}"
+    },
+    "errors": {
+      "FORBIDDEN": "无权限访问",
+      "INVALID_REQUEST": "请求无效",
+      "INTERNAL_ERROR": "服务器内部错误",
+      "NOT_QUALIFIED": "您没有该班次的任职资格。",
+      "PUBLICATION_NOT_COLLECTING": "只有在提交开放期间才能修改空闲时间。",
+      "PUBLICATION_NOT_FOUND": "排班计划不存在",
+      "TEMPLATE_SHIFT_NOT_FOUND": "模板班次不存在",
+      "UNAUTHORIZED": "未授权"
+    }
+  },
+  "adminAvailability": {
+    "title": "空闲时间管理",
+    "description": "查看并修正 {{name}} 的员工空闲时间提交。",
+    "loadError": "当前无法加载空闲时间数据。",
+    "backToAssignments": "返回分配面板",
+    "pageSummary": "显示第 {{start}}-{{end}} 位，共 {{total}} 位员工",
+    "search": {
+      "label": "搜索员工",
+      "placeholder": "姓名或邮箱"
+    },
+    "pagination": {
+      "previous": "上一页",
+      "next": "下一页",
+      "page": "第 {{page}} / {{totalPages}} 页"
+    },
+    "table": {
+      "name": "员工",
+      "positions": "资格",
+      "submittedCount": "已提交 cell",
+      "submittedCountValue": "{{count}} 个 cell",
+      "actions": "操作",
+      "edit": "编辑",
+      "empty": "没有匹配的员工。"
+    },
+    "editor": {
+      "title": "编辑空闲时间",
+      "titleForUser": "{{name}} 的空闲时间",
+      "description": "{{email}}",
+      "back": "返回空闲时间管理",
+      "gridTitle": "模板空闲时间表格",
+      "gridDescription": "编辑该员工在本排班计划中的完整目标空闲时间。",
+      "autoAssignNote": "空闲时间修改只影响之后自动分配的候选池，不会自动修改当前已有分配。",
+      "readOnly": "该排班计划当前不能再修改空闲时间。",
+      "ineligibleSelected": "当前仍有 {{count}} 个已勾选 cell 不再符合资格，请先取消勾选再保存。",
+      "noSlots": "该排班计划没有可用 cell。",
+      "eligible": "可选",
+      "ineligible": "不可选",
+      "exception": "已提交例外",
+      "cellLabel": "{{weekday}} {{time}} {{summary}}",
+      "unsavedCount": "未保存更改：{{count}} 项",
+      "discard": "放弃",
+      "save": "保存",
+      "saving": "保存中...",
+      "saveSuccess": "空闲时间已更新。",
+      "confirmLeave": "放弃尚未保存的空闲时间更改？"
+    }
+  },
+  "requests": {
+    "title": "调班申请",
+    "description": "查看当前已公示排班的调班、转让和释放申请。",
+    "descriptionWithPublication": "{{name}} 的调班申请。",
+    "empty": "当前没有任何调班申请。",
+    "unknownUser": "用户 #{{id}}",
+    "occurrenceLabel": "日期：{{date}}",
+    "sections": {
+      "waiting": "等待我处理",
+      "sent": "我发起的",
+      "pool": "公共转让",
+      "history": "历史记录",
+      "emptyWaiting": "暂无需要您处理的申请。",
+      "emptySent": "您还没有发起任何申请。",
+      "emptyPool": "暂无公共转让的班次。",
+      "emptyHistory": "暂无历史记录。"
+    },
+    "type": {
+      "swap": "互换",
+      "give_direct": "直接转让",
+      "give_pool": "公共转让"
+    },
+    "state": {
+      "pending": "待处理",
+      "approved": "已同意",
+      "rejected": "已拒绝",
+      "cancelled": "已撤回",
+      "expired": "已过期",
+      "invalidated": "已失效"
+    },
+    "actions": {
+      "approve": "同意",
+      "reject": "拒绝",
+      "cancel": "撤回",
+      "claim": "认领",
+      "openMenu": "班次操作",
+      "proposeSwap": "申请互换…",
+      "giveDirect": "转让给同事…",
+      "givePool": "释放到公共池"
+    },
+    "swapDialog": {
+      "title": "申请班次互换",
+      "description": "请求一位同事用他们的某个班次和您的这个班次互换。",
+      "myShiftLabel": "您的班次",
+      "shiftSummary": "{{startTime}}-{{endTime}}",
+      "counterpartLabel": "互换对象",
+      "selectCounterpart": "请选择同事",
+      "counterpartShiftLabel": "要接过的班次",
+      "selectCounterpartShift": "请选择班次",
+      "noCounterpartShifts": "该同事在本期排班中没有班次。",
+      "submit": "发送互换申请",
+      "submitting": "发送中…",
+      "success": "互换申请已发送。"
+    },
+    "giveDirectDialog": {
+      "title": "转让该班次",
+      "description": "将该班次指定转让给一位同事，对方需要接受后生效。",
+      "counterpartLabel": "转让给",
+      "selectCounterpart": "请选择同事",
+      "submit": "发送转让",
+      "submitting": "发送中…",
+      "success": "转让已发送。"
+    },
+    "givePoolDialog": {
+      "title": "释放到公共池",
+      "description": "将该班次释放到公共池，任何具备资格的同事都可以认领。",
+      "submit": "释放班次",
+      "submitting": "释放中…",
+      "success": "班次已释放到公共池。"
+    },
+    "validation": {
+      "counterpartUserRequired": "请选择一位同事",
+      "counterpartShiftRequired": "请选择该同事的一个班次"
+    },
+    "card": {
+      "shift": "班次 #{{id}}",
+      "shiftSummary": "{{weekday}} · {{positionName}} · {{startTime}}-{{endTime}}",
+      "swapSummary": "{{requesterShift}} ↔ {{counterpartShift}}",
+      "metadata": "由 {{requester}} 发起 · {{createdAt}}"
+    },
+    "history": {
+      "invalidatedReason": "由于关联班次在处理前已变更，此申请已被取消。"
+    },
+    "toast": {
+      "approved": "申请已同意。",
+      "rejected": "申请已拒绝。",
+      "cancelled": "申请已撤回。",
+      "claimed": "班次认领成功。"
+    },
+    "errors": {
+      "FORBIDDEN": "无权限访问",
+      "INVALID_OCCURRENCE_DATE": "请选择该班次有效且尚未开始的日期。",
+      "INVALID_REQUEST": "请求无效",
+      "INTERNAL_ERROR": "发生了错误，请稍后重试。",
+      "PUBLICATION_NOT_FOUND": "排班计划不存在",
+      "PUBLICATION_NOT_PUBLISHED": "该排班计划尚未公示。",
+      "SHIFT_CHANGE_EXPIRED": "该申请已过期。",
+      "SHIFT_CHANGE_INVALIDATED": "该申请已失效。",
+      "SHIFT_CHANGE_INVALID_TYPE": "无效的申请类型。",
+      "SHIFT_CHANGE_NOT_FOUND": "申请不存在",
+      "SHIFT_CHANGE_NOT_OWNER": "您无权处理该申请。",
+      "SHIFT_CHANGE_NOT_PENDING": "该申请已不是待处理状态。",
+      "SHIFT_CHANGE_NOT_QUALIFIED": "您没有该班次的任职资格。",
+      "SHIFT_CHANGE_SELF": "不能处理自己发起的申请。",
+      "SHIFT_CHANGE_TIME_CONFLICT": "该变更与您已有的其他班次存在时间冲突。",
+      "SCHEDULING_RETRYABLE": "另一个排班变更同时完成，请重试。",
+      "UNAUTHORIZED": "未授权"
+    }
+  },
+  "leaves": {
+    "requestCta": "申请请假",
+    "backToHistory": "返回请假记录",
+    "workbench": {
+      "title": "请假工作台",
+      "description": "查看仍需要代班覆盖的请假申请。",
+      "empty": "当前筛选下没有请假申请。",
+      "urgent": "24 小时内开始",
+      "total": "共 {{total}} 条",
+      "previous": "上一页",
+      "next": "下一页",
+      "page": "第 {{page}} 页",
+      "filters": {
+        "pending": "待处理",
+        "all": "全部",
+        "completed": "已完成",
+        "cancelled": "已取消",
+        "failed": "未成功"
+      },
+      "columns": {
+        "requester": "发起人",
+        "shift": "班次",
+        "type": "方式",
+        "status": "状态",
+        "coverage": "代班",
+        "actions": "操作"
+      },
+      "coverage": {
+        "open": "公共池"
+      },
+      "urgency": {
+        "remaining": "{{hours}} 小时后开始"
+      },
+      "actions": {
+        "claim": "帮他上",
+        "approve": "同意",
+        "reject": "拒绝",
+        "cancel": "取消请假",
+        "detail": "详情"
+      },
+      "disabled": {
+        "not_qualified": "没有岗位资格",
+        "admin_view_only": "管理员仅可查看"
+      },
+      "toast": {
+        "claim": "已接受请假代班。",
+        "approve": "已同意请假代班。",
+        "reject": "已拒绝请假代班。",
+        "cancel": "请假已取消。"
+      }
+    },
+    "history": {
+      "title": "我的请假",
+      "description": "查看您已提交的请假记录。",
+      "empty": "您还没有提交过请假。",
+      "open": "打开",
+      "previous": "上一页",
+      "next": "下一页",
+      "page": "第 {{page}} 页"
+    }
+  },
+  "leave": {
+    "title": "请假",
+    "description": "选择未来班次并发起找人代班请求。",
+    "from": "开始日期",
+    "to": "结束日期",
+    "shareUrls": "分享链接",
+    "copy": "复制",
+    "emptyPreview": "该日期范围内没有可请假的未来班次。",
+    "typeLabel": "方式",
+    "typeGivePool": "公共池",
+    "typeGiveDirect": "指定同事",
+    "categoryLabel": "类别",
+    "categorySick": "病假",
+    "categoryPersonal": "事假",
+    "categoryBereavement": "丧假",
+    "counterpart": "代班同事",
+    "counterpartPlaceholder": "请选择同事",
+    "reason": "原因",
+    "reasonPlaceholder": "可选说明",
+    "submit": "提交请假",
+    "toast": {
+      "created": "请假已创建。"
+    },
+    "type": {
+      "swap": "互换",
+      "give_direct": "指定同事",
+      "give_pool": "公共池"
+    },
+    "category": {
+      "sick": "病假",
+      "personal": "事假",
+      "bereavement": "丧假"
+    },
+    "state": {
+      "pending": "待处理",
+      "completed": "已完成",
+      "failed": "未成功",
+      "cancelled": "已取消"
+    },
+    "errors": {
+      "INVALID_OCCURRENCE_DATE": "请选择有效且尚未开始的班次日期。",
+      "INVALID_REQUEST": "请求无效",
+      "INTERNAL_ERROR": "发生了错误，请稍后重试。",
+      "LEAVE_NOT_FOUND": "请假不存在",
+      "LEAVE_NOT_OWNER": "您无权取消该请假。",
+      "LEAVE_ALREADY_EXISTS": "该班次已有一条生效中的请假申请。",
+      "PUBLICATION_NOT_ACTIVE": "只能对当前启用的排班计划请假。",
+      "SHIFT_CHANGE_INVALID_TYPE": "请假仅支持指定同事或公共池代班。",
+      "SHIFT_CHANGE_NOT_OWNER": "您无权使用该班次。",
+      "SHIFT_CHANGE_NOT_QUALIFIED": "所选同事没有该岗位资格。",
+      "SHIFT_CHANGE_SELF": "不能选择自己。",
+      "UNAUTHORIZED": "未授权",
+      "USER_DISABLED": "所选同事已被禁用。"
+    }
+  },
+  "leaveDetail": {
+    "title": "请假详情",
+    "reason": "原因",
+    "createdAt": "创建时间",
+    "expiresAt": "截止时间",
+    "requester": "发起人",
+    "counterpart": "代班人",
+    "substitute": "实际代班人",
+    "shift": "班次",
+    "actionsTitle": "操作",
+    "actions": {
+      "approve": "同意",
+      "reject": "拒绝",
+      "claim": "认领",
+      "cancel": "取消请假"
+    },
+    "toast": {
+      "approved": "请假代班已同意。",
+      "rejected": "请假代班已拒绝。",
+      "cancelled": "请假已取消。"
+    }
+  }
+}
+
+export default translations

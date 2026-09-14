@@ -1,0 +1,192 @@
+// Package audit provides structured, append-only audit logging.
+//
+// Services call Record at the successful end of mutating business
+// operations. The actor (user ID) and actor IP are pulled from the request
+// context so service method signatures stay clean.
+package audit
+
+import (
+	"context"
+	"log/slog"
+)
+
+// Action constants list every audit event the system emits. Keep this list
+// authoritative so new actions are easy to discover during code review.
+const (
+	ActionUserQualificationsReplace = "user.qualifications.replace"
+
+	ActionPositionCreate = "position.create"
+	ActionPositionUpdate = "position.update"
+	ActionPositionDelete = "position.delete"
+
+	ActionTemplateCreate = "template.create"
+	ActionTemplateUpdate = "template.update"
+	ActionTemplateDelete = "template.delete"
+	ActionTemplateClone  = "template.clone"
+
+	ActionSlotPositionCreate = "template.shift.create"
+	ActionSlotPositionUpdate = "template.shift.update"
+	ActionSlotPositionDelete = "template.shift.delete"
+
+	ActionPublicationCreate     = "publication.create"
+	ActionPublicationUpdate     = "publication.update"
+	ActionPublicationDelete     = "publication.delete"
+	ActionPublicationPublish    = "publication.publish"
+	ActionPublicationActivate   = "publication.activate"
+	ActionPublicationEnd        = "publication.end"
+	ActionPublicationAutoAssign = "publication.auto_assign"
+
+	ActionShiftChangeCreate            = "shift_change.create"
+	ActionShiftChangeApprove           = "shift_change.approve"
+	ActionShiftChangeReject            = "shift_change.reject"
+	ActionShiftChangeCancel            = "shift_change.cancel"
+	ActionShiftChangeInvalidateCascade = "shift_change.invalidate.cascade"
+	ActionShiftChangeExpireBulk        = "shift_change.expire.bulk"
+
+	ActionLeaveCreate = "leave.create"
+	ActionLeaveCancel = "leave.cancel"
+
+	ActionSubmissionCreate = "submission.create"
+	ActionSubmissionDelete = "submission.delete"
+
+	ActionAvailabilityAdminCreate = "availability.admin.create"
+	ActionAvailabilityAdminDelete = "availability.admin.delete"
+
+	ActionAssignmentCreate = "assignment.create"
+	ActionAssignmentDelete = "assignment.delete"
+
+	ActionAttendanceArrivalRecord       = "attendance.arrival.record"
+	ActionAttendanceArrivalAdminAdjust  = "attendance.arrival.admin_adjust"
+	ActionAttendanceArrivalAdminClear   = "attendance.arrival.admin_clear"
+	ActionAttendanceOvertimeRecord      = "attendance.overtime.record"
+	ActionAttendanceOvertimeAdminCreate = "attendance.overtime.admin_create"
+	ActionAttendanceOvertimeAdminAdjust = "attendance.overtime.admin_adjust"
+	ActionAttendanceOvertimeAdminDelete = "attendance.overtime.admin_delete"
+	ActionAttendanceSettingsUpdate      = "attendance.settings.update"
+)
+
+// TargetType constants name the entity kinds referenced in audit rows.
+const (
+	TargetTypeUser                   = "user"
+	TargetTypePosition               = "position"
+	TargetTypeTemplate               = "template"
+	TargetTypeSlotPosition           = "slot_position"
+	TargetTypePublication            = "publication"
+	TargetTypeAvailabilitySubmission = "availability_submission"
+	TargetTypeAssignment             = "assignment"
+	TargetTypeShiftChangeRequest     = "shift_change_request"
+	TargetTypeLeave                  = "leave"
+	TargetTypeAttendanceRecord       = "attendance_record"
+	TargetTypeAttendanceOvertime     = "attendance_overtime"
+)
+
+// Event captures a single audit record. Actor and ActorIP are taken from
+// context, not the Event, so callers only describe the domain action itself.
+type Event struct {
+	Action         string
+	TargetType     string
+	TargetID       *int64
+	TargetObjectID *string
+	Metadata       map[string]any
+}
+
+// Recorder persists an audit event. Implementations should never fail the
+// caller: record errors must be logged and swallowed so the primary
+// operation is not affected by audit infrastructure problems.
+type Recorder interface {
+	Record(ctx context.Context, occurred RecordedEvent)
+}
+
+// RecordedEvent is the fully resolved event passed to a Recorder, after
+// Actor and ActorIP have been extracted from context.
+type RecordedEvent struct {
+	ActorID        *string
+	ActorIP        string
+	Action         string
+	TargetType     string
+	TargetID       *int64
+	TargetObjectID *string
+	Metadata       map[string]any
+}
+
+type recorderCtxKey struct{}
+type actorCtxKey struct{}
+type actorIPCtxKey struct{}
+
+// WithRecorder returns a context that carries the given Recorder.
+func WithRecorder(ctx context.Context, r Recorder) context.Context {
+	if r == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, recorderCtxKey{}, r)
+}
+
+// WithActor returns a context carrying the authenticated user's ID.
+func WithActor(ctx context.Context, userID string) context.Context {
+	return context.WithValue(ctx, actorCtxKey{}, userID)
+}
+
+// WithActorIP returns a context carrying the caller's IP address.
+func WithActorIP(ctx context.Context, ip string) context.Context {
+	return context.WithValue(ctx, actorIPCtxKey{}, ip)
+}
+
+func recorderFromContext(ctx context.Context) Recorder {
+	if r, ok := ctx.Value(recorderCtxKey{}).(Recorder); ok {
+		return r
+	}
+	return noopRecorder{}
+}
+
+func actorFromContext(ctx context.Context) *string {
+	if v, ok := ctx.Value(actorCtxKey{}).(string); ok {
+		return &v
+	}
+	return nil
+}
+
+// ActorFromContext exposes the authenticated actor's user ID, if any. It is
+// intended for callers that need the acting user for domain decisions such as
+// deriving an audit TargetID.
+func ActorFromContext(ctx context.Context) (string, bool) {
+	if v, ok := ctx.Value(actorCtxKey{}).(string); ok {
+		return v, true
+	}
+	return "", false
+}
+
+func actorIPFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(actorIPCtxKey{}).(string); ok {
+		return v
+	}
+	return ""
+}
+
+// Record writes an audit event, pulling Actor and ActorIP from the context.
+// This call never fails from the caller's perspective. If the recorder is
+// missing or the write fails, a warning is emitted via slog but the caller
+// continues unaffected.
+func Record(ctx context.Context, event Event) {
+	if event.Action == "" {
+		slog.Warn("audit.Record called with empty action")
+		return
+	}
+
+	resolved := RecordedEvent{
+		ActorID:        actorFromContext(ctx),
+		ActorIP:        actorIPFromContext(ctx),
+		Action:         event.Action,
+		TargetType:     event.TargetType,
+		TargetID:       event.TargetID,
+		TargetObjectID: event.TargetObjectID,
+		Metadata:       event.Metadata,
+	}
+
+	recorderFromContext(ctx).Record(ctx, resolved)
+}
+
+// noopRecorder discards events. Used when no Recorder is configured, such
+// as in tests that don't care about audit output.
+type noopRecorder struct{}
+
+func (noopRecorder) Record(_ context.Context, _ RecordedEvent) {}

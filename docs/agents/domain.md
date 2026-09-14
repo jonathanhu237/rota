@@ -5,7 +5,7 @@
 This repo uses a single-context layout:
 
 - `CONTEXT.md` at the repository root: domain vocabulary and context.
-- `docs/adr/`: architectural decisions shared by backend and frontend.
+- `docs/adr/`: architectural decisions shared by the API and admin applications.
 
 ## Before exploring
 
